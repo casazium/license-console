@@ -1,9 +1,11 @@
 import '@mantine/core/styles.css';
+import '@mantine/notifications/styles.css';
 import './globals.css';
 
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { ColorSchemeScript, MantineProvider, mantineHtmlProps } from '@mantine/core';
+import { Notifications } from '@mantine/notifications';
 
 export const metadata: Metadata = {
   title: 'License Console',
@@ -17,7 +19,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <ColorSchemeScript />
       </head>
       <body>
-        <MantineProvider>{children}</MantineProvider>
+        <MantineProvider>
+          <Notifications />
+          {children}
+        </MantineProvider>
       </body>
     </html>
   );

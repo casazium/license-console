@@ -1,7 +1,11 @@
 'use client';
 
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button, NumberInput, Stack, TextInput, Title } from '@mantine/core';
 import { useForm } from '@mantine/form';
+import { notifications } from '@mantine/notifications';
+import { issueLicenseAction } from '../actions';
 
 type IssueLicenseValues = {
   product_id: string;
@@ -12,6 +16,9 @@ type IssueLicenseValues = {
 };
 
 export default function NewLicensePage() {
+  const router = useRouter();
+  const [submitting, setSubmitting] = useState(false);
+
   const form = useForm<IssueLicenseValues>({
     initialValues: {
       product_id: '',
@@ -31,9 +38,24 @@ export default function NewLicensePage() {
     },
   });
 
-  function handleSubmit(values: IssueLicenseValues) {
-    // TODO: POST /issue-license via the license server client (not yet implemented)
-    console.log(values);
+  async function handleSubmit(values: IssueLicenseValues) {
+    setSubmitting(true);
+    try {
+      const license = await issueLicenseAction(values);
+      notifications.show({
+        color: 'green',
+        title: 'License issued',
+        message: license.key,
+      });
+      router.push(`/licenses/${license.key}`);
+    } catch {
+      notifications.show({
+        color: 'red',
+        title: 'Failed to issue license',
+        message: 'Something went wrong. Please try again.',
+      });
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -54,7 +76,9 @@ export default function NewLicensePage() {
             {...form.getInputProps('expires_at')}
           />
           <NumberInput label="Max activations" min={1} {...form.getInputProps('max_activations')} />
-          <Button type="submit">Issue license</Button>
+          <Button type="submit" loading={submitting}>
+            Issue license
+          </Button>
         </Stack>
       </form>
     </>

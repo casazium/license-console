@@ -137,12 +137,56 @@ touching `node_modules` or dependency versions again:
 **Built:** full MVP page shell (`/login`, `/dashboard`, `/licenses`,
 `/licenses/new`, `/licenses/[key]`) and working auth end-to-end (login sets a
 signed session cookie via `lib/session.ts`, `proxy.ts` gates protected routes,
-`/api/logout` clears the session). Every page beyond login is placeholder
-content - no page is wired to the license server yet.
+`/api/logout` clears the session).
 
-## 8. Next authorized step
+## 8. Mock data layer (2026-07-30)
 
-Implement a license-server API client (server-side only, using
-`LICENSE_API_URL` / `LICENSE_ADMIN_API_KEY`) and wire it into each page per
-the endpoint table in §5, starting with `/licenses` (list) and `/licenses/new`
-(issue) since those are the simplest end-to-end slice.
+Per operator request, wired every MVP page to `lib/license-client.ts` - an
+in-memory mock of the future license-server client (same function
+signatures the real client will expose: `listLicenses`, `issueLicense`,
+`getLicense`, `setLicenseRevoked`, `deleteLicense`, `listActivations`,
+`reissueActivationToken`, `getDashboardStats`, `getRecentActivations`).
+Purpose is purely to play with look and feel before real backend
+integration - state resets on server restart, seeded with 3 demo licenses.
+Mutations go through Server Actions (`app/(app)/licenses/actions.ts`) using
+`revalidatePath`, matching the shape real API calls will use later.
+
+Full loop verified via Playwright: login → dashboard shows seeded stats →
+licenses list shows seeded data → issue a new license → redirected to its
+detail page (which shows the submitted data and an activation code snippet)
+→ appears in the list → revoke flips its status badge → reissue-token on a
+seeded activation shows a notification with the new token → delete removes
+it and redirects to the list.
+
+**Real bug found and fixed, not just a version gotcha:** Mantine's compound
+table components (`Table.Thead`, `.Tr`, `.Th`, `.Tbody`, `.Td`) resolve to
+`undefined` when `Table` is imported and used directly inside a Server
+Component - Next's RSC client-reference proxying doesn't preserve Mantine's
+static sub-properties on the `Table` function, even though standalone
+exports (`Anchor`, `Badge`, `Button`) resolve fine. This silently 500'd
+`/dashboard` and `/licenses` in a way the *first* scaffolding pass's
+Playwright test didn't catch, because Next updates the browser URL
+optimistically on navigation even when the destination route errors - a
+test that only checks `page.url()` after clicking a link can pass while the
+page itself is broken. Fixed by moving every actual `<Table>` render into
+its own small Client Component (`LicensesTable.tsx`,
+`RecentActivationsTable.tsx`) that takes plain data as props from the
+Server Component parent that fetches it - same data-down/interactivity-up
+split already used correctly in `LicenseActions.tsx`. **Any future page
+that renders a Mantine `Table` must do so inside a Client Component, not
+directly in a Server Component** - this isn't specific to the mock data,
+it'll bite the real API integration too if missed.
+
+Known non-blocking item: `app/(app)/licenses/page.tsx`'s "Issue license"
+button uses Next's deprecated `legacyBehavior`/`passHref` Link pattern
+(needed to render `Button` as a real `<a>` without nesting two interactive
+elements, from a Server Component). Works, prints a console deprecation
+warning. Worth a cleanup pass later; not urgent.
+
+## 9. Next authorized step
+
+Implement a real license-server API client (server-side only, using
+`LICENSE_API_URL` / `LICENSE_ADMIN_API_KEY`) and swap it in behind the same
+`lib/license-client.ts` function signatures the mock already uses, so no
+page needs to change - starting with `listLicenses`/`issueLicense` since
+those are the simplest end-to-end slice.
