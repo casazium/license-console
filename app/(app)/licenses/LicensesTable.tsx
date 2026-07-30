@@ -1,10 +1,21 @@
 'use client';
 
-import { Anchor, Badge, Table } from '@mantine/core';
+import { Anchor, Badge, Stack, Table, Text } from '@mantine/core';
 import Link from 'next/link';
 import type { License } from '@/lib/license-client';
 
 export function LicensesTable({ licenses }: { licenses: License[] }) {
+  if (licenses.length === 0) {
+    return (
+      <Stack align="center" gap="xs" py="xl">
+        <Text c="dimmed">No licenses yet.</Text>
+        <Anchor component={Link} href="/licenses/new">
+          Issue your first license
+        </Anchor>
+      </Stack>
+    );
+  }
+
   return (
     <Table>
       <Table.Thead>
