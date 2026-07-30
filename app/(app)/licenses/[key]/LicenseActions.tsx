@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, Group, Table } from '@mantine/core';
+import { Button, Group, Modal, Table, Text } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import type { Activation } from '@/lib/license-client';
 import {
@@ -20,6 +21,8 @@ export function RevokeDeleteActions({
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [deleteModalOpened, { open: openDeleteModal, close: closeDeleteModal }] =
+    useDisclosure(false);
 
   async function handleToggleRevoke() {
     setBusy(true);
@@ -34,9 +37,7 @@ export function RevokeDeleteActions({
   }
 
   async function handleDelete() {
-    if (!window.confirm(`Permanently delete ${licenseKey}? This cannot be undone.`)) {
-      return;
-    }
+    closeDeleteModal();
     setBusy(true);
     await deleteLicenseAction(licenseKey);
     notifications.show({ color: 'red', title: 'License deleted', message: licenseKey });
@@ -44,14 +45,30 @@ export function RevokeDeleteActions({
   }
 
   return (
-    <Group>
-      <Button variant="default" loading={busy} onClick={handleToggleRevoke}>
-        {status === 'active' ? 'Revoke' : 'Unrevoke'}
-      </Button>
-      <Button color="red" variant="outline" loading={busy} onClick={handleDelete}>
-        Delete
-      </Button>
-    </Group>
+    <>
+      <Group>
+        <Button variant="default" loading={busy} onClick={handleToggleRevoke}>
+          {status === 'active' ? 'Revoke' : 'Unrevoke'}
+        </Button>
+        <Button color="red" variant="outline" loading={busy} onClick={openDeleteModal}>
+          Delete
+        </Button>
+      </Group>
+
+      <Modal opened={deleteModalOpened} onClose={closeDeleteModal} title="Delete license" centered>
+        <Text size="sm">
+          Permanently delete <b>{licenseKey}</b>? This cannot be undone.
+        </Text>
+        <Group justify="flex-end" mt="lg">
+          <Button variant="default" onClick={closeDeleteModal}>
+            Cancel
+          </Button>
+          <Button color="red" onClick={handleDelete}>
+            Delete
+          </Button>
+        </Group>
+      </Modal>
+    </>
   );
 }
 
