@@ -106,4 +106,4 @@ was the missing activation code snippet, now folded into MVP (see table above).
 ## 7. Next authorized step
 
 Scaffold the Next.js + Mantine skeleton against the MVP scope above. Not yet
-started — repo currently contains only this document.
+started — repo currently contains only this document and `CLAUDE.md`.
