@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Version: 1.0
+Version: 1.1
 Last updated: 2026-07-30
 
 > Repository-specific operating instructions for Claude Code, scoped to
@@ -28,11 +28,15 @@ Mantine app; most of it doesn't exist yet.
   Admin auth there is a single static `ADMIN_API_KEY` bearer token checked by
   a `requireAdmin` preHandler hook — no user accounts on that side.
 - **Auth model here:** single shared admin password for now, deliberately
-  structured (`lib/auth.ts` / `lib/session.ts` / `middleware.ts` seam) so
-  adding real per-user accounts later doesn't require rearchitecting the
-  session layer. Full rationale in `PROJECT_STATUS.md` §3.
-- **Current state:** scaffolding not yet started; the repo contains only this
-  file and `PROJECT_STATUS.md`.
+  structured (`lib/auth.ts` / `lib/session.ts` / `proxy.ts` seam) so adding
+  real per-user accounts later doesn't require rearchitecting the session
+  layer. Full rationale in `PROJECT_STATUS.md` §3.
+- **Current state:** MVP page shell and auth flow are scaffolded and verified
+  (build, lint, and a full browser walkthrough all pass). No page is wired to
+  the license server API yet — see `PROJECT_STATUS.md`'s final section for
+  the next step and its scaffolding notes for Next 16/Mantine 9-specific
+  gotchas hit along the way (worth reading before touching dependency
+  versions).
 
 ## 3. Startup procedure
 
@@ -43,8 +47,9 @@ not re-read it as a step. At the beginning of every session:
    MVP/phase-2 scope, and the backend reference notes. Don't re-derive
    decisions already recorded there.
 2. Inspect Git: branch, commit, working tree, recent commits.
-3. Summarize current state and the next unstarted item from `PROJECT_STATUS.md`
-   §7 (or wherever "next step" is recorded).
+3. Summarize current state and the next unstarted item from
+   `PROJECT_STATUS.md`'s final "Next authorized step" section (section number
+   shifts as the document grows - read the heading, don't assume the number).
 4. Wait for user instruction before modifying files.
 
 ## 4. Session behavior
@@ -63,4 +68,5 @@ not re-read it as a step. At the beginning of every session:
 
 | Version | Date | Summary |
 | --- | --- | --- |
+| 1.1 | 2026-07-30 | Updated after scaffolding: fixed the stale "scaffolding not yet started" claim, `middleware.ts` → `proxy.ts` reference (Next 16 renamed the convention), and the `PROJECT_STATUS.md` section-number pointer to not assume a fixed number. |
 | 1.0 | 2026-07-30 | Initial version. Deliberately scoped light: repo orientation, startup procedure pointing to `PROJECT_STATUS.md`, and inline git discipline — no separate playbook file. |

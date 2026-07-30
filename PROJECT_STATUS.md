@@ -103,7 +103,46 @@ SDK → confirm activation shows up in console → test revoke → see it on
 dashboard. Confirmed complete with no missing capability; the only gap found
 was the missing activation code snippet, now folded into MVP (see table above).
 
-## 7. Next authorized step
+## 7. Scaffolding notes (2026-07-30)
 
-Scaffold the Next.js + Mantine skeleton against the MVP scope above. Not yet
-started — repo currently contains only this document and `CLAUDE.md`.
+Skeleton built and verified (`npm run build`, `npm run lint`, and a full
+Playwright walkthrough of login → wrong-password error → dashboard → nav →
+issue-license form validation → license detail dynamic route → sign-out →
+re-protection — all passing). Resolved versions: Next 16.2.12, React 19.2.8,
+Mantine 9.5.0. Version-specific gotchas hit during setup, worth knowing before
+touching `node_modules` or dependency versions again:
+
+- **`eslint` must stay on `^9`.** `eslint-config-next`'s transitive plugins
+  (`eslint-plugin-import`, `-jsx-a11y`, `-react`) don't yet support ESLint 10.
+  `npm install -D eslint@latest` will silently resolve to 10.x and break lint.
+- **`typescript` must stay on `^6`.** Next 16's build-time TS integration
+  doesn't support the TypeScript 7 compiler API yet (`npm run build` fails
+  outright otherwise, with a pointer to `experimental.useTypeScriptCli`).
+- **Next 16 renamed `middleware.ts`/`middleware()` to `proxy.ts`/`proxy()`**
+  (this repo's file is `proxy.ts`). It now always runs on the Node.js
+  runtime, not Edge - doesn't affect us since `jose` (used for session
+  signing) works fine on both.
+- **`next lint` was removed entirely**, not just deprecated. Lint runs via
+  `eslint .` against `eslint.config.mjs` (flat config) - `eslint-config-next`
+  now exports flat-config arrays directly instead of extendable strings, so
+  there's no `.eslintrc.json` in this repo.
+- **Mantine's `required` prop on inputs sets a native HTML `required`
+  attribute.** Combined with `@mantine/form`, this lets the browser's own
+  constraint validation block form submission before Mantine's
+  `validate`/`onSubmit` ever runs - found via the Playwright test (empty
+  issue-license form silently failed to show validation errors). Fixed by
+  adding `noValidate` to both forms (`app/login/page.tsx`,
+  `app/(app)/licenses/new/page.tsx`); apply the same to any new form.
+
+**Built:** full MVP page shell (`/login`, `/dashboard`, `/licenses`,
+`/licenses/new`, `/licenses/[key]`) and working auth end-to-end (login sets a
+signed session cookie via `lib/session.ts`, `proxy.ts` gates protected routes,
+`/api/logout` clears the session). Every page beyond login is placeholder
+content - no page is wired to the license server yet.
+
+## 8. Next authorized step
+
+Implement a license-server API client (server-side only, using
+`LICENSE_API_URL` / `LICENSE_ADMIN_API_KEY`) and wire it into each page per
+the endpoint table in §5, starting with `/licenses` (list) and `/licenses/new`
+(issue) since those are the simplest end-to-end slice.
