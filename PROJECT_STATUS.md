@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-07-31 (dashboard review: expiring/seat-limit/recently-issued widgets)
+Last updated: 2026-07-31 (removed redundant/mis-sized title from app header)
 
 > Admin console UI for `casazium/license`. This document exists so work can resume
 > across sessions without re-deriving decisions already made. Update it whenever
@@ -379,7 +379,11 @@ mid-string, silently falling back to the default blue).
   stay a non-heading element so it doesn't create a second, competing
   top-level heading alongside each page's own `<h2>`. Proposed adding an
   `as` prop to `BrandTitle` so each call site can choose - **not yet
-  authorized or built**, tracked here so it isn't lost.
+  authorized or built**, tracked here so it isn't lost. **Partially moot as
+  of the "App header title removed" note in §10 below** - the app-header
+  half of this question no longer applies, since the header doesn't render
+  the title at all anymore. The `/login` half (should it be `<h1>`) is
+  still open if the operator wants it.
 - **Font size - confirmed still fully operator-controlled, no new config.**
   Operator asked whether a dedicated `BRANDING_TITLE_FONT_SIZE`-style env
   var was warranted. Decided no: operators can already set `font-size`
@@ -511,6 +515,32 @@ the window, one revoked and excluded entirely), and "Seats near capacity"
 correctly surfaces all three licenses at or within one seat of their limit
 (`BETA-0002` 1/1 - red badge, `ALPHA-0001` 2/3 and `DELTA-0004` 1/2 - both
 yellow), confirmed via a full-page screenshot, not just presence checks.
+
+### App header title removed (2026-07-31)
+
+Operator ran the dashboard with their own real branding config and shared
+a screenshot: the app header showed "Casazium License Console" with a
+severe size mismatch ("Casazium" at the operator's explicit `2.5rem`,
+" License Console" falling back to the header's own `1rem` default) - the
+exact "partial wrap" gotcha flagged during the login/branding review,
+now visibly broken in the header's much tighter 60px bar rather than just
+loosely mismatched like on `/login`. A second, independent problem: the
+logo lockup itself already includes the "Casazium" wordmark, so the title
+text repeated the brand name immediately next to it.
+
+**Decided:** remove the title text from the app header entirely, keep only
+the logo there. Resolves both problems at once (no title markup left to
+mis-render; no redundant wordmark) and, as a side effect, closes the
+still-open "semantic heading level" item from §9 above - with no title
+text in the header, there's no `<h1>`-vs-non-heading conflict to resolve
+there at all. The title remains unchanged on `/login`, where it's the
+actual hero content and this problem doesn't arise. `AppShellClient.tsx`
+no longer imports `BrandTitle`.
+
+Verified: `npm run build`/`npm run lint` clean, and a Playwright check
+reproducing the operator's exact reported config (same title HTML, same
+brand color) confirming the header's `innerText` no longer contains the
+title text at all - screenshot reviewed, logo-only header confirmed clean.
 
 ## 12. Next authorized step
 
