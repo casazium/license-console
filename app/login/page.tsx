@@ -21,7 +21,22 @@ export default function LoginPage() {
           <BrandLogo logoUrl={branding.logoUrl} size={40} />
         </Box>
       )}
-      <Stack align="center" justify="center" gap="lg" p="md" style={{ flex: 1 }}>
+      {/*
+        justify="flex-start" + a clamped top offset, not justify="center":
+        centering within the full remaining viewport height put a huge,
+        viewport-height-dependent gap above the title on tall screens (the
+        block centers in leftover space that can be 1000px+ tall). A capped
+        offset keeps the title a consistent, comfortable distance below the
+        header regardless of viewport height, and any excess space collects
+        below the card instead of splitting evenly above and below it.
+      */}
+      <Stack
+        align="center"
+        justify="flex-start"
+        gap="lg"
+        p="md"
+        style={{ flex: 1, paddingTop: 'clamp(24px, 8vh, 96px)' }}
+      >
         <BrandTitle titleHtml={branding.titleHtml} style={{ fontSize: '1.75rem', fontWeight: 600, textAlign: 'center' }} />
         <LoginForm />
       </Stack>

@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-07-31 (login/branding implementation verified)
+Last updated: 2026-07-31 (login/branding design review round 2: brand color + spacing fix)
 
 > Admin console UI for `casazium/license`. This document exists so work can resume
 > across sessions without re-deriving decisions already made. Update it whenever
@@ -284,6 +284,56 @@ Also fixed two empty-chrome edge cases: the login page's header/footer
 regions and the app shell's footer region only render when the
 corresponding branding field is actually configured, instead of showing an
 empty bar when `BRANDING_LOGO_URL`/`BRANDING_COPYRIGHT_HOLDER` are unset.
+
+### Design review round 2 (2026-07-31)
+
+Operator ran the built login page in their own local environment and shared
+a screenshot with a self-configured logo/title/copyright. Critical design
+review surfaced two real defects and one deliberate non-fix:
+
+- **Color inconsistency.** The logo, the title's accent color, and the
+  primary button were three unrelated colors (a violet logo, a saturated
+  pure-blue title accent, a separate muted-blue button) — because
+  `BRANDING_TITLE_HTML` and the button each had their color set
+  independently, with no shared source of truth. Root-caused, not just
+  patched at the symptom: added a new `BRANDING_COLOR` env var (any valid
+  CSS color, defaults to Mantine's standard blue `#228be6` if unset),
+  exposed as a `--brand-color` CSS custom property on `<body>` in the root
+  layout (`app/layout.tsx`) so it cascades to every page. Operators
+  reference it in `BRANDING_TITLE_HTML` via `var(--brand-color)` instead of
+  hardcoding a hex, and the primary button (`LoginForm.tsx`'s "Sign in")
+  picks it up via Mantine's own overridable `--button-bg`/`--button-hover`
+  CSS variables. One env var now drives both, so they can't drift apart the
+  way they did in the reviewed screenshot. Scoped to the login page's
+  primary button only, not a full Mantine `primaryColor` theme regeneration
+  (which would need a 10-shade palette generated from one hex, e.g. via
+  `@mantine/colors-generator` - not installed) — a natural larger version of
+  this if the operator wants every button/link app-wide to pick it up later,
+  not built now.
+- **Excessive gap above the title.** `app/login/page.tsx`'s content Stack
+  used `justify="center"` within a `flex: 1` region filling the entire
+  remaining viewport height - on a tall viewport that centers a short
+  title+card block in the middle of a 1000px+ tall space, producing a large,
+  viewport-height-dependent gap both above and below it. Replaced with
+  `justify="flex-start"` and `paddingTop: 'clamp(24px, 8vh, 96px)'`, so the
+  title sits a consistent, bounded distance below the header regardless of
+  viewport height, and any excess space collects below the card instead of
+  splitting evenly above and below it.
+- **Title font size — deliberately left alone.** The reviewed screenshot's
+  title rendered far larger than this app's own default (its
+  `BRANDING_TITLE_HTML` value set its own large size). Operator's explicit
+  call: the developer/operator configuring `BRANDING_TITLE_HTML` should
+  control this themselves via their own markup, not have the app impose a
+  size cap or a different hardcoded default. No code change made for this
+  item - confirms the existing behavior (operator's inline styles in their
+  title HTML already win) is correct as-is.
+
+Verified: `npm run build` (0 errors, same dynamic-route set as before),
+`npm run lint` (0 errors), and a visual re-check (same test config as the
+reviewed screenshot, plus `BRANDING_COLOR="#2563eb"` and the title
+referencing `var(--brand-color)`) confirming the logo, title accent, and
+button now render as the same color, and the header-to-title gap is
+visibly tightened.
 
 ## 10. Next authorized step
 
