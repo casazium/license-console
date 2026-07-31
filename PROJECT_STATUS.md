@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-07-31 (removed redundant/mis-sized title from app header)
+Last updated: 2026-07-31 (licenses page: pagination, filters, sort, seats column)
 
 > Admin console UI for `casazium/license`. This document exists so work can resume
 > across sessions without re-deriving decisions already made. Update it whenever
@@ -542,7 +542,107 @@ reproducing the operator's exact reported config (same title HTML, same
 brand color) confirming the header's `innerText` no longer contains the
 title text at all - screenshot reviewed, logo-only header confirmed clean.
 
-## 12. Next authorized step
+## 11. Licenses page review (2026-07-31)
+
+Operator asked, reviewing the licenses list page: why can't I sort columns,
+shouldn't there be more columns (matching the dashboard work), where's
+search/filter, and what happens at 200 licenses? Documented before
+implementation, per session convention. Grounded against the real
+`casazium/license` backend's actual `GET /list-licenses` route
+(`src/routes/list-licenses.js`), not assumptions:
+
+- Confirmed the route already accepts `product_id` (exact match) and
+  `status` filters, plus `limit`/`offset` pagination (default 50, max
+  1000) - all directly usable with zero backend changes.
+- Confirmed the route has **no sort parameter at all** - its query is
+  hardcoded to `ORDER BY issued_at DESC`. A true full-dataset sort isn't
+  possible without a backend change; anything built now can only be a
+  client-side sort of whatever page is currently loaded.
+- Confirmed the route's response (`key, tier, product_id, issued_to,
+  issued_at, expires_at, status, usage_limit, usage_count, revoked_at`)
+  does **not** include an activation/seat count - there's no free
+  "seats used" field to display without either an N+1
+  `GET /list-activations/:key` call per row or a backend addition.
+
+### Decided
+
+1. **Pagination.** This app's mock `listLicenses()` currently ignores
+   pagination entirely, returning every license unpaginated - a real,
+   already-present bug at any real scale, not just a future concern. Fixed
+   by giving the mock the same interface shape as the real endpoint
+   (`{ licenses, total }`, params `product_id` / `status` / `limit` /
+   `offset`) so wiring the real client later is a drop-in swap, per this
+   app's own stated design goal (§2). Page size: 10, via a `?page=` URL
+   param (URL-driven, not component state, so pages are bookmarkable/
+   shareable - same reasoning as any server-rendered list).
+2. **Status/product filters.** Dropdowns for both, using the exact params
+   the backend already accepts. URL-driven alongside pagination.
+3. **Seat-utilization column.** Added to the table, reusing the same
+   used/max computation and badge coloring already built for the dashboard
+   widget. **Caveat, not solved here:** this is mock-only enrichment. The
+   real backend's `/list-licenses` response has no such field - wiring the
+   real client will need either N+1 `list-activations` calls (real cost at
+   200+ rows) or a backend PR to include the count directly. Recommending
+   the backend addition when that work happens, not the N+1 path.
+4. **Client-side sort, current page only.** Click-to-sort column headers,
+   scoped honestly to the loaded page - not presented as a full-dataset
+   sort, since the backend genuinely can't do that today.
+5. **Free-text search - deferred, not built.** No search endpoint exists on
+   the backend at all (only exact-match `product_id`/`status`). A
+   client-side-only search would silently only cover the current page,
+   which is worse than not having it - misleads the operator into thinking
+   they searched everything. Logged as a backend roadmap item: a real
+   search endpoint (by key or `issued_to`) is a prerequisite for this,
+   same category as the other deferred backend items in §9 (rate limiting,
+   multi-account, 2FA).
+
+Seed data: expanded beyond the original 4 demo licenses specifically so
+pagination/filtering/sorting are genuinely demonstrable and testable
+during verification, not just theoretically wired - same reasoning as the
+`DELTA-0004` addition for the dashboard's expiring-soon widget. Added 24
+synthetic licenses (28 total) via a small generator, varied across 3
+products/3 tiers/mixed status/spread issue and expiry dates, enough for 3
+pages at a 10-per-page size.
+
+### Implementation notes (2026-07-31)
+
+Built: `lib/license-client.ts`'s `listLicenses()` now takes
+`{status, product_id, limit, offset}` and returns `{licenses, total}` -
+matching the real endpoint's actual shape exactly (params and response),
+not just "close enough," so swapping in the real client later is a
+drop-in replacement per this app's stated design goal. Added
+`LicenseListItem` (`License & {activations_used}`) and
+`ListLicensesParams`/`ListLicensesResult` types. New
+`LicensesFilters.tsx` (status `Select`, product `TextInput` - not a
+dropdown, deliberately, since the backend has no products table to source
+options from) and `LicensesPagination.tsx` (Mantine `Pagination`), both
+URL-search-param-driven via `next/navigation`, so pages/filters are
+bookmarkable and changing a filter resets `page`. `LicensesTable.tsx`
+gained a Seats column (same used/max badge coloring as the dashboard
+widget) and click-to-sort column headers (client-side, current page only
+- labeled honestly given the backend has no sort parameter at all), plus
+a filter-aware empty state (`hasFilters` prop: "no licenses match these
+filters" vs. the original actionable "issue your first license").
+`app/(app)/licenses/page.tsx` reads `searchParams` (Next's async
+`Promise<{...}>` convention, matching how `licenses/[key]/page.tsx`
+already handles `params`) and computes offset/limit from `page`.
+
+Verified via `npm run build`/`npm run lint` (0 errors) and a full
+Playwright pass - initially caught a false alarm worth recording: the
+first pagination-click test checked the URL immediately after `.click()`
+and saw no change, which looked like a real bug. Re-tested with
+`page.waitForURL(...)` instead of an immediate check: the client-side RSC
+navigation genuinely takes about a second to resolve, which
+`waitForLoadState('networkidle')` doesn't reliably wait for - not an
+app defect, a test-timing issue. Corrected verification confirmed:
+page 1 vs. page 2 show different first keys; page 3 has exactly 8 rows
+(28 total, 10 per page); `status=revoked` filter returns only revoked
+rows (5 of 28); `product_id=gadget-basic` returns only matching rows (8
+of 28); changing a filter while on page 3 correctly drops the `page`
+param back to 1; the empty-filtered state shows the correct message
+without the "issue your first license" CTA; and clicking the Key column
+header sorts ascending then descending correctly, verified against a
+genuinely-sorted comparison array, not just eyeballed.
 
 Implement a real license-server API client (server-side only, using
 `LICENSE_API_URL` / `LICENSE_ADMIN_API_KEY`) and swap it in behind the same

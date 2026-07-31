@@ -1,12 +1,33 @@
 import { Group, Text, Title } from '@mantine/core';
 import { listLicenses } from '@/lib/license-client';
 import { IssueLicenseButton } from './IssueLicenseButton';
+import { LicensesFilters } from './LicensesFilters';
+import { LicensesPagination } from './LicensesPagination';
 import { LicensesTable } from './LicensesTable';
 
 export const dynamic = 'force-dynamic';
 
-export default async function LicensesPage() {
-  const licenses = await listLicenses();
+const PAGE_SIZE = 10;
+
+export default async function LicensesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string; status?: string; product_id?: string }>;
+}) {
+  const params = await searchParams;
+  const page = Math.max(1, Number(params.page) || 1);
+  const status = params.status === 'active' || params.status === 'revoked' ? params.status : undefined;
+  const productId = params.product_id?.trim() || undefined;
+  const hasFilters = Boolean(status || productId);
+
+  const { licenses, total } = await listLicenses({
+    status,
+    product_id: productId,
+    limit: PAGE_SIZE,
+    offset: (page - 1) * PAGE_SIZE,
+  });
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <>
@@ -14,7 +35,16 @@ export default async function LicensesPage() {
         <Title order={2}>Licenses</Title>
         <IssueLicenseButton />
       </Group>
-      <LicensesTable licenses={licenses} />
+      <LicensesFilters status={status} productId={productId} />
+      <LicensesTable licenses={licenses} hasFilters={hasFilters} />
+      {total > 0 && (
+        <Group justify="space-between" mt="md">
+          <Text size="sm" c="dimmed">
+            Showing {licenses.length} of {total}
+          </Text>
+          <LicensesPagination page={page} totalPages={totalPages} />
+        </Group>
+      )}
       <Text c="dimmed" size="sm" mt="md">
         Showing mock data (lib/license-client.ts) — not yet wired to the real
         license server.

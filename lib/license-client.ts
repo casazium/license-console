@@ -71,6 +71,25 @@ export type IssueLicenseInput = {
   max_activations: number;
 };
 
+// The real GET /list-licenses response has no activation-count field at
+// all (confirmed against casazium/license's src/routes/list-licenses.js) -
+// activations_used is mock-only enrichment. Wiring the real client will
+// need either an N+1 GET /list-activations/:key call per row, or a
+// backend addition to include the count directly (recommended over N+1).
+export type LicenseListItem = License & { activations_used: number };
+
+export type ListLicensesParams = {
+  status?: 'active' | 'revoked';
+  product_id?: string;
+  limit?: number;
+  offset?: number;
+};
+
+export type ListLicensesResult = {
+  licenses: LicenseListItem[];
+  total: number;
+};
+
 type Store = {
   licenses: License[];
   activations: Record<string, Activation[]>;
@@ -79,6 +98,8 @@ type Store = {
 const globalForMockStore = globalThis as unknown as { __licenseMockStore?: Store };
 
 function seedStore(): Store {
+  const synthetic = generateSyntheticLicenses(24);
+
   return {
     licenses: [
       {
@@ -135,6 +156,7 @@ function seedStore(): Store {
         max_activations: 2,
         revoked_at: null,
       },
+      ...synthetic.licenses,
     ],
     activations: {
       'CASZ-DEMO-ALPHA-0001': [
@@ -147,8 +169,57 @@ function seedStore(): Store {
       'CASZ-DEMO-DELTA-0004': [
         { instance_id: 'inst_4c8e2f91', activated_at: '2025-08-02T10:00:00Z' },
       ],
+      ...synthetic.activations,
     },
   };
+}
+
+// Beyond the 4 hand-authored demo licenses above, generates enough
+// additional licenses that pagination/filtering/sorting are genuinely
+// demonstrable and testable during verification - not just theoretically
+// wired against a 4-row dataset that fits on one page regardless.
+function generateSyntheticLicenses(count: number): { licenses: License[]; activations: Store['activations'] } {
+  const products = ['widget-pro', 'widget-lite', 'gadget-basic'];
+  const tiers = ['starter', 'pro', 'enterprise'];
+  const licenses: License[] = [];
+  const activations: Store['activations'] = {};
+  const now = Date.now();
+  const day = 24 * 60 * 60 * 1000;
+
+  for (let i = 0; i < count; i += 1) {
+    const key = `CASZ-SYN-${String(i + 1).padStart(4, '0')}`;
+    const maxActivations = 1 + (i % 5);
+    const used = i % (maxActivations + 1);
+    const revoked = i % 7 === 0;
+    const issuedAt = now - (i * 11 + 5) * day;
+    // Spread expirations across a wide range, including some inside the
+    // dashboard's 30-day "expiring soon" window, so that widget and this
+    // page's filters exercise overlapping, realistic data.
+    const expiresAt = now + ((i * 13) % 400 - 60) * day;
+
+    licenses.push({
+      key,
+      product_id: products[i % products.length],
+      tier: tiers[i % tiers.length],
+      status: revoked ? 'revoked' : 'active',
+      issued_to: `customer-${i + 1}@example.com`,
+      issued_at: new Date(issuedAt).toISOString(),
+      expires_at: new Date(expiresAt).toISOString(),
+      usage_limit: 1000 * (1 + (i % 10)),
+      usage_count: 50 * (i % 20),
+      max_activations: maxActivations,
+      revoked_at: revoked ? new Date(issuedAt + 2 * day).toISOString() : null,
+    });
+
+    if (used > 0) {
+      activations[key] = Array.from({ length: used }, (_, seat) => ({
+        instance_id: `inst_syn${i}${seat}`,
+        activated_at: new Date(issuedAt + (seat + 1) * day).toISOString(),
+      }));
+    }
+  }
+
+  return { licenses, activations };
 }
 
 function getStore(): Store {
@@ -164,8 +235,27 @@ function generateKey(): string {
   return `CASZ-${segment()}-${segment()}-${segment()}`;
 }
 
-export async function listLicenses(): Promise<License[]> {
-  return [...getStore().licenses].sort((a, b) => (a.issued_at < b.issued_at ? 1 : -1));
+export async function listLicenses(params: ListLicensesParams = {}): Promise<ListLicensesResult> {
+  const { status, product_id, limit = 10, offset = 0 } = params;
+  const { licenses, activations } = getStore();
+
+  const filtered = licenses.filter((license) => {
+    if (status && license.status !== status) return false;
+    if (product_id && license.product_id !== product_id) return false;
+    return true;
+  });
+
+  // Matches the real GET /list-licenses's own ORDER BY issued_at DESC -
+  // that route has no sort parameter, so this is the only order the real
+  // API can return regardless of what page/filter is requested.
+  const sorted = [...filtered].sort((a, b) => (a.issued_at < b.issued_at ? 1 : -1));
+
+  const page = sorted.slice(offset, offset + limit).map((license) => ({
+    ...license,
+    activations_used: activations[license.key]?.length ?? 0,
+  }));
+
+  return { licenses: page, total: sorted.length };
 }
 
 export async function getLicense(key: string): Promise<License | null> {
