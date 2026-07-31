@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-07-31 (login/branding design review round 2: brand color + spacing fix)
+Last updated: 2026-07-31 (login/branding design review round 3: hydration warning fix, favicon, CORS clarification)
 
 > Admin console UI for `casazium/license`. This document exists so work can resume
 > across sessions without re-deriving decisions already made. Update it whenever
@@ -334,6 +334,70 @@ reviewed screenshot, plus `BRANDING_COLOR="#2563eb"` and the title
 referencing `var(--brand-color)`) confirming the logo, title accent, and
 button now render as the same color, and the header-to-title gap is
 visibly tightened.
+
+**Follow-up verification, prompted by the operator asking to double-check:**
+the round-2 visual check above used `BRANDING_COLOR="#2563eb"`, which is
+close enough to Mantine's own default blue (`#228be6`) that a broken
+override could have looked correct by coincidence. Re-verified with a
+clearly distinct test color (`#ff6600`) and confirmed via a real browser's
+computed style (`getComputedStyle(button).backgroundColor` ===
+`rgb(255, 102, 0)`), not just visual inspection — the override genuinely
+works, not a false-positive from two similar blues. Separately, an
+operator-reported "no effect" turned out to be their own `.env.local`
+value being unquoted with a leading `#` (same class of bug as the
+`BRANDING_TITLE_HTML` truncation above, and just as silent - the *entire*
+value is dropped since it starts with `#`, not merely truncated
+mid-string, silently falling back to the default blue).
+
+### Design review round 3 (2026-07-31)
+
+- **Semantic heading level — discussed, not yet implemented.** `BrandTitle`
+  always renders a plain `<div>`. Checked: every authenticated page
+  (`dashboard`, `licenses`, license detail) already uses Mantine
+  `Title order={2}` (i.e. `<h2>`) as its own primary content heading. On
+  `/login`, where nothing else competes, the brand title should really be
+  `<h1>`; in the app header (shown on every authenticated page), it should
+  stay a non-heading element so it doesn't create a second, competing
+  top-level heading alongside each page's own `<h2>`. Proposed adding an
+  `as` prop to `BrandTitle` so each call site can choose - **not yet
+  authorized or built**, tracked here so it isn't lost.
+- **Font size - confirmed still fully operator-controlled, no new config.**
+  Operator asked whether a dedicated `BRANDING_TITLE_FONT_SIZE`-style env
+  var was warranted. Decided no: operators can already set `font-size`
+  inline in `BRANDING_TITLE_HTML` today, and a parallel env var would just
+  be a narrower second way to do something the raw-HTML path already
+  covers - would work against the original "arbitrary HTML fragment"
+  design intent. One real gotcha documented instead: the wrapper's own
+  default size only applies to *unstyled* parts of the title, so wrapping
+  only part of the string (e.g. just the colored word) in a custom
+  `font-size` leaves the rest at the default size - confirmed empirically
+  by parsing an operator-provided example through Next's actual env
+  loader, not just reasoned about.
+- **False-positive hydration warning suppressed.** Some browser extensions
+  (e.g. ColorZilla - plausible given the operator has been color-matching
+  their logo all session) inject attributes like `cz-shortcut-listen` onto
+  `<body>` before React hydrates, which React reports as a mismatch even
+  though it isn't an app bug. Added `suppressHydrationWarning` to `<body>`
+  in `app/layout.tsx`, scoped to that element only (doesn't hide a real
+  mismatch elsewhere) - `<html>` already does the same for Mantine's own
+  color-scheme script.
+- **CORS clarified (no code change - the existing design already avoids
+  it).** Operator asked whether a remote `BRANDING_LOGO_URL` could hit CORS
+  issues. It can't: CORS only applies to `fetch()`/XHR and canvas pixel
+  reads, not to a plain `<img>` (or `<link rel="icon">`) loading and
+  displaying a cross-origin resource, which is all `BrandLogo` does. The
+  allowlisting Next's `<Image>` component would need is an unrelated,
+  Next-specific SSRF guard for its server-side image optimizer - already
+  sidestepped by using a plain `<img>` (documented at the time in round 1).
+- **Favicon added.** New `BRANDING_FAVICON_URL` (same local-or-remote, no
+  CORS/allowlist concern as `BRANDING_LOGO_URL`). Required converting
+  `app/layout.tsx`'s `metadata` export from a static object to Next's
+  `generateMetadata()` async function, so the favicon is read from env
+  per-request rather than baked in at build time - consistent with every
+  other branding field. Falls back to Next's own default favicon if unset.
+  Verified: build/lint clean, and confirmed the `<link rel="icon">` tag
+  carries the correct href both in raw server-rendered HTML and in an
+  actual browser DOM (`document.querySelector('link[rel="icon"]')`).
 
 ## 10. Next authorized step
 

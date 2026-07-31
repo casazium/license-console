@@ -8,10 +8,18 @@ import { ColorSchemeScript, MantineProvider, mantineHtmlProps } from '@mantine/c
 import { Notifications } from '@mantine/notifications';
 import { getBranding } from '@/lib/branding';
 
-export const metadata: Metadata = {
-  title: 'License Console',
-  description: 'Admin console for the Casazium license server',
-};
+// A function, not a static object: reads branding per-request (via
+// getBranding()) so a changed BRANDING_FAVICON_URL takes effect without a
+// rebuild, consistent with the rest of branding.
+export async function generateMetadata(): Promise<Metadata> {
+  const branding = getBranding();
+
+  return {
+    title: 'License Console',
+    description: 'Admin console for the Casazium license server',
+    icons: branding.faviconUrl ? { icon: branding.faviconUrl } : undefined,
+  };
+}
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   const branding = getBranding();

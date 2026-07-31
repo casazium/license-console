@@ -10,13 +10,14 @@ export type Branding = {
   titleHtml: string;
   copyrightHolder: string | null;
   color: string;
+  faviconUrl: string | null;
 };
 
 /**
  * Reads branding config from env on every call (not cached) so it stays
  * correct if the process env changes between requests in dev. All fields
  * are optional - an unconfigured deployment falls back to the default title,
- * default color, and no logo/copyright.
+ * default color, no logo/copyright, and Next's own default favicon.
  */
 export function getBranding(): Branding {
   return {
@@ -24,5 +25,6 @@ export function getBranding(): Branding {
     titleHtml: process.env.BRANDING_TITLE_HTML?.trim() || DEFAULT_TITLE_HTML,
     copyrightHolder: process.env.BRANDING_COPYRIGHT_HOLDER?.trim() || null,
     color: process.env.BRANDING_COLOR?.trim() || DEFAULT_COLOR,
+    faviconUrl: process.env.BRANDING_FAVICON_URL?.trim() || null,
   };
 }
