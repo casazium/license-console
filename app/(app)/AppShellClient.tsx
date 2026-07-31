@@ -7,7 +7,6 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import type { Branding } from '@/lib/branding';
 import { BrandLogo } from '@/components/BrandLogo';
-import { BrandTitle } from '@/components/BrandTitle';
 import { BrandCopyright } from '@/components/BrandCopyright';
 
 const NAV_ITEMS = [
@@ -38,7 +37,6 @@ export function AppShellClient({ branding, children }: { branding: Branding; chi
           <Group gap="xs">
             <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
             <BrandLogo logoUrl={branding.logoUrl} size={28} />
-            <BrandTitle titleHtml={branding.titleHtml} style={{ fontSize: '1rem', fontWeight: 600 }} />
           </Group>
           <Button variant="subtle" onClick={handleSignOut}>
             Sign out

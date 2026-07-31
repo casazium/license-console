@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-07-31 (fixed licenses page legacyBehavior Link warning)
+Last updated: 2026-07-31 (removed redundant/mis-sized title from app header)
 
 > Admin console UI for `casazium/license`. This document exists so work can resume
 > across sessions without re-deriving decisions already made. Update it whenever
@@ -379,7 +379,11 @@ mid-string, silently falling back to the default blue).
   stay a non-heading element so it doesn't create a second, competing
   top-level heading alongside each page's own `<h2>`. Proposed adding an
   `as` prop to `BrandTitle` so each call site can choose - **not yet
-  authorized or built**, tracked here so it isn't lost.
+  authorized or built**, tracked here so it isn't lost. **Partially moot as
+  of the "App header title removed" note in §10 below** - the app-header
+  half of this question no longer applies, since the header doesn't render
+  the title at all anymore. The `/login` half (should it be `<h1>`) is
+  still open if the operator wants it.
 - **Font size - confirmed still fully operator-controlled, no new config.**
   Operator asked whether a dedicated `BRANDING_TITLE_FONT_SIZE`-style env
   var was warranted. Decided no: operators can already set `font-size`
@@ -418,7 +422,127 @@ mid-string, silently falling back to the default blue).
   carries the correct href both in raw server-rendered HTML and in an
   actual browser DOM (`document.querySelector('link[rel="icon"]')`).
 
-## 10. Next authorized step
+## 10. Dashboard review (2026-07-31)
+
+Deep-research pass on the dashboard page (second page in the page-by-page UI
+review), cross-referencing the actual `casazium/license` backend
+schema/routes directly (not just this app's mock) to find real gaps
+grounded in actual backend capability, rather than a speculative feature
+wishlist. Documented before implementation, per session convention.
+
+Verified against the backend source (`casazium/license`, read-only clone,
+not modified):
+
+- `license_keys` has `expires_at`, `max_activations`, `issued_at` - all
+  usable for the widgets below with zero backend changes.
+- Confirmed `POST /deactivate-license` (`deactivate-license.js:69`)
+  `DELETE`s the activation row outright, not a soft-delete - so "total
+  activations" and "active activations" are the same count, not a hidden
+  second metric. A hypothesis from the research that turned out false;
+  recorded here so it isn't re-investigated later.
+- Confirmed failed activation attempts (expired / revoked /
+  activation-limit-exceeded / not-found - see `activate-license.js:61-91`)
+  are only written to the server's application log via `fastify.log.error`,
+  never persisted anywhere queryable through the API. A real gap (leaked-key
+  detection), but needs new backend instrumentation - explicitly out of
+  scope for this pass.
+- `/admin/stats` already returns `totalLicenses`, distinct from the
+  active/revoked counts this app's mock computes - not pursued as its own
+  widget, since active + revoked already sum to it (low-value, would just
+  be a fourth number restating the other three).
+
+### Decided: three new dashboard sections, all buildable with zero backend changes
+
+1. **Licenses expiring soon** (next 30 days). Highest-value item from the
+   research - renewal/churn visibility didn't exist on the dashboard at
+   all before this. Active licenses only, sorted soonest-first, limit 5.
+   Empty state phrased as good news ("nothing expiring soon"), not an
+   error state, and with no call-to-action - unlike the "no licenses yet"
+   empty state elsewhere, there's nothing actionable to do about an empty
+   expiring-soon list.
+2. **Seats near their activation limit** (0 or 1 remaining seat). Surfaces
+   both an upsell signal (customer wants more seats) and a support-friction
+   signal (customer capped and doesn't know why). Active licenses only,
+   sorted fewest-remaining-first, limit 5.
+3. **Recently issued licenses.** Mirrors the existing "Recent activations"
+   table but for issuance events - answers "are people buying" as
+   distinct from "are people using what they bought." Issued, activated,
+   and active are three genuinely different states (a license can be
+   issued and never activated; activation is customer/product-initiated
+   via the public `POST /activate-license`, not an admin action) - the
+   dashboard previously only showed activation activity, with zero
+   visibility into issuance. No time window, just top 5 by `issued_at`,
+   matching the existing Recent activations table's own pattern.
+
+Explicitly not pursued this pass (from the same research, correctly out of
+scope): usage-quota-risk aggregation across all licenses (needs a new
+backend endpoint - `usage-report` is per-key only today), failed-activation
+visibility (needs new backend instrumentation, see above), revenue/MRR and
+CRM-style customer context (belong to a billing system / CRM, not a
+license server - this backend has no price/currency/subscription concept
+anywhere in its schema), and abuse/geo signals on activations (new
+instrumentation with its own privacy tradeoffs).
+
+### Implementation notes (2026-07-31)
+
+Built: `lib/license-client.ts` gained `getExpiringLicenses(withinDays=30,
+limit=5)`, `getLicensesNearSeatLimit(limit=5)`, and
+`getRecentlyIssuedLicenses(limit=5)`, plus their result types
+(`ExpiringLicense`, `SeatUtilization`, `RecentlyIssuedLicense`) - all pure
+computation over the existing mock store, no new backend dependency. Added
+a fourth seed license (`CASZ-DEMO-DELTA-0004`) with `expires_at` computed
+relative to `Date.now()` at seed time (14 days out) specifically so the
+"expiring soon" widget demonstrates a populated list out of the box, not
+just its empty state - the three original seed licenses all have fixed
+2026 dates that don't fall in a rolling 30-day window. Three new Client
+Components (`ExpiringLicensesTable.tsx`, `SeatUtilizationTable.tsx`,
+`RecentlyIssuedLicensesTable.tsx`), matching the existing
+`LicensesTable.tsx`/`RecentActivationsTable.tsx` pattern (Client Component,
+clickable keys via `Anchor component={Link}`, contextual empty state -
+"good news, no action needed" for the expiring/seat-limit tables vs. the
+actionable "issue your first license" CTA for the issued-licenses table,
+reused from the main licenses page). `app/(app)/dashboard/page.tsx` fetches
+all five datasets via one `Promise.all` and renders four sections in order:
+Recently issued → Recent activations (existing) → Expiring soon → Seats
+near capacity - a deliberate narrative (top-of-funnel issuance, to
+actual usage, to two renewal/support risk signals).
+
+Verified via `npm run build` (0 errors), `npm run lint` (0 errors), and a
+full Playwright walkthrough: all three new section headings present, the
+seeded `DELTA-0004` license appears correctly in "Expiring soon" (14 days
+out, within the 30-day window) while the other three do not (two outside
+the window, one revoked and excluded entirely), and "Seats near capacity"
+correctly surfaces all three licenses at or within one seat of their limit
+(`BETA-0002` 1/1 - red badge, `ALPHA-0001` 2/3 and `DELTA-0004` 1/2 - both
+yellow), confirmed via a full-page screenshot, not just presence checks.
+
+### App header title removed (2026-07-31)
+
+Operator ran the dashboard with their own real branding config and shared
+a screenshot: the app header showed "Casazium License Console" with a
+severe size mismatch ("Casazium" at the operator's explicit `2.5rem`,
+" License Console" falling back to the header's own `1rem` default) - the
+exact "partial wrap" gotcha flagged during the login/branding review,
+now visibly broken in the header's much tighter 60px bar rather than just
+loosely mismatched like on `/login`. A second, independent problem: the
+logo lockup itself already includes the "Casazium" wordmark, so the title
+text repeated the brand name immediately next to it.
+
+**Decided:** remove the title text from the app header entirely, keep only
+the logo there. Resolves both problems at once (no title markup left to
+mis-render; no redundant wordmark) and, as a side effect, closes the
+still-open "semantic heading level" item from §9 above - with no title
+text in the header, there's no `<h1>`-vs-non-heading conflict to resolve
+there at all. The title remains unchanged on `/login`, where it's the
+actual hero content and this problem doesn't arise. `AppShellClient.tsx`
+no longer imports `BrandTitle`.
+
+Verified: `npm run build`/`npm run lint` clean, and a Playwright check
+reproducing the operator's exact reported config (same title HTML, same
+brand color) confirming the header's `innerText` no longer contains the
+title text at all - screenshot reviewed, logo-only header confirmed clean.
+
+## 12. Next authorized step
 
 Implement a real license-server API client (server-side only, using
 `LICENSE_API_URL` / `LICENSE_ADMIN_API_KEY`) and swap it in behind the same
