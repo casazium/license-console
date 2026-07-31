@@ -27,7 +27,15 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <head>
         <ColorSchemeScript />
       </head>
-      <body style={brandColorStyle}>
+      {/*
+        suppressHydrationWarning: some browser extensions (e.g. ColorZilla)
+        inject attributes like cz-shortcut-listen onto <body> before React
+        hydrates, which otherwise logs a false-positive hydration-mismatch
+        warning. Scoped to this element only - doesn't hide real mismatches
+        elsewhere in the tree. <html> already does the same for Mantine's
+        color-scheme script.
+      */}
+      <body style={brandColorStyle} suppressHydrationWarning>
         <MantineProvider>
           <Notifications />
           {children}
