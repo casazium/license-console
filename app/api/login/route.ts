@@ -4,15 +4,16 @@ import { createSessionToken, sessionCookieOptions, SESSION_COOKIE_NAME } from '@
 
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
+  const username = body?.username;
   const password = body?.password;
 
-  if (typeof password !== 'string') {
-    return NextResponse.json({ error: 'Password is required' }, { status: 400 });
+  if (typeof username !== 'string' || typeof password !== 'string') {
+    return NextResponse.json({ error: 'Username and password are required' }, { status: 400 });
   }
 
-  const identity = await verifyCredentials(password);
+  const identity = await verifyCredentials(username, password);
   if (!identity) {
-    return NextResponse.json({ error: 'Invalid password' }, { status: 401 });
+    return NextResponse.json({ error: 'Invalid username or password' }, { status: 401 });
   }
 
   const token = await createSessionToken(identity);
