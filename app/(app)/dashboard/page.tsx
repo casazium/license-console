@@ -1,14 +1,27 @@
 import { Card, SimpleGrid, Text, Title } from '@mantine/core';
-import { getDashboardStats, getRecentActivations } from '@/lib/license-client';
+import {
+  getDashboardStats,
+  getExpiringLicenses,
+  getLicensesNearSeatLimit,
+  getRecentActivations,
+  getRecentlyIssuedLicenses,
+} from '@/lib/license-client';
+import { ExpiringLicensesTable } from './ExpiringLicensesTable';
 import { RecentActivationsTable } from './RecentActivationsTable';
+import { RecentlyIssuedLicensesTable } from './RecentlyIssuedLicensesTable';
+import { SeatUtilizationTable } from './SeatUtilizationTable';
 
 export const dynamic = 'force-dynamic';
 
 export default async function DashboardPage() {
-  const [stats, recentActivations] = await Promise.all([
-    getDashboardStats(),
-    getRecentActivations(),
-  ]);
+  const [stats, recentActivations, recentlyIssued, expiringLicenses, seatsNearLimit] =
+    await Promise.all([
+      getDashboardStats(),
+      getRecentActivations(),
+      getRecentlyIssuedLicenses(),
+      getExpiringLicenses(),
+      getLicensesNearSeatLimit(),
+    ]);
 
   return (
     <>
@@ -37,9 +50,24 @@ export default async function DashboardPage() {
       </SimpleGrid>
 
       <Title order={4} mt="xl" mb="sm">
+        Recently issued licenses
+      </Title>
+      <RecentlyIssuedLicensesTable licenses={recentlyIssued} />
+
+      <Title order={4} mt="xl" mb="sm">
         Recent activations
       </Title>
       <RecentActivationsTable recentActivations={recentActivations} />
+
+      <Title order={4} mt="xl" mb="sm">
+        Expiring soon
+      </Title>
+      <ExpiringLicensesTable licenses={expiringLicenses} />
+
+      <Title order={4} mt="xl" mb="sm">
+        Seats near capacity
+      </Title>
+      <SeatUtilizationTable licenses={seatsNearLimit} />
 
       <Text c="dimmed" size="sm" mt="xl">
         Showing mock data (lib/license-client.ts) — not yet wired to the real

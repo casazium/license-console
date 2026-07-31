@@ -38,6 +38,31 @@ export type RecentActivation = {
   activated_at: string;
 };
 
+export type ExpiringLicense = {
+  key: string;
+  product_id: string;
+  tier: string;
+  issued_to: string;
+  expires_at: string;
+};
+
+export type SeatUtilization = {
+  key: string;
+  product_id: string;
+  tier: string;
+  used: number;
+  max_activations: number;
+  remaining: number;
+};
+
+export type RecentlyIssuedLicense = {
+  key: string;
+  product_id: string;
+  tier: string;
+  issued_to: string;
+  issued_at: string;
+};
+
 export type IssueLicenseInput = {
   product_id: string;
   tier: string;
@@ -95,6 +120,21 @@ function seedStore(): Store {
         max_activations: 1,
         revoked_at: '2026-04-02T00:00:00Z',
       },
+      {
+        // Demonstrates the "expiring soon" dashboard widget - relative to
+        // whenever this seed runs, not a fixed past date like the others.
+        key: 'CASZ-DEMO-DELTA-0004',
+        product_id: 'widget-pro',
+        tier: 'pro',
+        status: 'active',
+        issued_to: 'renewal-due-customer@example.com',
+        issued_at: '2025-08-01T00:00:00Z',
+        expires_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+        usage_limit: 5000,
+        usage_count: 3120,
+        max_activations: 2,
+        revoked_at: null,
+      },
     ],
     activations: {
       'CASZ-DEMO-ALPHA-0001': [
@@ -103,6 +143,9 @@ function seedStore(): Store {
       ],
       'CASZ-DEMO-BETA-0002': [
         { instance_id: 'inst_9e2c5a1d', activated_at: '2026-05-16T11:03:00Z' },
+      ],
+      'CASZ-DEMO-DELTA-0004': [
+        { instance_id: 'inst_4c8e2f91', activated_at: '2025-08-02T10:00:00Z' },
       ],
     },
   };
@@ -196,4 +239,62 @@ export async function getRecentActivations(limit = 5): Promise<RecentActivation[
   return flattened
     .sort((a, b) => (a.activated_at < b.activated_at ? 1 : -1))
     .slice(0, limit);
+}
+
+export async function getExpiringLicenses(withinDays = 30, limit = 5): Promise<ExpiringLicense[]> {
+  const { licenses } = getStore();
+  const now = Date.now();
+  const cutoff = now + withinDays * 24 * 60 * 60 * 1000;
+
+  return licenses
+    .filter((license) => license.status === 'active')
+    .filter((license) => {
+      const expiresAt = new Date(license.expires_at).getTime();
+      return expiresAt >= now && expiresAt <= cutoff;
+    })
+    .sort((a, b) => (a.expires_at < b.expires_at ? -1 : 1))
+    .slice(0, limit)
+    .map(({ key, product_id, tier, issued_to, expires_at }) => ({
+      key,
+      product_id,
+      tier,
+      issued_to,
+      expires_at,
+    }));
+}
+
+export async function getLicensesNearSeatLimit(limit = 5): Promise<SeatUtilization[]> {
+  const { licenses, activations } = getStore();
+
+  return licenses
+    .filter((license) => license.status === 'active')
+    .map((license) => {
+      const used = activations[license.key]?.length ?? 0;
+      return {
+        key: license.key,
+        product_id: license.product_id,
+        tier: license.tier,
+        used,
+        max_activations: license.max_activations,
+        remaining: license.max_activations - used,
+      };
+    })
+    .filter((entry) => entry.remaining <= 1)
+    .sort((a, b) => a.remaining - b.remaining)
+    .slice(0, limit);
+}
+
+export async function getRecentlyIssuedLicenses(limit = 5): Promise<RecentlyIssuedLicense[]> {
+  const { licenses } = getStore();
+
+  return [...licenses]
+    .sort((a, b) => (a.issued_at < b.issued_at ? 1 : -1))
+    .slice(0, limit)
+    .map(({ key, product_id, tier, issued_to, issued_at }) => ({
+      key,
+      product_id,
+      tier,
+      issued_to,
+      issued_at,
+    }));
 }
