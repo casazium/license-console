@@ -1,6 +1,6 @@
-import { Button, Group, Text, Title } from '@mantine/core';
-import Link from 'next/link';
+import { Group, Text, Title } from '@mantine/core';
 import { listLicenses } from '@/lib/license-client';
+import { IssueLicenseButton } from './IssueLicenseButton';
 import { LicensesTable } from './LicensesTable';
 
 export const dynamic = 'force-dynamic';
@@ -12,9 +12,7 @@ export default async function LicensesPage() {
     <>
       <Group justify="space-between" mb="md">
         <Title order={2}>Licenses</Title>
-        <Link href="/licenses/new" passHref legacyBehavior>
-          <Button component="a">Issue license</Button>
-        </Link>
+        <IssueLicenseButton />
       </Group>
       <LicensesTable licenses={licenses} />
       <Text c="dimmed" size="sm" mt="md">

@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-07-31 (login/branding design review round 3: hydration warning fix, favicon, CORS clarification)
+Last updated: 2026-07-31 (fixed licenses page legacyBehavior Link warning)
 
 > Admin console UI for `casazium/license`. This document exists so work can resume
 > across sessions without re-deriving decisions already made. Update it whenever
@@ -179,11 +179,30 @@ that renders a Mantine `Table` must do so inside a Client Component, not
 directly in a Server Component** - this isn't specific to the mock data,
 it'll bite the real API integration too if missed.
 
-Known non-blocking item: `app/(app)/licenses/page.tsx`'s "Issue license"
-button uses Next's deprecated `legacyBehavior`/`passHref` Link pattern
-(needed to render `Button` as a real `<a>` without nesting two interactive
-elements, from a Server Component). Works, prints a console deprecation
-warning. Worth a cleanup pass later; not urgent.
+**Fixed 2026-07-31** (operator hit the console warning while reviewing the
+licenses page): `app/(app)/licenses/page.tsx`'s "Issue license" button used
+Next's deprecated `legacyBehavior`/`passHref` Link pattern. The obvious fix
+- Mantine's polymorphic `component={Link}` prop, the same pattern already
+used correctly in `AppShellClient.tsx`'s `NavLink` - broke the page with a
+real server error when tried directly in this Server Component: `Error:
+Functions cannot be passed directly to Client Components` - Mantine's
+`Button` is itself a Client Component, and RSC forbids passing a function
+(the imported `Link` component) as a prop across the Server -> Client
+boundary. That's *why* the original code used `legacyBehavior`/`passHref`
+in the first place (`component="a"` is a plain string, which serializes
+fine). Same root category of bug as the Mantine `Table` issue above, same
+fix shape: extracted a small Client Component
+(`app/(app)/licenses/IssueLicenseButton.tsx`) that itself imports `Link`
+and renders `<Button component={Link} href="/licenses/new">`, so the
+function reference never has to cross the boundary. Verified via a clean
+`.next` rebuild and a full Playwright pass: no console warning, the button
+renders as a real `<a>` (found via `getByRole('link', ...)`, not
+`'button'`), and it navigates correctly to `/licenses/new`. **Rule for any
+future page:** a Mantine component wrapping `component={SomeImportedFn}`
+must live inside a Client Component, not a Server Component that merely
+renders it - same constraint as the Table sub-components rule above,
+different underlying mechanism (function-prop serialization vs. static-
+property proxying).
 
 ## 9. Login & branding review (2026-07-30 / built 2026-07-31)
 
