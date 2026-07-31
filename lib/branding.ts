@@ -1,0 +1,21 @@
+const DEFAULT_TITLE_HTML = 'License Console';
+
+export type Branding = {
+  logoUrl: string | null;
+  titleHtml: string;
+  copyrightHolder: string | null;
+};
+
+/**
+ * Reads branding config from env on every call (not cached) so it stays
+ * correct if the process env changes between requests in dev. All fields
+ * are optional - an unconfigured deployment falls back to the default title
+ * and no logo/copyright.
+ */
+export function getBranding(): Branding {
+  return {
+    logoUrl: process.env.BRANDING_LOGO_URL?.trim() || null,
+    titleHtml: process.env.BRANDING_TITLE_HTML?.trim() || DEFAULT_TITLE_HTML,
+    copyrightHolder: process.env.BRANDING_COPYRIGHT_HOLDER?.trim() || null,
+  };
+}

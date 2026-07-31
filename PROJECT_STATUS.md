@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-07-30
+Last updated: 2026-07-31 (login/branding implementation verified)
 
 > Admin console UI for `casazium/license`. This document exists so work can resume
 > across sessions without re-deriving decisions already made. Update it whenever
@@ -38,9 +38,10 @@ and had no dashboard, auth screen, or activation/usage views.
 Single shared admin password for now, **designed not to lock out future
 per-user accounts**:
 
-- `lib/auth.ts` — `verifyCredentials(username, password) → Identity | null`.
+- `lib/auth.ts` — `verifyCredentials(password) → Identity | null`.
   Today: compares against an `ADMIN_UI_PASSWORD` env var, returns a fixed
-  `{ id: 'admin', role: 'admin' }`. Later: swap the internals to check a real
+  `{ id: 'admin', role: 'admin' }`. A `username` parameter is planned — see
+  §9 below — not yet implemented. Later: swap the internals to check a real
   user store (in this app's own DB, or a new `/v1/admin/login` endpoint added
   to `casazium/license`) — callers of this function don't change.
 - `lib/session.ts` — signs/verifies a session cookie carrying the `Identity`
@@ -92,8 +93,9 @@ Endpoints called by *licensed software via the SDK*, not by a human admin:
 - `public-key` / offline-verification reference page — low-traffic utility.
 - Any cross-license/global activation search (MVP scopes activations to
   within a license's detail page only).
-- Multi-account login (backend work, see §3 — UI is already designed not to
-  block on this).
+- Multi-account login + per-account audit logging, and 2FA (TOTP) — see §9's
+  Login & branding review for full rationale; UI/session layer is already
+  designed not to block on this (§3).
 
 ## 6. Sanity check (2026-07-30)
 
@@ -183,10 +185,115 @@ button uses Next's deprecated `legacyBehavior`/`passHref` Link pattern
 elements, from a Server Component). Works, prints a console deprecation
 warning. Worth a cleanup pass later; not urgent.
 
-## 9. Next authorized step
+## 9. Login & branding review (2026-07-30 / built 2026-07-31)
+
+Decisions from an operator walkthrough of the login page (first page in a
+planned page-by-page UI review), documented before implementation per
+session convention. Operator chose to implement and verify this page's
+items before continuing the page-by-page review, since both decisions below
+are shared infrastructure (auth/session model, and an app-wide layout
+component) that later pages should be reviewed against once real, not while
+still hypothetical. **Built and verified 2026-07-31** — see "Implementation
+notes" below.
+
+### Username field
+
+- Add a `username` input to the login form, alongside the existing password.
+- Single username+password pair, both env-defined: `ADMIN_UI_USERNAME` (new)
+  alongside the existing `ADMIN_UI_PASSWORD`. Not multi-account — still
+  exactly one valid credential pair; `id` on the returned `Identity` becomes
+  the configured username instead of the hardcoded `'admin'`.
+- Login error stays generic ("Invalid username or password"), not
+  field-specific, to avoid revealing which credential was wrong.
+
+### Branding (logo / title / copyright)
+
+- **Scope: app-wide.** A shared branding component/config, used on both
+  `/login` and inside `app/(app)/layout.tsx` — not login-only. This app is
+  explicitly meant to support multiple isolated deployments (e.g. resold or
+  operator-branded instances), so a branded login screen followed by an
+  unbranded app would read as unfinished.
+- **Logo:** env-configured, supports a remote URL (not just a local
+  `public/` file) so an operator can swap branding without a redeploy.
+  Rendered via a plain `<img>`, not Next's `<Image>`, to avoid
+  `next.config.js` remote-host allowlisting.
+- **Title:** single env var, always rendered as HTML (via
+  `dangerouslySetInnerHTML` — plain text renders fine through the same path,
+  so there's no separate "text" vs. "HTML fragment" mode). This is
+  operator-controlled config, not user input — legitimate use of
+  `dangerouslySetInnerHTML`, but flag it with a comment at the call site so
+  the pattern isn't later copied somewhere untrusted input could reach it.
+- **Copyright:** app-wide placement alongside the branding; separate
+  plain-text env var for the copyright holder name (kept distinct from the
+  possibly-HTML title, so nothing has to parse text back out of markup);
+  year computed dynamically at render (`new Date().getFullYear()`), not
+  hardcoded.
+
+### Deferred (logged for a future user-store phase, not part of this pass)
+
+- **Failed-login rate limiting / lockout.** Independent of the items above —
+  can land anytime, not blocked on multi-account.
+- **Multi-account login + per-account audit logging.** Supersedes the old
+  "Multi-account login (backend work)" note in §5 — real per-user accounts
+  (not just a display-name username) with logged actions, once "multiple
+  consoles/admins share one backend" is a real requirement rather than a
+  hypothetical raised during this review.
+- **2FA (TOTP).** Technically small to add (`otpauth` + `qrcode` — neither
+  currently a dependency) but blocked on the same thing multi-account is: a
+  TOTP secret is per-identity and needs durable storage that doesn't exist
+  under an env-only credential model. Sequence it after the user store
+  lands, with a `totp_secret` field designed into that store from day one.
+
+### Implementation notes (2026-07-31)
+
+Built: `lib/branding.ts` (`getBranding()`, reads `BRANDING_LOGO_URL` /
+`BRANDING_TITLE_HTML` / `BRANDING_COPYRIGHT_HOLDER`); `components/BrandLogo.tsx`,
+`BrandTitle.tsx`, `BrandCopyright.tsx` (all plain server-renderable, no
+client-only hooks); `lib/auth.ts`'s `verifyCredentials` now takes
+`(username, password)`. Both `/login` and `app/(app)/layout.tsx` were split
+into a Server Component (reads branding/env) plus a Client Component
+(`LoginForm.tsx`, `AppShellClient.tsx`) for the interactive parts — env vars
+can't be read directly inside a `'use client'` component.
+
+Verified via `npm run build`, `npm run lint` (0 errors), and a full
+Playwright walkthrough (wrong-password generic error → correct login →
+dashboard → `/licenses/new` with branded header/footer visible throughout).
+
+Two real bugs found and fixed during verification, not just version
+gotchas:
+
+- **`next build` prerendered `/login` (and any branding-only `(app)` page,
+  e.g. `/licenses/new`) as static.** Since `getBranding()` has no other
+  dynamic dependency (no `cookies()`/`headers()`), Next inferred those
+  routes could be fully static and would have baked in whatever branding
+  env vars were set *at build time* — silently defeating the "operator can
+  change branding without a rebuild" requirement this review specifically
+  decided on. Fixed with `export const dynamic = 'force-dynamic'` in both
+  `app/login/page.tsx` and `app/(app)/layout.tsx` (the latter propagates to
+  every child route, including `/licenses/new`).
+- **An env value containing `#` gets silently truncated.** `BRANDING_TITLE_HTML`
+  set to an unquoted value containing a CSS hex color (e.g.
+  `<span style="color:#2563eb">...`) got cut off right before the `#` -
+  dotenv-style `.env` parsing treats an unquoted `#` as a comment marker.
+  Not a code bug (quoting the value, e.g. `BRANDING_TITLE_HTML="<span
+  style='color:#2563eb'>..."`, parses correctly), but a real operational
+  gotcha likely to bite anyone setting an HTML/CSS title - documented in
+  `.env.example`'s `BRANDING_TITLE_HTML` comment.
+
+Also fixed two empty-chrome edge cases: the login page's header/footer
+regions and the app shell's footer region only render when the
+corresponding branding field is actually configured, instead of showing an
+empty bar when `BRANDING_LOGO_URL`/`BRANDING_COPYRIGHT_HOLDER` are unset.
+
+## 10. Next authorized step
 
 Implement a real license-server API client (server-side only, using
 `LICENSE_API_URL` / `LICENSE_ADMIN_API_KEY`) and swap it in behind the same
 `lib/license-client.ts` function signatures the mock already uses, so no
 page needs to change - starting with `listLicenses`/`issueLicense` since
 those are the simplest end-to-end slice.
+
+Note: per §9 above, the login page's username + branding items are now
+built and verified. Continuing the page-by-page UI review (next: the
+dashboard page) is the operator's likely next step; this API-client step
+follows once the review is complete, unless re-prioritized.
