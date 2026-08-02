@@ -1,0 +1,29 @@
+# Matches .nvmrc (22). Alpine to keep the image small, same choice as a
+# typical Next.js standalone Docker setup.
+FROM node:22-alpine AS deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+
+FROM node:22-alpine AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+# LICENSE_API_URL/LICENSE_ADMIN_API_KEY are not needed at build time - only
+# read server-side at request time (lib/license-client.ts) - so the build
+# doesn't need real backend config, standalone or connected.
+RUN npm run build
+
+FROM node:22-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+
+# Standalone output (next.config.mjs: output: 'standalone') only includes
+# the server bundle and the node_modules subset it actually needs - public/
+# and .next/static aren't part of it and must be copied separately.
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+
+EXPOSE 3000
+CMD ["node", "server.js"]

@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-02 (real backend integration: live client + standalone mode, verified against a running local instance)
+Last updated: 2026-08-02 (Coolify deployment packaging: Dockerfile, docker-compose-coolify.yml)
 
 > Admin console UI for `casazium/license`. This document exists so work can resume
 > across sessions without re-deriving decisions already made. Update it whenever
@@ -815,11 +815,86 @@ bugs at first:
   resolved by restarting the local backend (in-memory rate-limit counters
   reset) and testing more economically afterward.
 
-## 14. Next authorized step
+## 14. Coolify deployment packaging (2026-08-02)
 
-Push and open PRs for the pending draft work: `casazium/license`'s
-`admin/get-license-endpoint` branch, and this repo's live-client
-integration (not yet committed as of this writing). After that, the
-license detail page (`/licenses/[key]`) still hasn't had its own
-dedicated UI review pass, unlike login/dashboard/licenses-list - the
-remaining open thread from the page-by-page review.
+Operator asked to set up a live POC, reachable via Coolify. Checked first
+rather than assuming: this repo had **no Dockerfile and no compose file at
+all** - it had only ever been run via `npm run dev`/`next start` in this
+session. `casazium/license` already had both a `Dockerfile` and a plain
+`docker-compose.yml`, but no Coolify-specific compose file either.
+
+Two decisions confirmed with the operator directly:
+
+1. **Two separate Coolify resources, not one combined stack.** Each gets
+   its own domain and is independently deployable/restartable - matches
+   how `casazium/casazium`'s docs site is already a separate Coolify
+   resource from web+api, and matches reality anyway: the backend needs
+   its own public domain regardless (real licensed products call it
+   directly, not just this console).
+2. Operator confirmed a Coolify instance and server target are already in
+   place; domains to be provided separately when creating the resources.
+
+### Built
+
+`next.config.mjs` gained `output: 'standalone'` (Next's self-contained
+server bundle, needed to keep the Docker image from shipping the full
+`node_modules` tree). Added `public/` (didn't exist - a `.gitkeep`
+placeholder, since the standard Next.js Docker `COPY --from=builder
+/app/public` step would otherwise fail on a missing directory). New
+`Dockerfile` (standard three-stage Next.js standalone pattern,
+`node:22-alpine` matching `.nvmrc`). New `docker-compose-coolify.yml` for
+both this repo and `casazium/license` (draft, uncommitted there as of this
+writing), following `casazium/casazium`'s existing Coolify convention
+exactly rather than inventing a new one - `traefik.enable` + a bare
+`loadbalancer.server.port` label, no hand-authored router (Coolify owns
+routing/TLS via its own per-service Domain field), health checks, no
+`env_file` (Coolify injects env vars itself via `${VAR}` passthrough in
+the compose `environment:` block, configured through its own UI - nothing
+is hardcoded or committed).
+
+Live vs. standalone mode in the deployed console still works exactly as
+already designed (§13): leaving `LICENSE_API_URL`/`LICENSE_ADMIN_API_KEY`
+unset in the Coolify env var UI runs it in standalone/mock mode on a real
+public domain; setting both to the backend resource's own Coolify domain
+connects it live. No new mode-selection mechanism needed for deployment -
+this was already the point of building it that way in §13.
+
+### Verified, and one real environment limitation hit
+
+Confirmed `next.config.mjs`'s `output: 'standalone'` actually produces a
+working `.next/standalone/server.js` (`npm run build`, inspected the
+output directly). Attempted a real `docker build` of the new Dockerfile -
+blocked by this sandbox's own network policy (`docker.io`/CloudFront pulls
+return a policy-level 403, confirmed via the agent proxy's own status
+endpoint, not a transient failure or something fixable here). Rather than
+leaving the Dockerfile unverified, replicated its final stage manually
+outside a container - copied `public/`, `.next/standalone`, and
+`.next/static` into a clean directory (exactly what `COPY --from=builder`
+would produce) and ran `node server.js` directly with the same env vars
+and `CMD` the Dockerfile declares. Full Playwright walkthrough against
+that: login → dashboard (seeded mock data present) → licenses list, zero
+failed requests or console errors - confirms the runtime stage works
+correctly. **Not independently verified: the containerized `npm ci && npm
+run build` step itself** (low risk assessed - no native/binary
+dependencies in this repo that would behave differently under Alpine's
+musl libc, unlike `casazium/license`'s `better-sqlite3`) - worth a real
+`docker build` once deployed somewhere with registry access, before
+relying on it further.
+
+Both `docker-compose-coolify.yml` files validated with `docker compose
+config` (daemon started locally for this - config parsing doesn't need
+registry access, only `docker build` does) - both parse cleanly, and the
+console's confirmed to correctly resolve to standalone/mock mode when
+`LICENSE_API_URL`/`LICENSE_ADMIN_API_KEY` are left blank, matching the
+intended default.
+
+## 15. Next authorized step
+
+Operator creates the two Coolify resources (this repo + `casazium/license`,
+once its own `docker-compose-coolify.yml` is committed/pushed - currently
+still local/draft) using the compose files above, sets the required env
+vars through Coolify's UI (see each file's own header comment for the
+list), and assigns domains. After that: a real `docker build` once
+registry access is available, to close the one gap noted above; and the
+license detail page (`/licenses/[key]`) still hasn't had its own dedicated
+UI review pass, the remaining open thread from the page-by-page review.
