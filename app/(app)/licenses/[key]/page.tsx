@@ -45,9 +45,23 @@ export default async function LicenseDetailPage({
         <Text size="sm">
           <b>Expires at:</b> {new Date(license.expires_at).toLocaleString()}
         </Text>
-        <Text size="sm">
-          <b>Max activations:</b> {license.max_activations}
-        </Text>
+        <Group gap={6}>
+          <Text size="sm" fw={700}>
+            Seats:
+          </Text>
+          <Badge
+            color={
+              activations.length >= license.max_activations
+                ? 'red'
+                : license.max_activations - activations.length <= 1
+                  ? 'yellow'
+                  : 'gray'
+            }
+            variant="light"
+          >
+            {activations.length} / {license.max_activations}
+          </Badge>
+        </Group>
         <Text size="sm">
           <b>Usage:</b>{' '}
           {license.usage_limit === null

@@ -12,3 +12,13 @@ export const brandButtonStyle: CSSProperties = {
   '--button-bg': 'var(--brand-color)',
   '--button-hover': 'color-mix(in srgb, var(--brand-color) 85%, black)',
 } as CSSProperties;
+
+// For text-only variants (subtle, outline, etc.) whose Mantine-computed
+// --button-bg is already transparent at rest - overriding --button-bg like
+// brandButtonStyle does above would paint a solid brand-colored background
+// behind the text instead of just recoloring it. These variants render
+// their color via --button-color, not --button-bg.
+export const brandTextButtonStyle: CSSProperties = {
+  '--button-color': 'var(--brand-color)',
+  '--button-hover-color': 'var(--brand-color)',
+} as CSSProperties;

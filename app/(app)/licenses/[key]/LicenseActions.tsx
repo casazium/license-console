@@ -6,6 +6,7 @@ import { Button, Group, Modal, Table, Text } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import type { Activation } from '@/lib/license-client';
+import { brandTextButtonStyle } from '@/components/brandButtonStyle';
 import {
   deleteLicenseAction,
   reissueActivationTokenAction,
@@ -119,6 +120,7 @@ export function ActivationsTable({
               <Button
                 size="xs"
                 variant="subtle"
+                style={brandTextButtonStyle}
                 loading={busyInstance === activation.instance_id}
                 onClick={() => handleReissue(activation.instance_id)}
               >
