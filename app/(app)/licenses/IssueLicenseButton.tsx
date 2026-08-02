@@ -2,6 +2,7 @@
 
 import { Button } from '@mantine/core';
 import Link from 'next/link';
+import { brandButtonStyle } from '@/components/brandButtonStyle';
 
 // Mantine's Button is itself a Client Component, and RSC forbids passing a
 // function (Link, imported from next/link) as a prop across the
@@ -11,7 +12,7 @@ import Link from 'next/link';
 // and the Mantine Table components elsewhere in this app.
 export function IssueLicenseButton() {
   return (
-    <Button component={Link} href="/licenses/new">
+    <Button component={Link} href="/licenses/new" style={brandButtonStyle}>
       Issue license
     </Button>
   );

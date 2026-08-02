@@ -1,19 +1,10 @@
 'use client';
 
-import type { CSSProperties } from 'react';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button, Card, PasswordInput, Stack, Text, TextInput } from '@mantine/core';
 import { useForm } from '@mantine/form';
-
-// Overrides Mantine Button's own CSS variables so the primary CTA picks up
-// the operator's configured brand color (set on <body> in the root layout)
-// instead of Mantine's default blue - keeps it in sync with the title's
-// accent color without duplicating the value.
-const brandButtonStyle = {
-  '--button-bg': 'var(--brand-color)',
-  '--button-hover': 'color-mix(in srgb, var(--brand-color) 85%, black)',
-} as CSSProperties;
+import { brandButtonStyle } from '@/components/brandButtonStyle';
 
 export function LoginForm() {
   const router = useRouter();
