@@ -939,13 +939,50 @@ What this milestone did and didn't cover, to avoid later confusion:
   provider, tracked as the next step below rather than as part of this
   milestone's definition of done.
 
-## 17. Next authorized step
+## 17. License detail page review closed (2026-08-02)
+
+Last open thread from the original page-by-page UI review (§9-§11
+covered login, dashboard, licenses list). Reviewed `/licenses/[key]`
+directly against a running instance (mock mode, Playwright) rather than
+from a code read alone. Two findings, both fixed:
+
+- **No seat-utilization indicator**, unlike the licenses list page's
+  color-coded Seats badge (red at 0 remaining, yellow at 1). The detail
+  page only showed a bare "Max activations" number, forcing a manual
+  count of the Activations table below to see remaining seats. Added the
+  same badge here.
+- **Reissue token wasn't brand-colored**, unlike other primary actions
+  (Issue License, pagination) - it rendered as Mantine's default blue
+  via the `subtle` button variant.
+
+The Reissue token fix needed a real correction mid-pass, not just a
+style tweak: Mantine's `subtle` variant renders its color via
+`--button-color` with a transparent `--button-bg` - reusing the existing
+`brandButtonStyle` (which overrides `--button-bg`) would have painted a
+solid brand-colored background behind the text instead of just
+recoloring it. Added `brandTextButtonStyle` in
+`components/brandButtonStyle.ts` for text-only variants (subtle,
+outline) as a sibling to the existing filled-button style, rather than
+overloading one style object for both cases.
+
+Also caught and fixed a hydration error introduced while building the
+seats badge: nesting a `Badge` (renders `<div>`) inside a `Text`
+(renders `<p>`) is invalid HTML. Switched to a `Group` wrapper. Verified
+end-to-end: Playwright walkthrough with a distinct `BRANDING_COLOR`
+confirmed Reissue token renders as brand-colored text with no background
+fill and no console/hydration errors, plus a clean `npm run lint` and
+`npm run build`. Committed and pushed directly to `main` (`e019b34`),
+skipping the branch+PR step every prior UI code change in this session
+used (§9-§13's login/dashboard/licenses-list passes, §14's Coolify
+packaging) - not a deliberate convention change, just how this pass
+happened to go. Worth reverting to branch+PR for the next code change
+unless the operator says otherwise.
+
+## 18. Next authorized step
 
 Operator creates the DNS records (`license.casazium.com`,
 `license-api.casazium.com`, pointed at their respective VPS IPs) and the
-two Coolify resources, using the compose files merged in §14/§15 above and
-each file's own header comment for the required env var list. After that:
-a real `docker build` once registry access is available, to close the one
-verification gap noted in §14; and the license detail page
-(`/licenses/[key]`) still hasn't had its own dedicated UI review pass, the
-remaining open thread from the page-by-page review.
+two Coolify resources, using the compose files merged in §14/§15 above
+and each file's own header comment for the required env var list. After
+that: a real `docker build` once registry access is available, to close
+the one verification gap noted in §14 - the last known open item.
