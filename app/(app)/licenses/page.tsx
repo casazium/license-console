@@ -1,5 +1,6 @@
 import { Group, Text, Title } from '@mantine/core';
 import { listLicenses } from '@/lib/license-client';
+import { MockDataNotice } from '@/components/MockDataNotice';
 import { IssueLicenseButton } from './IssueLicenseButton';
 import { LicensesFilters } from './LicensesFilters';
 import { LicensesPagination } from './LicensesPagination';
@@ -45,10 +46,7 @@ export default async function LicensesPage({
           <LicensesPagination page={page} totalPages={totalPages} />
         </Group>
       )}
-      <Text c="dimmed" size="sm" mt="md">
-        Showing mock data (lib/license-client.ts) — not yet wired to the real
-        license server.
-      </Text>
+      <MockDataNotice />
     </>
   );
 }

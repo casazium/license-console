@@ -1,5 +1,6 @@
 import { Badge, Code, Group, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import { getLicense, listActivations } from '@/lib/license-client';
+import { MockDataNotice } from '@/components/MockDataNotice';
 import { ActivationsTable, RevokeDeleteActions } from './LicenseActions';
 
 export const dynamic = 'force-dynamic';
@@ -86,10 +87,7 @@ Content-Type: application/json
   "instance_id": "<unique per install/device>"
 }`}</Code>
 
-      <Text c="dimmed" size="sm" mt="md">
-        Showing mock data (lib/license-client.ts) — not yet wired to the real
-        license server.
-      </Text>
+      <MockDataNotice />
     </Stack>
   );
 }
