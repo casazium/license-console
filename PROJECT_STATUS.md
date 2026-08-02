@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-07-31 (confirmed sort's page-scoping is by design; logged real backend sort support as a roadmap item)
+Last updated: 2026-07-31 (extended brand color to Issue license button + pagination; fixed a dropped section heading)
 
 > Admin console UI for `casazium/license`. This document exists so work can resume
 > across sessions without re-deriving decisions already made. Update it whenever
@@ -664,13 +664,56 @@ without the "issue your first license" CTA; and clicking the Key column
 header sorts ascending then descending correctly, verified against a
 genuinely-sorted comparison array, not just eyeballed.
 
+## 12. Brand color extended to remaining primary actions (2026-07-31)
+
+Operator noticed the "Issue license" button and the licenses page's
+pagination controls looked out of place - default Mantine blue, not the
+configured brand color, unlike the login page's Sign In button. Confirmed
+in the code: `IssueLicenseButton.tsx` and `LicensesPagination.tsx` were
+both built later (during the licenses-page review) and never got the
+`--brand-color` treatment `LoginForm.tsx`'s Sign In button already had.
+
+Asked whether the license detail page's Revoke/Delete buttons had the
+same gap. Checked the code: no - `Revoke`/`Unrevoke` uses
+`variant="default"` (neutral) and `Delete` uses `color="red"`
+(`LicenseActions.tsx`), both deliberate semantic choices, not an
+oversight. **Decided, and would have pushed back on the alternative even
+if asked:** leave these two alone. Red for a destructive action is a
+near-universal UI convention specifically so it stands out from ordinary
+branded actions - re-coloring Delete to match an arbitrary operator's
+brand color would weaken that "this is dangerous" signal for the sake of
+consistency that isn't actually a virtue here.
+
+**Built:** extracted the brand-button CSS-variable override (previously
+inlined only in `LoginForm.tsx`) into a shared
+`components/brandButtonStyle.ts`, applied to both `IssueLicenseButton.tsx`
+and the now-refactored `LoginForm.tsx` (no behavior change there, just
+de-duplication). Applied the equivalent override
+(`--pagination-active-bg: var(--brand-color)`) to `LicensesPagination.tsx`
+- Mantine's `Pagination` exposes the same kind of overridable CSS variable
+`Button` does, same technique.
+
+Verified via build/lint (0 errors) and a real browser check with a
+distinctive test color (`#7341E0`): confirmed via computed style that
+"Issue license" (`rgb(115, 65, 224)`) and the active page control both
+resolve to the exact brand color. One test-script false alarm caught and
+corrected along the way: an initial generic `[data-active="true"]`
+selector matched the sidebar's active nav link (which also uses that
+attribute) instead of the pagination button, giving a misleading "still
+blue" result - re-queried with `button[data-active="true"]` specifically
+and confirmed the fix works correctly. Also confirmed Revoke/Delete remain
+unstyled/red respectively, unaffected by this change.
+
+## 13. Next authorized step
+
 Implement a real license-server API client (server-side only, using
 `LICENSE_API_URL` / `LICENSE_ADMIN_API_KEY`) and swap it in behind the same
 `lib/license-client.ts` function signatures the mock already uses, so no
 page needs to change - starting with `listLicenses`/`issueLicense` since
 those are the simplest end-to-end slice.
 
-Note: per §9 above, the login page's username + branding items are now
-built and verified. Continuing the page-by-page UI review (next: the
-dashboard page) is the operator's likely next step; this API-client step
-follows once the review is complete, unless re-prioritized.
+Note: the page-by-page UI review has now covered login, dashboard, and
+licenses (list + detail-adjacent color consistency) - all merged. License
+detail page (`/licenses/[key]`) itself hasn't had a dedicated review pass
+yet; that or the API-client step above are the two open threads, whichever
+the operator picks up next.
