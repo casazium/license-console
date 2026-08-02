@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-07-31 (licenses page: pagination, filters, sort, seats column)
+Last updated: 2026-07-31 (confirmed sort's page-scoping is by design; logged real backend sort support as a roadmap item)
 
 > Admin console UI for `casazium/license`. This document exists so work can resume
 > across sessions without re-deriving decisions already made. Update it whenever
@@ -587,6 +587,26 @@ implementation, per session convention. Grounded against the real
 4. **Client-side sort, current page only.** Click-to-sort column headers,
    scoped honestly to the loaded page - not presented as a full-dataset
    sort, since the backend genuinely can't do that today.
+   **Confirmed as a real limitation, not a bug, during operator testing
+   (2026-07-31):** operator reported "filtering only filters the displayed
+   page" after using the app. Reproduced precisely to isolate which
+   feature was actually at fault: status/product filtering was verified
+   correct - both re-query the full 28-license dataset server-side (e.g.
+   `?status=active` correctly returns "10 of 23", not scoped to one page),
+   confirmed by applying a filter while sitting on page 2 and seeing it
+   reset to page 1 with the right full-dataset count. The sort feature was
+   the actual source: clicking a column header only reorders the same 10
+   already-loaded rows (verified: identical row count and identical row
+   *set* before/after sorting, just reordered) - functioning exactly as
+   designed, but with zero visual indication in the UI that sort is
+   page-scoped, which reads exactly like a bug from the operator's side.
+   **Decided: keep the UI as-is for now (no caption/tooltip added, sort
+   feature not removed).** Real fix is a backend addition, not a console
+   change - `GET /list-licenses` needs an actual sort parameter so a true
+   full-dataset sort becomes possible; the console's current click-to-sort
+   UI can then be pointed at it directly, no redesign needed on this side.
+   **Logged as a backend roadmap item, same category as the deferred items
+   above and in §9** (free-text search, rate limiting, multi-account, 2FA).
 5. **Free-text search - deferred, not built.** No search endpoint exists on
    the backend at all (only exact-match `product_id`/`status`). A
    client-side-only search would silently only cover the current page,
