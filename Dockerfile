@@ -21,9 +21,14 @@ ENV NODE_ENV=production
 # Standalone output (next.config.mjs: output: 'standalone') only includes
 # the server bundle and the node_modules subset it actually needs - public/
 # and .next/static aren't part of it and must be copied separately.
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder --chown=node:node /app/public ./public
+COPY --from=builder --chown=node:node /app/.next/standalone ./
+COPY --from=builder --chown=node:node /app/.next/static ./.next/static
+
+# Run as the non-root `node` user this base image already provides, rather
+# than root - this server is stateless (no writable data dir needed), so
+# --chown on the COPY steps above is sufficient without a separate chown RUN.
+USER node
 
 EXPOSE 3000
 CMD ["node", "server.js"]
