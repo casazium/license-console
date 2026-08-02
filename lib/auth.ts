@@ -1,4 +1,15 @@
+import { timingSafeEqual } from 'node:crypto';
 import type { Identity } from './session';
+
+function constantTimeEquals(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  // Length must match before timingSafeEqual (it throws on mismatched
+  // lengths) - unavoidable minor leak of length via early return, but that's
+  // a much smaller signal than a plain !== comparison, which leaks equality
+  // up to the first differing byte.
+  return bufA.length === bufB.length && timingSafeEqual(bufA, bufB);
+}
 
 /**
  * Today: a single shared admin username/password (ADMIN_UI_USERNAME /
@@ -15,7 +26,9 @@ export async function verifyCredentials(username: string, password: string): Pro
     throw new Error('Missing required environment variable: ADMIN_UI_USERNAME or ADMIN_UI_PASSWORD');
   }
 
-  if (username !== adminUsername || password !== adminPassword) {
+  const usernameMatches = constantTimeEquals(username, adminUsername);
+  const passwordMatches = constantTimeEquals(password, adminPassword);
+  if (!usernameMatches || !passwordMatches) {
     return null;
   }
 
