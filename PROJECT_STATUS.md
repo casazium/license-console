@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-02 (Coolify deployment packaging: Dockerfile, docker-compose-coolify.yml)
+Last updated: 2026-08-02 (confirmed deployment topology: one Coolify instance, two servers, license.casazium.com + license-api.casazium.com)
 
 > Admin console UI for `casazium/license`. This document exists so work can resume
 > across sessions without re-deriving decisions already made. Update it whenever
@@ -888,13 +888,39 @@ console's confirmed to correctly resolve to standalone/mock mode when
 `LICENSE_API_URL`/`LICENSE_ADMIN_API_KEY` are left blank, matching the
 intended default.
 
-## 15. Next authorized step
+## 15. Deployment topology confirmed (2026-08-02)
 
-Operator creates the two Coolify resources (this repo + `casazium/license`,
-once its own `docker-compose-coolify.yml` is committed/pushed - currently
-still local/draft) using the compose files above, sets the required env
-vars through Coolify's UI (see each file's own header comment for the
-list), and assigns domains. After that: a real `docker build` once
-registry access is available, to close the one gap noted above; and the
-license detail page (`/licenses/[key]`) still hasn't had its own dedicated
-UI review pass, the remaining open thread from the page-by-page review.
+Both Coolify PRs merged (`casazium/license-console#8`,
+`casazium/license#27`). Operator confirmed the concrete deployment shape:
+
+- **One Coolify instance, two connected servers** (separate VPS, separate
+  IPs) - not two independent Coolify instances. Each of the two resources
+  (this repo + `casazium/license`) picks its own target server from the
+  same Coolify dashboard.
+- **Domains:** `license.casazium.com` (this console) and
+  `license-api.casazium.com` (the backend) - chosen over the more generic
+  `api.casazium.com` specifically so it stays unambiguous if
+  `casazium.com` ever grows other, unrelated APIs later.
+- Confirmed this requires no compose-file changes - domains are set
+  through Coolify's own per-service Domain field, never hardcoded in
+  `docker-compose-coolify.yml` (§14's whole point). Once
+  `license-api.casazium.com` DNS resolves and its Coolify resource is up,
+  this console's `LICENSE_API_URL` env var should be set to
+  `https://license-api.casazium.com/v1` (the `/v1` suffix still required)
+  to run in live mode instead of standalone/mock.
+
+(A `DB_FILE` persistence bug was found and fixed in `casazium/license`'s
+local-dev-only `docker-compose.yml` - see `casazium/license#28`. It did
+not affect the Coolify deployment path above, which already used the
+correct env var name.)
+
+## 16. Next authorized step
+
+Operator creates the DNS records (`license.casazium.com`,
+`license-api.casazium.com`, pointed at their respective VPS IPs) and the
+two Coolify resources, using the compose files merged in §14/§15 above and
+each file's own header comment for the required env var list. After that:
+a real `docker build` once registry access is available, to close the one
+verification gap noted in §14; and the license detail page
+(`/licenses/[key]`) still hasn't had its own dedicated UI review pass, the
+remaining open thread from the page-by-page review.
