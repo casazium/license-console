@@ -1,0 +1,55 @@
+# Coolify deployment - a separate resource from casazium/license's own
+# docker-compose-coolify.yml (see PROJECT_STATUS.md §14: two independently
+# deployable Coolify resources, not one combined stack). Routing/TLS via
+# Coolify's own per-service Domain configuration, not hand-authored Traefik
+# routers here - same convention as casazium/casazium's
+# docker-compose-coolify.yml.
+#
+# Required env vars (set via Coolify's environment variables UI for this
+# service, not committed anywhere): SESSION_SECRET, ADMIN_UI_USERNAME,
+# ADMIN_UI_PASSWORD. For a *live* deployment (connected to a real backend,
+# not standalone/mock mode), also set LICENSE_API_URL (the license
+# backend's own Coolify Domain, including /v1, e.g.
+# https://license-api.example.com/v1) and LICENSE_ADMIN_API_KEY (must
+# match that backend service's own ADMIN_API_KEY). Leave both unset for
+# standalone/mock mode instead - see lib/license-client.ts's
+# getBackendMode(). BRANDING_* vars are all optional either way.
+services:
+  console:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    expose:
+      - '3000'
+    environment:
+      - SESSION_SECRET=${SESSION_SECRET}
+      - ADMIN_UI_USERNAME=${ADMIN_UI_USERNAME}
+      - ADMIN_UI_PASSWORD=${ADMIN_UI_PASSWORD}
+      - LICENSE_API_URL=${LICENSE_API_URL}
+      - LICENSE_ADMIN_API_KEY=${LICENSE_ADMIN_API_KEY}
+      - BRANDING_LOGO_URL=${BRANDING_LOGO_URL}
+      - BRANDING_TITLE_HTML=${BRANDING_TITLE_HTML}
+      - BRANDING_COLOR=${BRANDING_COLOR}
+      - BRANDING_COPYRIGHT_HOLDER=${BRANDING_COPYRIGHT_HOLDER}
+      - BRANDING_FAVICON_URL=${BRANDING_FAVICON_URL}
+    labels:
+      - traefik.enable=true
+
+      # Routing/TLS via Coolify's service Domain, not a router here.
+      - traefik.http.services.license-console-svc.loadbalancer.server.port=3000
+
+      - traefik.http.middlewares.license-console-headers.headers.customResponseHeaders.X-App=license-console
+
+    healthcheck:
+      # node, not wget/curl - guaranteed present (it's the runtime) rather
+      # than relying on an Alpine base image's busybox tools.
+      test:
+        [
+          'CMD-SHELL',
+          "node -e \"require('http').get('http://127.0.0.1:3000/login', r => process.exit(r.statusCode===200?0:1)).on('error', () => process.exit(1))\"",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
