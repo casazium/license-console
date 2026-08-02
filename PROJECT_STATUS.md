@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-02 (confirmed deployment topology: one Coolify instance, two servers, license.casazium.com + license-api.casazium.com)
+Last updated: 2026-08-02 (closed out the Coolify deployment-packaging milestone, §16)
 
 > Admin console UI for `casazium/license`. This document exists so work can resume
 > across sessions without re-deriving decisions already made. Update it whenever
@@ -914,7 +914,32 @@ local-dev-only `docker-compose.yml` - see `casazium/license#28`. It did
 not affect the Coolify deployment path above, which already used the
 correct env var name.)
 
-## 16. Next authorized step
+## 16. Coolify milestone closed (2026-08-02)
+
+All four PRs that make up the "get a live POC reachable via Coolify"
+milestone (§14/§15) are merged:
+
+| PR | Repo | Content |
+|---|---|---|
+| `#8` | `license-console` | Dockerfile, standalone build, `docker-compose-coolify.yml` |
+| `casazium/license#27` | `license` | `docker-compose-coolify.yml` |
+| `#9` | `license-console` | Deployment topology confirmed (domains, one-instance-two-servers) |
+| `casazium/license#28` | `license` | `DB_FILE` persistence bug fix, surfaced while confirming the backend was safe to depend on for the live POC (§15's cross-reference note) |
+
+What this milestone did and didn't cover, to avoid later confusion:
+
+- **Covered:** every piece of code/config this repo and `casazium/license`
+  needed to *be deployable* to Coolify - Dockerfiles, Coolify-specific
+  compose files, the mode-detection mechanism (§13) that lets this console
+  run standalone/mock or live off the same image depending on which env
+  vars Coolify is given, and the confirmed domain/topology shape.
+- **Not covered, and not something this session does:** actually creating
+  DNS records or the two Coolify resources themselves. That's the
+  operator's own manual action against their Coolify dashboard and DNS
+  provider, tracked as the next step below rather than as part of this
+  milestone's definition of done.
+
+## 17. Next authorized step
 
 Operator creates the DNS records (`license.casazium.com`,
 `license-api.casazium.com`, pointed at their respective VPS IPs) and the
