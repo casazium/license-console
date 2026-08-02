@@ -8,8 +8,10 @@ import {
   setLicenseRevoked,
   type IssueLicenseInput,
 } from '@/lib/license-client';
+import { requireSessionForAction } from '@/lib/session';
 
 export async function issueLicenseAction(input: IssueLicenseInput) {
+  await requireSessionForAction();
   const license = await issueLicense(input);
   revalidatePath('/licenses');
   revalidatePath('/dashboard');
@@ -17,6 +19,7 @@ export async function issueLicenseAction(input: IssueLicenseInput) {
 }
 
 export async function setLicenseRevokedAction(key: string, revoked: boolean) {
+  await requireSessionForAction();
   const license = await setLicenseRevoked(key, revoked);
   revalidatePath('/licenses');
   revalidatePath(`/licenses/${key}`);
@@ -25,6 +28,7 @@ export async function setLicenseRevokedAction(key: string, revoked: boolean) {
 }
 
 export async function deleteLicenseAction(key: string) {
+  await requireSessionForAction();
   const ok = await deleteLicense(key);
   revalidatePath('/licenses');
   revalidatePath('/dashboard');
@@ -32,5 +36,6 @@ export async function deleteLicenseAction(key: string) {
 }
 
 export async function reissueActivationTokenAction(key: string, instanceId: string) {
+  await requireSessionForAction();
   return reissueActivationToken(key, instanceId);
 }

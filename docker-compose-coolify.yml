@@ -11,9 +11,13 @@
 # not standalone/mock mode), also set LICENSE_API_URL (the license
 # backend's own Coolify Domain, including /v1, e.g.
 # https://license-api.example.com/v1) and LICENSE_ADMIN_API_KEY (must
-# match that backend service's own ADMIN_API_KEY). Leave both unset for
-# standalone/mock mode instead - see lib/license-client.ts's
-# getBackendMode(). BRANDING_* vars are all optional either way.
+# match that backend service's own ADMIN_API_KEY). For a standalone/mock
+# deployment instead, leave both of those unset AND set
+# LICENSE_STANDALONE_MODE=true to confirm that's intentional - in
+# production, both-unset without that flag is treated as a
+# misconfiguration rather than a silent fallback to demo data, see
+# lib/license-client.ts's getBackendMode(). BRANDING_* vars are all
+# optional either way.
 services:
   console:
     build:
@@ -28,6 +32,7 @@ services:
       - ADMIN_UI_PASSWORD=${ADMIN_UI_PASSWORD}
       - LICENSE_API_URL=${LICENSE_API_URL}
       - LICENSE_ADMIN_API_KEY=${LICENSE_ADMIN_API_KEY}
+      - LICENSE_STANDALONE_MODE=${LICENSE_STANDALONE_MODE}
       - BRANDING_LOGO_URL=${BRANDING_LOGO_URL}
       - BRANDING_TITLE_HTML=${BRANDING_TITLE_HTML}
       - BRANDING_COLOR=${BRANDING_COLOR}

@@ -43,13 +43,35 @@ export function getBackendMode(): BackendMode {
   const hasKey = Boolean(process.env.LICENSE_ADMIN_API_KEY?.trim());
 
   if (hasUrl && hasKey) return 'live';
-  if (!hasUrl && !hasKey) return 'mock';
 
-  throw new Error(
-    'LICENSE_API_URL and LICENSE_ADMIN_API_KEY must both be set (connected to a real ' +
-      'license server) or both left unset (standalone, look-and-feel-only mode) - ' +
-      `found only ${hasUrl ? 'LICENSE_API_URL' : 'LICENSE_ADMIN_API_KEY'} configured.`
-  );
+  if (hasUrl || hasKey) {
+    throw new Error(
+      'LICENSE_API_URL and LICENSE_ADMIN_API_KEY must both be set (connected to a real ' +
+        'license server) or both left unset (standalone, look-and-feel-only mode) - ' +
+        `found only ${hasUrl ? 'LICENSE_API_URL' : 'LICENSE_ADMIN_API_KEY'} configured.`
+    );
+  }
+
+  // Both unset. In production this is ambiguous by itself: it's the
+  // documented way to deploy an intentional standalone/demo instance
+  // (docker-compose-coolify.yml's header comment), but it's exactly what
+  // an operator also gets by *forgetting* to configure live mode - Coolify
+  // interpolates a missing ${LICENSE_API_URL} to an empty string, which
+  // .trim() makes indistinguishable from genuinely unset. An admin who
+  // believes they're managing real licenses but is silently looking at
+  // demo fixtures is a real-world bad outcome for a licensing system, not
+  // just a cosmetic one. Require an explicit opt-in to tell the two apart
+  // in production; dev/test keep the zero-config default so `npm run dev`
+  // still just works with no .env at all.
+  if (process.env.NODE_ENV === 'production' && process.env.LICENSE_STANDALONE_MODE !== 'true') {
+    throw new Error(
+      'LICENSE_API_URL and LICENSE_ADMIN_API_KEY are both unset in a production build. ' +
+        'If this is an intentional standalone/demo deployment, set LICENSE_STANDALONE_MODE=true ' +
+        'to confirm - otherwise this looks like live mode was meant but never configured.'
+    );
+  }
+
+  return 'mock';
 }
 
 function client() {
