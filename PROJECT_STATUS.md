@@ -909,6 +909,11 @@ Both Coolify PRs merged (`casazium/license-console#8`,
   `https://license-api.casazium.com/v1` (the `/v1` suffix still required)
   to run in live mode instead of standalone/mock.
 
+(A `DB_FILE` persistence bug was found and fixed in `casazium/license`'s
+local-dev-only `docker-compose.yml` - see `casazium/license#28`. It did
+not affect the Coolify deployment path above, which already used the
+correct env var name.)
+
 ## 16. Next authorized step
 
 Operator creates the DNS records (`license.casazium.com`,
