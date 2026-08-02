@@ -6,6 +6,7 @@ import {
   getRecentActivations,
   getRecentlyIssuedLicenses,
 } from '@/lib/license-client';
+import { MockDataNotice } from '@/components/MockDataNotice';
 import { ExpiringLicensesTable } from './ExpiringLicensesTable';
 import { RecentActivationsTable } from './RecentActivationsTable';
 import { RecentlyIssuedLicensesTable } from './RecentlyIssuedLicensesTable';
@@ -69,10 +70,7 @@ export default async function DashboardPage() {
       </Title>
       <SeatUtilizationTable licenses={seatsNearLimit} />
 
-      <Text c="dimmed" size="sm" mt="xl">
-        Showing mock data (lib/license-client.ts) — not yet wired to the real
-        license server.
-      </Text>
+      <MockDataNotice />
     </>
   );
 }

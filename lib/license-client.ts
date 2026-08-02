@@ -1,390 +1,76 @@
 /**
- * MOCK license-server client - in-memory data, no HTTP calls. Exists so the
- * UI can be built and played with before the real client (using
- * LICENSE_API_URL / LICENSE_ADMIN_API_KEY) is implemented. Function
- * signatures are meant to match what the real client will expose, so
- * swapping the implementation later shouldn't require page-level changes.
- * State resets whenever the dev server process restarts.
+ * Mode dispatcher for the license-server client. Every page imports from
+ * this file (not license-client.mock.ts or license-client.live.ts
+ * directly), and gets routed to one or the other per call based on
+ * whether LICENSE_API_URL / LICENSE_ADMIN_API_KEY are configured - see
+ * getBackendMode() below. This is what makes "standalone (look-and-feel-
+ * only) mode" possible: run the console with neither var set and it
+ * behaves exactly as it always has, no code changes, no separate build.
+ *
+ * Mode is read fresh on every call (not cached at module load) so a
+ * changed .env takes effect on the next request without a rebuild -
+ * consistent with how branding config is handled (lib/branding.ts).
  */
 
-export type License = {
-  key: string;
-  product_id: string;
-  tier: string;
-  status: 'active' | 'revoked';
-  issued_to: string;
-  issued_at: string;
-  expires_at: string;
-  usage_limit: number | null;
-  usage_count: number;
-  max_activations: number;
-  revoked_at: string | null;
-};
+import * as live from './license-client.live';
+import * as mock from './license-client.mock';
 
-export type Activation = {
-  instance_id: string;
-  activated_at: string;
-};
+export type {
+  Activation,
+  DashboardStats,
+  ExpiringLicense,
+  IssueLicenseInput,
+  License,
+  LicenseListItem,
+  ListLicensesParams,
+  ListLicensesResult,
+  RecentActivation,
+  RecentlyIssuedLicense,
+  SeatUtilization,
+} from './license-types';
 
-export type DashboardStats = {
-  active_licenses: number;
-  active_activations: number;
-  revoked_licenses: number;
-};
+export type BackendMode = 'mock' | 'live';
 
-export type RecentActivation = {
-  key: string;
-  instance_id: string;
-  activated_at: string;
-};
+/**
+ * Both LICENSE_API_URL and LICENSE_ADMIN_API_KEY set -> live (real
+ * backend). Both unset -> mock (standalone, look-and-feel only). Exactly
+ * one set is almost certainly a misconfiguration (e.g. a typo'd env var
+ * name), not an intentional choice - fails fast with a clear message
+ * rather than silently guessing which mode was meant.
+ */
+export function getBackendMode(): BackendMode {
+  const hasUrl = Boolean(process.env.LICENSE_API_URL?.trim());
+  const hasKey = Boolean(process.env.LICENSE_ADMIN_API_KEY?.trim());
 
-export type ExpiringLicense = {
-  key: string;
-  product_id: string;
-  tier: string;
-  issued_to: string;
-  expires_at: string;
-};
+  if (hasUrl && hasKey) return 'live';
+  if (!hasUrl && !hasKey) return 'mock';
 
-export type SeatUtilization = {
-  key: string;
-  product_id: string;
-  tier: string;
-  used: number;
-  max_activations: number;
-  remaining: number;
-};
-
-export type RecentlyIssuedLicense = {
-  key: string;
-  product_id: string;
-  tier: string;
-  issued_to: string;
-  issued_at: string;
-};
-
-export type IssueLicenseInput = {
-  product_id: string;
-  tier: string;
-  issued_to: string;
-  expires_at: string;
-  max_activations: number;
-};
-
-// The real GET /list-licenses response has no activation-count field at
-// all (confirmed against casazium/license's src/routes/list-licenses.js) -
-// activations_used is mock-only enrichment. Wiring the real client will
-// need either an N+1 GET /list-activations/:key call per row, or a
-// backend addition to include the count directly (recommended over N+1).
-export type LicenseListItem = License & { activations_used: number };
-
-export type ListLicensesParams = {
-  status?: 'active' | 'revoked';
-  product_id?: string;
-  limit?: number;
-  offset?: number;
-};
-
-export type ListLicensesResult = {
-  licenses: LicenseListItem[];
-  total: number;
-};
-
-type Store = {
-  licenses: License[];
-  activations: Record<string, Activation[]>;
-};
-
-const globalForMockStore = globalThis as unknown as { __licenseMockStore?: Store };
-
-function seedStore(): Store {
-  const synthetic = generateSyntheticLicenses(24);
-
-  return {
-    licenses: [
-      {
-        key: 'CASZ-DEMO-ALPHA-0001',
-        product_id: 'widget-pro',
-        tier: 'pro',
-        status: 'active',
-        issued_to: 'demo-customer@example.com',
-        issued_at: '2026-06-01T00:00:00Z',
-        expires_at: '2027-06-01T00:00:00Z',
-        usage_limit: 10000,
-        usage_count: 421,
-        max_activations: 3,
-        revoked_at: null,
-      },
-      {
-        key: 'CASZ-DEMO-BETA-0002',
-        product_id: 'widget-pro',
-        tier: 'starter',
-        status: 'active',
-        issued_to: 'another-customer@example.com',
-        issued_at: '2026-05-15T00:00:00Z',
-        expires_at: '2026-11-15T00:00:00Z',
-        usage_limit: 1000,
-        usage_count: 998,
-        max_activations: 1,
-        revoked_at: null,
-      },
-      {
-        key: 'CASZ-DEMO-GAMMA-0003',
-        product_id: 'widget-lite',
-        tier: 'trial',
-        status: 'revoked',
-        issued_to: 'churned-customer@example.com',
-        issued_at: '2026-03-01T00:00:00Z',
-        expires_at: '2026-04-01T00:00:00Z',
-        usage_limit: 100,
-        usage_count: 100,
-        max_activations: 1,
-        revoked_at: '2026-04-02T00:00:00Z',
-      },
-      {
-        // Demonstrates the "expiring soon" dashboard widget - relative to
-        // whenever this seed runs, not a fixed past date like the others.
-        key: 'CASZ-DEMO-DELTA-0004',
-        product_id: 'widget-pro',
-        tier: 'pro',
-        status: 'active',
-        issued_to: 'renewal-due-customer@example.com',
-        issued_at: '2025-08-01T00:00:00Z',
-        expires_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
-        usage_limit: 5000,
-        usage_count: 3120,
-        max_activations: 2,
-        revoked_at: null,
-      },
-      ...synthetic.licenses,
-    ],
-    activations: {
-      'CASZ-DEMO-ALPHA-0001': [
-        { instance_id: 'inst_7f3a9c2e', activated_at: '2026-06-02T09:14:00Z' },
-        { instance_id: 'inst_1b8d4f6a', activated_at: '2026-06-10T17:42:00Z' },
-      ],
-      'CASZ-DEMO-BETA-0002': [
-        { instance_id: 'inst_9e2c5a1d', activated_at: '2026-05-16T11:03:00Z' },
-      ],
-      'CASZ-DEMO-DELTA-0004': [
-        { instance_id: 'inst_4c8e2f91', activated_at: '2025-08-02T10:00:00Z' },
-      ],
-      ...synthetic.activations,
-    },
-  };
-}
-
-// Beyond the 4 hand-authored demo licenses above, generates enough
-// additional licenses that pagination/filtering/sorting are genuinely
-// demonstrable and testable during verification - not just theoretically
-// wired against a 4-row dataset that fits on one page regardless.
-function generateSyntheticLicenses(count: number): { licenses: License[]; activations: Store['activations'] } {
-  const products = ['widget-pro', 'widget-lite', 'gadget-basic'];
-  const tiers = ['starter', 'pro', 'enterprise'];
-  const licenses: License[] = [];
-  const activations: Store['activations'] = {};
-  const now = Date.now();
-  const day = 24 * 60 * 60 * 1000;
-
-  for (let i = 0; i < count; i += 1) {
-    const key = `CASZ-SYN-${String(i + 1).padStart(4, '0')}`;
-    const maxActivations = 1 + (i % 5);
-    const used = i % (maxActivations + 1);
-    const revoked = i % 7 === 0;
-    const issuedAt = now - (i * 11 + 5) * day;
-    // Spread expirations across a wide range, including some inside the
-    // dashboard's 30-day "expiring soon" window, so that widget and this
-    // page's filters exercise overlapping, realistic data.
-    const expiresAt = now + ((i * 13) % 400 - 60) * day;
-
-    licenses.push({
-      key,
-      product_id: products[i % products.length],
-      tier: tiers[i % tiers.length],
-      status: revoked ? 'revoked' : 'active',
-      issued_to: `customer-${i + 1}@example.com`,
-      issued_at: new Date(issuedAt).toISOString(),
-      expires_at: new Date(expiresAt).toISOString(),
-      usage_limit: 1000 * (1 + (i % 10)),
-      usage_count: 50 * (i % 20),
-      max_activations: maxActivations,
-      revoked_at: revoked ? new Date(issuedAt + 2 * day).toISOString() : null,
-    });
-
-    if (used > 0) {
-      activations[key] = Array.from({ length: used }, (_, seat) => ({
-        instance_id: `inst_syn${i}${seat}`,
-        activated_at: new Date(issuedAt + (seat + 1) * day).toISOString(),
-      }));
-    }
-  }
-
-  return { licenses, activations };
-}
-
-function getStore(): Store {
-  if (!globalForMockStore.__licenseMockStore) {
-    globalForMockStore.__licenseMockStore = seedStore();
-  }
-  return globalForMockStore.__licenseMockStore;
-}
-
-function generateKey(): string {
-  const segment = () =>
-    Math.random().toString(36).slice(2, 6).toUpperCase().padEnd(4, 'X');
-  return `CASZ-${segment()}-${segment()}-${segment()}`;
-}
-
-export async function listLicenses(params: ListLicensesParams = {}): Promise<ListLicensesResult> {
-  const { status, product_id, limit = 10, offset = 0 } = params;
-  const { licenses, activations } = getStore();
-
-  const filtered = licenses.filter((license) => {
-    if (status && license.status !== status) return false;
-    if (product_id && license.product_id !== product_id) return false;
-    return true;
-  });
-
-  // Matches the real GET /list-licenses's own ORDER BY issued_at DESC -
-  // that route has no sort parameter, so this is the only order the real
-  // API can return regardless of what page/filter is requested.
-  const sorted = [...filtered].sort((a, b) => (a.issued_at < b.issued_at ? 1 : -1));
-
-  const page = sorted.slice(offset, offset + limit).map((license) => ({
-    ...license,
-    activations_used: activations[license.key]?.length ?? 0,
-  }));
-
-  return { licenses: page, total: sorted.length };
-}
-
-export async function getLicense(key: string): Promise<License | null> {
-  return getStore().licenses.find((license) => license.key === key) ?? null;
-}
-
-export async function issueLicense(input: IssueLicenseInput): Promise<License> {
-  const license: License = {
-    key: generateKey(),
-    product_id: input.product_id,
-    tier: input.tier,
-    status: 'active',
-    issued_to: input.issued_to,
-    issued_at: new Date().toISOString(),
-    expires_at: input.expires_at,
-    usage_limit: null,
-    usage_count: 0,
-    max_activations: input.max_activations,
-    revoked_at: null,
-  };
-  getStore().licenses.push(license);
-  return license;
-}
-
-export async function setLicenseRevoked(key: string, revoked: boolean): Promise<License | null> {
-  const license = getStore().licenses.find((entry) => entry.key === key);
-  if (!license) return null;
-  license.status = revoked ? 'revoked' : 'active';
-  license.revoked_at = revoked ? new Date().toISOString() : null;
-  return license;
-}
-
-export async function deleteLicense(key: string): Promise<boolean> {
-  const store = getStore();
-  const index = store.licenses.findIndex((entry) => entry.key === key);
-  if (index === -1) return false;
-  store.licenses.splice(index, 1);
-  delete store.activations[key];
-  return true;
-}
-
-export async function listActivations(key: string): Promise<Activation[]> {
-  return getStore().activations[key] ?? [];
-}
-
-export async function reissueActivationToken(
-  key: string,
-  instanceId: string
-): Promise<{ token: string } | null> {
-  const activations = getStore().activations[key];
-  if (!activations?.some((activation) => activation.instance_id === instanceId)) {
-    return null;
-  }
-  return { token: `reissued_${Math.random().toString(36).slice(2, 10)}` };
-}
-
-export async function getDashboardStats(): Promise<DashboardStats> {
-  const { licenses, activations } = getStore();
-  return {
-    active_licenses: licenses.filter((license) => license.status === 'active').length,
-    active_activations: Object.values(activations).reduce((sum, list) => sum + list.length, 0),
-    revoked_licenses: licenses.filter((license) => license.status === 'revoked').length,
-  };
-}
-
-export async function getRecentActivations(limit = 5): Promise<RecentActivation[]> {
-  const { activations } = getStore();
-  const flattened: RecentActivation[] = Object.entries(activations).flatMap(([key, list]) =>
-    list.map((activation) => ({ key, ...activation }))
+  throw new Error(
+    'LICENSE_API_URL and LICENSE_ADMIN_API_KEY must both be set (connected to a real ' +
+      'license server) or both left unset (standalone, look-and-feel-only mode) - ' +
+      `found only ${hasUrl ? 'LICENSE_API_URL' : 'LICENSE_ADMIN_API_KEY'} configured.`
   );
-  return flattened
-    .sort((a, b) => (a.activated_at < b.activated_at ? 1 : -1))
-    .slice(0, limit);
 }
 
-export async function getExpiringLicenses(withinDays = 30, limit = 5): Promise<ExpiringLicense[]> {
-  const { licenses } = getStore();
-  const now = Date.now();
-  const cutoff = now + withinDays * 24 * 60 * 60 * 1000;
-
-  return licenses
-    .filter((license) => license.status === 'active')
-    .filter((license) => {
-      const expiresAt = new Date(license.expires_at).getTime();
-      return expiresAt >= now && expiresAt <= cutoff;
-    })
-    .sort((a, b) => (a.expires_at < b.expires_at ? -1 : 1))
-    .slice(0, limit)
-    .map(({ key, product_id, tier, issued_to, expires_at }) => ({
-      key,
-      product_id,
-      tier,
-      issued_to,
-      expires_at,
-    }));
+function client() {
+  return getBackendMode() === 'live' ? live : mock;
 }
 
-export async function getLicensesNearSeatLimit(limit = 5): Promise<SeatUtilization[]> {
-  const { licenses, activations } = getStore();
-
-  return licenses
-    .filter((license) => license.status === 'active')
-    .map((license) => {
-      const used = activations[license.key]?.length ?? 0;
-      return {
-        key: license.key,
-        product_id: license.product_id,
-        tier: license.tier,
-        used,
-        max_activations: license.max_activations,
-        remaining: license.max_activations - used,
-      };
-    })
-    .filter((entry) => entry.remaining <= 1)
-    .sort((a, b) => a.remaining - b.remaining)
-    .slice(0, limit);
-}
-
-export async function getRecentlyIssuedLicenses(limit = 5): Promise<RecentlyIssuedLicense[]> {
-  const { licenses } = getStore();
-
-  return [...licenses]
-    .sort((a, b) => (a.issued_at < b.issued_at ? 1 : -1))
-    .slice(0, limit)
-    .map(({ key, product_id, tier, issued_to, issued_at }) => ({
-      key,
-      product_id,
-      tier,
-      issued_to,
-      issued_at,
-    }));
-}
+export const listLicenses: typeof mock.listLicenses = (params) => client().listLicenses(params);
+export const getLicense: typeof mock.getLicense = (key) => client().getLicense(key);
+export const issueLicense: typeof mock.issueLicense = (input) => client().issueLicense(input);
+export const setLicenseRevoked: typeof mock.setLicenseRevoked = (key, revoked) =>
+  client().setLicenseRevoked(key, revoked);
+export const deleteLicense: typeof mock.deleteLicense = (key) => client().deleteLicense(key);
+export const listActivations: typeof mock.listActivations = (key) => client().listActivations(key);
+export const reissueActivationToken: typeof mock.reissueActivationToken = (key, instanceId) =>
+  client().reissueActivationToken(key, instanceId);
+export const getDashboardStats: typeof mock.getDashboardStats = () => client().getDashboardStats();
+export const getRecentActivations: typeof mock.getRecentActivations = (limit) =>
+  client().getRecentActivations(limit);
+export const getExpiringLicenses: typeof mock.getExpiringLicenses = (withinDays, limit) =>
+  client().getExpiringLicenses(withinDays, limit);
+export const getLicensesNearSeatLimit: typeof mock.getLicensesNearSeatLimit = (limit) =>
+  client().getLicensesNearSeatLimit(limit);
+export const getRecentlyIssuedLicenses: typeof mock.getRecentlyIssuedLicenses = (limit) =>
+  client().getRecentlyIssuedLicenses(limit);

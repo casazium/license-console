@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-07-31 (extended brand color to Issue license button + pagination; fixed a dropped section heading)
+Last updated: 2026-08-02 (real backend integration: live client + standalone mode, verified against a running local instance)
 
 > Admin console UI for `casazium/license`. This document exists so work can resume
 > across sessions without re-deriving decisions already made. Update it whenever
@@ -704,16 +704,122 @@ blue" result - re-queried with `button[data-active="true"]` specifically
 and confirmed the fix works correctly. Also confirmed Revoke/Delete remain
 unstyled/red respectively, unaffected by this change.
 
-## 13. Next authorized step
+## 13. Real backend integration (2026-08-02)
 
-Implement a real license-server API client (server-side only, using
-`LICENSE_API_URL` / `LICENSE_ADMIN_API_KEY`) and swap it in behind the same
-`lib/license-client.ts` function signatures the mock already uses, so no
-page needs to change - starting with `listLicenses`/`issueLicense` since
-those are the simplest end-to-end slice.
+Operator asked to start wiring the console to the real `casazium/license`
+backend, with one explicit requirement: keep a standalone (look-and-feel-
+only) mode available, no real backend required. Researched the actual
+backend routes precisely (not assumptions) before writing any code -
+findings and the resulting three decisions were confirmed with the
+operator via direct questions rather than picked unilaterally:
 
-Note: the page-by-page UI review has now covered login, dashboard, and
-licenses (list + detail-adjacent color consistency) - all merged. License
-detail page (`/licenses/[key]`) itself hasn't had a dedicated review pass
-yet; that or the API-client step above are the two open threads, whichever
-the operator picks up next.
+1. **Mode selection: auto-detect from env.** Both `LICENSE_API_URL` and
+   `LICENSE_ADMIN_API_KEY` set -> live; both unset -> standalone/mock;
+   exactly one set -> fail fast with a clear error (almost certainly a
+   misconfiguration, not an intentional choice). No new env var needed.
+2. **No backend endpoint returned one license's full admin record**
+   (status, issued_at, usage_count, revoked_at, max_activations) -
+   `GET /export-license/:key` looks like the obvious candidate but is
+   actually a different, narrower thing (a signed public export for
+   offline verification). Added `GET /admin/license/:key` to
+   `casazium/license` rather than working around the gap client-side -
+   same pattern as the earlier `admin/reissue-token` addition. Committed
+   there as a draft (`admin/get-license-endpoint` branch, not yet pushed)
+   - also fixed a confirmed, pre-existing bug found during that research:
+   `list-licenses.js`'s declared response schema and its actual SQL
+   `SELECT` had drifted out of sync (schema promised `max_activations`
+   but the query never fetched it; the query fetched
+   `issued_at`/`usage_limit`/`usage_count` but the schema didn't declare
+   them, so Fastify's serializer silently stripped them). Both sides
+   reconciled, regression test added, backend's full suite still
+   141/141 passing.
+3. **Dashboard widgets + Seats column compute client-side for now.**
+   `getExpiringLicenses`/`getLicensesNearSeatLimit` have no backend
+   equivalent (the backend has no sort parameter at all) - both fetch a
+   broad `GET /list-licenses` page (up to the backend's own 1000-row max)
+   and compute the same filter/sort the mock does, client-side.
+   `getLicensesNearSeatLimit` and the Seats column both additionally need
+   one `GET /list-activations/:key` call per license row (no
+   activation-count field exists) - real N+1 cost, accepted for now per
+   the operator's explicit choice. `getRecentlyIssuedLicenses` needed
+   none of this: the real `GET /list-licenses` already defaults to
+   `ORDER BY issued_at DESC`, so it just asks for `limit` rows directly.
+
+### Built
+
+Split `lib/license-client.ts` into three files: `lib/license-types.ts`
+(shared types, no implementation), `lib/license-client.mock.ts` (the
+original in-memory implementation, moved as-is), `lib/license-client.live.ts`
+(new - real `fetch()` calls, mapped 1:1 to the endpoints above).
+`lib/license-client.ts` is now a thin dispatcher - `getBackendMode()` plus
+one wrapper per function routing to whichever implementation is active,
+read fresh on every call (not cached at module load), consistent with how
+`lib/branding.ts` handles env. Every page still imports only from
+`@/lib/license-client`, unchanged - this was the whole point of the mock's
+original "match the real signatures" design goal (§2).
+
+Two return-type simplifications, justified by checking actual call sites
+(`app/(app)/licenses/actions.ts` and its callers) rather than assumption:
+`issueLicense` now returns `{ key: string }` (only `.key` was ever read -
+the real `POST /issue-license` response doesn't include the rest of a
+`License` object anyway) and `setLicenseRevoked` now returns `void`
+(nothing read its return value at all). Both mock and live implement the
+same simplified signatures.
+
+Found and fixed one real bug while verifying, unrelated to the client
+split itself: all three pages (dashboard, licenses list, license detail)
+unconditionally showed "Showing mock data... not yet wired to the real
+license server" - true before this work, but it would have kept claiming
+that even once genuinely connected to a real backend. Extracted a shared
+`components/MockDataNotice.tsx`, conditional on `getBackendMode() ===
+'mock'`, used on all three pages in place of the hardcoded text.
+
+### Verified
+
+Mock mode: rebuilt and re-tested after the file split - unchanged
+behavior confirmed (seeded demo data present, mock notice still shows,
+pagination/filter behavior from §11 intact).
+
+Live mode: **ran a real local instance of `casazium/license`** (generated
+throwaway `ENCRYPTION_KEY`/`LICENSE_SIGNING_SECRET`/`ADMIN_API_KEY`/
+`LICENSE_RSA_PRIVATE_KEY` values, `npm run dev`) rather than mocking the
+HTTP layer, and pointed a live-mode console build at it. Full Playwright
+walkthrough against the real server: login -> dashboard shows real stats
+(confirmed via screenshot, not just presence checks) -> issue a license
+through the real UI form -> real redirect to its detail page showing
+correct real data -> activated it via `curl` (simulating the licensed
+product itself, exactly matching the detail page's own code snippet) ->
+console correctly shows the real activation -> reissued its token ->
+revoked -> un-revoked -> deleted -> confirmed gone from the list. Also
+directly `curl`-verified the new endpoint and the list-licenses fix
+against the running backend before touching the console at all.
+
+Two genuine test-script false alarms caught and corrected during this
+pass, not app bugs - worth recording since both looked exactly like real
+bugs at first:
+- A `waitForURL('**/licenses/*')` after submitting the issue-license form
+  matched instantly, because the *starting* URL (`/licenses/new`) already
+  satisfies that glob (`new` matches the trailing `*`). Looked like the
+  redirect never happened; it just hadn't happened *yet* when checked.
+  Fixed by waiting on a precise negative condition instead
+  (`!pathname.endsWith('/licenses/new')`).
+- After a delete, checking whether the deleted key still appeared
+  anywhere in the page text returned true - looked like the list still
+  showed it. It didn't: the list correctly showed "No licenses yet.", and
+  the match was the delete confirmation *toast*, which intentionally
+  displays the deleted key as part of its message.
+- Separately, mid-verification, the backend's own admin-endpoint rate
+  limit (50 requests/15 min, by design - see `src/app.js`) was genuinely
+  exhausted by the volume of manual + Playwright testing in this pass, not
+  triggered by anything the app itself does in normal use. Not a bug;
+  resolved by restarting the local backend (in-memory rate-limit counters
+  reset) and testing more economically afterward.
+
+## 14. Next authorized step
+
+Push and open PRs for the pending draft work: `casazium/license`'s
+`admin/get-license-endpoint` branch, and this repo's live-client
+integration (not yet committed as of this writing). After that, the
+license detail page (`/licenses/[key]`) still hasn't had its own
+dedicated UI review pass, unlike login/dashboard/licenses-list - the
+remaining open thread from the page-by-page review.
