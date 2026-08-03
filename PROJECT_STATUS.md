@@ -1273,7 +1273,42 @@ defaults render correctly (today's date, `00:00`, "Eastern (ET)") and
 that submitting a license with an explicit date/time/zone produces the
 correct expiration date on the resulting license.
 
-## 24. Next authorized step
+## 24. Build-time version stamp in both footers (2026-08-03)
+
+Operator asked for a version number somewhere on the console, for a
+reason directly motivated by this session's own Coolify deploy-freshness
+confusion (§22): confirming what's actually running without cross-
+checking commit SHAs by hand. Recommended, and built, both a semver
+label (`package.json`'s `version`, human-friendly) and the git commit
+SHA (always accurate, zero maintenance) rather than picking one -
+semver as the visible text, SHA as a hover tooltip.
+
+Computed once at build time in `next.config.mjs`'s `env` block (`git
+rev-parse --short HEAD`, read via `execSync`, falling back to `'unknown'`
+if `.git` isn't present rather than failing the build) - not at request
+time, since the Docker runner stage never has `.git` available (only
+`.next/standalone`, `public/`, and `.next/static` are copied into it).
+The Dockerfile's builder stage does have it (`COPY . .` happens before
+`.git` would be excluded, and there's no `.dockerignore`), so this works
+for the real Coolify build path, not just local dev.
+
+New `lib/version.ts` (`getAppVersion()`) and `components/VersionStamp.tsx`
+render `v{version}` with `title="commit {sha}"`. Added to both footers -
+`app/login/page.tsx` (previously only rendered when
+`BRANDING_COPYRIGHT_HOLDER` was set; now always renders) and
+`app/(app)/AppShellClient.tsx` (same change, plus the `AppShell` `footer`
+prop is now unconditional rather than `branding.copyrightHolder ?
+{ height: 36 } : undefined`) - separated from the copyright line by a
+middot when both are present.
+
+Verified: `npm run lint` and `npm run build` both clean; build output
+confirmed `APP_VERSION`/`GIT_SHA` baked into `next.config.mjs`'s embedded
+config matched `package.json` and the actual current `HEAD` short SHA
+exactly; a live Playwright walkthrough against a production build
+confirmed both footers render `v0.1.0` with the correct commit in the
+tooltip, on both `/login` and the authenticated app shell.
+
+## 25. Next authorized step
 
 No known open items. Production is live and confirmed working at
 `license.casazium.com` (backed by `license-api.casazium.com`), closing

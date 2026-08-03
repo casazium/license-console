@@ -1,3 +1,6 @@
+import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+
 // style-src needs 'unsafe-inline' - Mantine injects style attributes/tags
 // at runtime, not just external stylesheets. script-src also needs
 // 'unsafe-inline' - verified empirically that without it, Next's own inline
@@ -32,12 +35,35 @@ const CSP = [
   "form-action 'self'",
 ].join('; ');
 
+// APP_VERSION/GIT_SHA are computed once here, at build time, not read at
+// request time - the Docker runner stage never has .git (only .next/
+// standalone, public/, and .next/static are copied into it, see
+// Dockerfile), so this has to happen during `next build` in the builder
+// stage, while the full build context (including .git, via `COPY . .`) is
+// still present. execSync failing (e.g. building from a context without
+// .git) falls back to 'unknown' rather than failing the build - a missing
+// version stamp shouldn't block a deploy.
+function getGitSha() {
+  try {
+    return execSync('git rev-parse --short HEAD', { cwd: import.meta.dirname }).toString().trim();
+  } catch {
+    return 'unknown';
+  }
+}
+
+const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Produces a self-contained .next/standalone build (server.js + only the
   // node_modules actually used) - keeps the Docker image small instead of
   // shipping the full node_modules tree. Required by Dockerfile.
   output: 'standalone',
+
+  env: {
+    APP_VERSION: pkg.version,
+    GIT_SHA: getGitSha(),
+  },
 
   async headers() {
     return [
