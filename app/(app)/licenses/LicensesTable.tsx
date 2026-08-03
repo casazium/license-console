@@ -107,7 +107,21 @@ export function LicensesTable({
               </Badge>
             </Table.Td>
             <Table.Td>{license.issued_to}</Table.Td>
-            <Table.Td>{new Date(license.expires_at).toLocaleDateString()}</Table.Td>
+            {/*
+              Fixed locale + UTC, not the runtime default: this is a
+              'use client' component, so toLocaleDateString() runs once
+              server-side (SSR, using the container's runtime locale) and
+              again client-side during hydration (using the browser's
+              locale/timezone). Left to their defaults, those two commonly
+              disagree - confirmed in production as a real React #418
+              hydration-mismatch crash that unmounted this table's sibling
+              content (the Issue license button) - so this must be
+              deterministic across both environments, not just correctly
+              formatted in either one alone.
+            */}
+            <Table.Td>
+              {new Date(license.expires_at).toLocaleDateString('en-US', { timeZone: 'UTC' })}
+            </Table.Td>
             <Table.Td>
               <Badge
                 color={
