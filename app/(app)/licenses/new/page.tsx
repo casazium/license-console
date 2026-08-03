@@ -6,6 +6,7 @@ import { Button, NumberInput, Stack, TextInput, Title } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { issueLicenseAction } from '../actions';
+import { brandButtonStyle } from '@/components/brandButtonStyle';
 
 type IssueLicenseValues = {
   product_id: string;
@@ -76,7 +77,7 @@ export default function NewLicensePage() {
             {...form.getInputProps('expires_at')}
           />
           <NumberInput label="Max activations" min={1} {...form.getInputProps('max_activations')} />
-          <Button type="submit" loading={submitting}>
+          <Button type="submit" loading={submitting} style={brandButtonStyle}>
             Issue license
           </Button>
         </Stack>
