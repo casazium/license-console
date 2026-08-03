@@ -1325,23 +1325,38 @@ happened to apply at that call site. Each new component since §22 had
 been re-implementing the same formatting inline instead of sharing one
 convention, so the fix drifted out of sync with itself as the app grew.
 
-Extracted `lib/format.ts` (`formatDate`/`formatDateTime`, both fixed to
-`'en-US'`/UTC) and switched all 8 call sites to it - including the 2
-already-correct ones, removing their now-redundant inline comments in
-favor of one shared explanation covering both the hydration-safety
-reason (§22) and the cross-page-consistency reason (this bug) `lib/
-format.ts` itself documents. Every date/time in the app now goes through
-one of these two functions; there's no longer an inline
+Extracted `lib/format.ts` (`formatDate`/`formatDateTime`) and switched
+all 8 call sites to it - including the 2 already-correct ones, removing
+their now-redundant inline comments in favor of one shared explanation
+covering both the hydration-safety reason (§22) and the
+cross-page-consistency reason (this bug) `lib/format.ts` itself
+documents. Every date/time in the app now goes through one of these two
+functions; there's no longer an inline
 `toLocaleString()`/`toLocaleDateString()` call anywhere else in the
 codebase to accidentally re-diverge from.
+
+Follow-up, same session: operator noticed the fix's initial format
+(`'en-US'` locale, e.g. `7/19/2026, 3:52:41 PM`) didn't match the
+"Issue license" form's own `DateInput` (`valueFormat="YYYY-MM-DD"`,
+§23) - a second, narrower inconsistency between the input format and
+the display format. Switched both functions to build from
+`toISOString()` instead of `Intl.DateTimeFormat` options - `YYYY-MM-DD`
+for `formatDate`, `YYYY-MM-DD HH:mm:ss` for `formatDateTime` -
+unambiguous regardless of the reader's own locale, sorts correctly as
+plain text, and now matches the form's own format exactly.
+`toISOString()` is always UTC and always zero-padded, so no
+locale/timeZone options are needed at all anymore.
 
 Verified: `npm run lint` and `npm run build` both clean; a live
 Playwright walkthrough against a production build reproduced the exact
 scenario from the operator's screenshots - the same activation's
-"Activated at" now reads identically (`7/19/2026, 3:52:41 PM`) on both
-the dashboard and its license detail page - and cross-checked a
-"Recently issued" date-only dashboard cell against the matching detail
-page's full timestamp to confirm the date portions agree too.
+"Activated at" now reads identically (`2026-07-19 15:58:47`) on both
+the dashboard and its license detail page - cross-checked a "Recently
+issued" date-only dashboard cell against the matching detail page's
+full timestamp to confirm the date portions agree, and confirmed every
+date/datetime across the dashboard, licenses list, and detail page now
+reads in the same `YYYY-MM-DD`/`YYYY-MM-DD HH:mm:ss` format as the
+"Issue license" form's own date picker.
 
 ## 26. Next authorized step
 

@@ -19,10 +19,17 @@
 // functions rather than calling toLocaleDateString()/toLocaleString()
 // directly, so both properties hold everywhere, not just at whichever
 // call sites happened to get fixed first.
+//
+// YYYY-MM-DD (and YYYY-MM-DD HH:mm:ss for the time variant), not a
+// locale-formatted string: matches the "Issue license" form's DateInput
+// (valueFormat="YYYY-MM-DD"), unambiguous regardless of the reader's own
+// locale, and sorts correctly as plain text. Built from toISOString()
+// rather than Intl.DateTimeFormat options - toISOString() is always UTC
+// and always zero-padded, so no locale/timeZone options are needed here.
 export function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-US', { timeZone: 'UTC' });
+  return new Date(iso).toISOString().slice(0, 10);
 }
 
 export function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString('en-US', { timeZone: 'UTC' });
+  return new Date(iso).toISOString().slice(0, 19).replace('T', ' ');
 }
