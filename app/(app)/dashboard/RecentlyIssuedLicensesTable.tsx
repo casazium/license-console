@@ -3,6 +3,7 @@
 import { Anchor, Stack, Table, Text } from '@mantine/core';
 import Link from 'next/link';
 import type { RecentlyIssuedLicense } from '@/lib/license-client';
+import { formatDate } from '@/lib/format';
 
 export function RecentlyIssuedLicensesTable({ licenses }: { licenses: RecentlyIssuedLicense[] }) {
   if (licenses.length === 0) {
@@ -40,7 +41,7 @@ export function RecentlyIssuedLicensesTable({ licenses }: { licenses: RecentlyIs
             <Table.Td>{license.product_id}</Table.Td>
             <Table.Td>{license.tier}</Table.Td>
             <Table.Td>{license.issued_to}</Table.Td>
-            <Table.Td>{new Date(license.issued_at).toLocaleDateString()}</Table.Td>
+            <Table.Td>{formatDate(license.issued_at)}</Table.Td>
           </Table.Tr>
         ))}
       </Table.Tbody>

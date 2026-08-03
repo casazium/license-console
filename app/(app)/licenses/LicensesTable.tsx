@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { Anchor, Badge, Group, Stack, Table, Text, UnstyledButton } from '@mantine/core';
 import Link from 'next/link';
 import type { LicenseListItem } from '@/lib/license-client';
+import { formatDate } from '@/lib/format';
 
 type SortColumn = 'key' | 'product_id' | 'tier' | 'status' | 'issued_to' | 'expires_at' | 'seats';
 type SortDirection = 'asc' | 'desc';
@@ -107,21 +108,7 @@ export function LicensesTable({
               </Badge>
             </Table.Td>
             <Table.Td>{license.issued_to}</Table.Td>
-            {/*
-              Fixed locale + UTC, not the runtime default: this is a
-              'use client' component, so toLocaleDateString() runs once
-              server-side (SSR, using the container's runtime locale) and
-              again client-side during hydration (using the browser's
-              locale/timezone). Left to their defaults, those two commonly
-              disagree - confirmed in production as a real React #418
-              hydration-mismatch crash that unmounted this table's sibling
-              content (the Issue license button) - so this must be
-              deterministic across both environments, not just correctly
-              formatted in either one alone.
-            */}
-            <Table.Td>
-              {new Date(license.expires_at).toLocaleDateString('en-US', { timeZone: 'UTC' })}
-            </Table.Td>
+            <Table.Td>{formatDate(license.expires_at)}</Table.Td>
             <Table.Td>
               <Badge
                 color={

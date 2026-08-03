@@ -1308,7 +1308,42 @@ exactly; a live Playwright walkthrough against a production build
 confirmed both footers render `v0.1.0` with the correct commit in the
 tooltip, on both `/login` and the authenticated app shell.
 
-## 25. Next authorized step
+## 25. Consistent date/time formatting via a shared helper (2026-08-03)
+
+Operator spotted a real bug by comparing two screenshots: the same
+activation's "Activated at" showed `1:06:11 AM` on the dashboard and
+`5:06:11 AM` on that license's own detail page - a 4-hour gap for one
+event. Root cause, confirmed by grepping every date-display call site in
+the app: only 2 of 8 (`LicensesTable.tsx`'s "Expires" column and
+`LicenseActions.tsx`'s `ActivationsTable`, both from the §22 hydration-
+mismatch fix) were pinned to `'en-US'`/UTC. The other 6 - all three
+dashboard tables (`RecentActivationsTable`, `ExpiringLicensesTable`,
+`RecentlyIssuedLicensesTable`) and the license detail page's own "Issued
+at"/"Expires at"/"Revoked at" lines - called `toLocaleString()`/
+`toLocaleDateString()` unpinned, rendering in whichever locale/timezone
+happened to apply at that call site. Each new component since §22 had
+been re-implementing the same formatting inline instead of sharing one
+convention, so the fix drifted out of sync with itself as the app grew.
+
+Extracted `lib/format.ts` (`formatDate`/`formatDateTime`, both fixed to
+`'en-US'`/UTC) and switched all 8 call sites to it - including the 2
+already-correct ones, removing their now-redundant inline comments in
+favor of one shared explanation covering both the hydration-safety
+reason (§22) and the cross-page-consistency reason (this bug) `lib/
+format.ts` itself documents. Every date/time in the app now goes through
+one of these two functions; there's no longer an inline
+`toLocaleString()`/`toLocaleDateString()` call anywhere else in the
+codebase to accidentally re-diverge from.
+
+Verified: `npm run lint` and `npm run build` both clean; a live
+Playwright walkthrough against a production build reproduced the exact
+scenario from the operator's screenshots - the same activation's
+"Activated at" now reads identically (`7/19/2026, 3:52:41 PM`) on both
+the dashboard and its license detail page - and cross-checked a
+"Recently issued" date-only dashboard cell against the matching detail
+page's full timestamp to confirm the date portions agree too.
+
+## 26. Next authorized step
 
 No known open items. Production is live and confirmed working at
 `license.casazium.com` (backed by `license-api.casazium.com`), closing
