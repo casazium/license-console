@@ -30,6 +30,14 @@ export function formatDate(iso: string): string {
   return new Date(iso).toISOString().slice(0, 10);
 }
 
+// "UTC" suffix, not left implicit: operator-reported gap - a bare
+// timestamp like "2026-08-03 05:06:11" doesn't say what zone it's in,
+// which reads as the viewer's own local time by default (it isn't - it's
+// always UTC, see the module doc above). This is a stopgap, not the real
+// fix - the real fix is a per-admin timezone preference (a profile
+// settings page, not built yet), so every admin sees times in their own
+// zone instead of having to mentally convert from UTC. Until then, at
+// least label what zone is actually shown so it isn't ambiguous.
 export function formatDateTime(iso: string): string {
-  return new Date(iso).toISOString().slice(0, 19).replace('T', ' ');
+  return `${new Date(iso).toISOString().slice(0, 19).replace('T', ' ')} UTC`;
 }
