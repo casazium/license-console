@@ -1,5 +1,6 @@
 import { Badge, Code, Group, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import { getLicense, listActivations } from '@/lib/license-client';
+import { formatDateTime } from '@/lib/format';
 import { MockDataNotice } from '@/components/MockDataNotice';
 import { ActivationsTable, RevokeDeleteActions } from './LicenseActions';
 
@@ -40,10 +41,10 @@ export default async function LicenseDetailPage({
           <b>Issued to:</b> {license.issued_to}
         </Text>
         <Text size="sm">
-          <b>Issued at:</b> {new Date(license.issued_at).toLocaleString()}
+          <b>Issued at:</b> {formatDateTime(license.issued_at)}
         </Text>
         <Text size="sm">
-          <b>Expires at:</b> {new Date(license.expires_at).toLocaleString()}
+          <b>Expires at:</b> {formatDateTime(license.expires_at)}
         </Text>
         <Group gap={6}>
           <Text size="sm" fw={700}>
@@ -70,7 +71,7 @@ export default async function LicenseDetailPage({
         </Text>
         {license.revoked_at && (
           <Text size="sm">
-            <b>Revoked at:</b> {new Date(license.revoked_at).toLocaleString()}
+            <b>Revoked at:</b> {formatDateTime(license.revoked_at)}
           </Text>
         )}
       </SimpleGrid>

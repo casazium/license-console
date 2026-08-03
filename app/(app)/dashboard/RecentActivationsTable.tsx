@@ -2,6 +2,7 @@
 
 import { Table } from '@mantine/core';
 import type { RecentActivation } from '@/lib/license-client';
+import { formatDateTime } from '@/lib/format';
 
 export function RecentActivationsTable({
   recentActivations,
@@ -22,7 +23,7 @@ export function RecentActivationsTable({
           <Table.Tr key={`${activation.key}-${activation.instance_id}`}>
             <Table.Td>{activation.key}</Table.Td>
             <Table.Td>{activation.instance_id}</Table.Td>
-            <Table.Td>{new Date(activation.activated_at).toLocaleString()}</Table.Td>
+            <Table.Td>{formatDateTime(activation.activated_at)}</Table.Td>
           </Table.Tr>
         ))}
       </Table.Tbody>

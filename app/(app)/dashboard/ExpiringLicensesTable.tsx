@@ -3,6 +3,7 @@
 import { Anchor, Table, Text } from '@mantine/core';
 import Link from 'next/link';
 import type { ExpiringLicense } from '@/lib/license-client';
+import { formatDate } from '@/lib/format';
 
 export function ExpiringLicensesTable({ licenses }: { licenses: ExpiringLicense[] }) {
   if (licenses.length === 0) {
@@ -38,7 +39,7 @@ export function ExpiringLicensesTable({ licenses }: { licenses: ExpiringLicense[
             <Table.Td>{license.product_id}</Table.Td>
             <Table.Td>{license.tier}</Table.Td>
             <Table.Td>{license.issued_to}</Table.Td>
-            <Table.Td>{new Date(license.expires_at).toLocaleDateString()}</Table.Td>
+            <Table.Td>{formatDate(license.expires_at)}</Table.Td>
           </Table.Tr>
         ))}
       </Table.Tbody>

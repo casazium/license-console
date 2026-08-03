@@ -6,6 +6,7 @@ import { Button, Group, Modal, Table, Text } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import type { Activation } from '@/lib/license-client';
+import { formatDateTime } from '@/lib/format';
 import { brandTextButtonStyle } from '@/components/brandButtonStyle';
 import {
   deleteLicenseAction,
@@ -115,17 +116,7 @@ export function ActivationsTable({
         {activations.map((activation) => (
           <Table.Tr key={activation.instance_id}>
             <Table.Td>{activation.instance_id}</Table.Td>
-            {/*
-              Fixed locale + UTC - see the matching comment in
-              LicensesTable.tsx. Same bug: this is a 'use client'
-              component, so an un-pinned toLocaleString() runs once with
-              the server's runtime locale (SSR) and again with the
-              browser's locale/timezone (hydration), which can disagree
-              and throw a React #418 hydration-mismatch crash.
-            */}
-            <Table.Td>
-              {new Date(activation.activated_at).toLocaleString('en-US', { timeZone: 'UTC' })}
-            </Table.Td>
+            <Table.Td>{formatDateTime(activation.activated_at)}</Table.Td>
             <Table.Td>
               <Button
                 size="xs"
