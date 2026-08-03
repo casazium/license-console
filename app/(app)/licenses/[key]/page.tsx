@@ -1,7 +1,9 @@
 import { Badge, Code, Group, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import { getLicense, listActivations } from '@/lib/license-client';
 import { formatDateTime } from '@/lib/format';
+import { isRateLimited } from '@/lib/errors';
 import { MockDataNotice } from '@/components/MockDataNotice';
+import { RateLimitNotice } from '@/components/RateLimitNotice';
 import { ActivationsTable, RevokeDeleteActions } from './LicenseActions';
 
 export const dynamic = 'force-dynamic';
@@ -12,7 +14,24 @@ export default async function LicenseDetailPage({
   params: Promise<{ key: string }>;
 }) {
   const { key } = await params;
-  const [license, activations] = await Promise.all([getLicense(key), listActivations(key)]);
+
+  // See dashboard/page.tsx's matching comment - only a rate-limited
+  // admin bucket gets a friendly inline message; any other error still
+  // throws unchanged.
+  let license, activations;
+  try {
+    [license, activations] = await Promise.all([getLicense(key), listActivations(key)]);
+  } catch (err) {
+    if (isRateLimited(err)) {
+      return (
+        <Stack>
+          <Title order={2}>{key}</Title>
+          <RateLimitNotice />
+        </Stack>
+      );
+    }
+    throw err;
+  }
 
   if (!license) {
     return (

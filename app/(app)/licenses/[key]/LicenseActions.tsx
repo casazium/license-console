@@ -7,6 +7,7 @@ import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import type { Activation } from '@/lib/license-client';
 import { formatDateTime } from '@/lib/format';
+import { notifyRateLimited } from '@/lib/notify';
 import { brandTextButtonStyle } from '@/components/brandButtonStyle';
 import {
   deleteLicenseAction,
@@ -28,22 +29,49 @@ export function RevokeDeleteActions({
 
   async function handleToggleRevoke() {
     setBusy(true);
-    await setLicenseRevokedAction(licenseKey, status === 'active');
-    notifications.show({
-      color: status === 'active' ? 'orange' : 'green',
-      title: status === 'active' ? 'License revoked' : 'License unrevoked',
-      message: licenseKey,
-    });
-    router.refresh();
-    setBusy(false);
+    try {
+      const result = await setLicenseRevokedAction(licenseKey, status === 'active');
+      if (!result.ok) {
+        notifyRateLimited();
+        return;
+      }
+      notifications.show({
+        color: status === 'active' ? 'orange' : 'green',
+        title: status === 'active' ? 'License revoked' : 'License unrevoked',
+        message: licenseKey,
+      });
+      router.refresh();
+    } catch {
+      notifications.show({
+        color: 'red',
+        title: status === 'active' ? 'Failed to revoke license' : 'Failed to unrevoke license',
+        message: 'Something went wrong. Please try again.',
+      });
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function handleDelete() {
     closeDeleteModal();
     setBusy(true);
-    await deleteLicenseAction(licenseKey);
-    notifications.show({ color: 'red', title: 'License deleted', message: licenseKey });
-    router.push('/licenses');
+    try {
+      const result = await deleteLicenseAction(licenseKey);
+      if (!result.ok) {
+        notifyRateLimited();
+        setBusy(false);
+        return;
+      }
+      notifications.show({ color: 'red', title: 'License deleted', message: licenseKey });
+      router.push('/licenses');
+    } catch {
+      notifications.show({
+        color: 'red',
+        title: 'Failed to delete license',
+        message: 'Something went wrong. Please try again.',
+      });
+      setBusy(false);
+    }
   }
 
   return (
@@ -85,18 +113,31 @@ export function ActivationsTable({
 
   async function handleReissue(instanceId: string) {
     setBusyInstance(instanceId);
-    const result = await reissueActivationTokenAction(licenseKey, instanceId);
-    setBusyInstance(null);
-    if (!result) {
-      notifications.show({ color: 'red', title: 'Reissue failed', message: instanceId });
-      return;
+    try {
+      const result = await reissueActivationTokenAction(licenseKey, instanceId);
+      if (!result.ok) {
+        notifyRateLimited();
+        return;
+      }
+      if (!result.data) {
+        notifications.show({ color: 'red', title: 'Reissue failed', message: instanceId });
+        return;
+      }
+      notifications.show({
+        color: 'blue',
+        title: 'Token reissued',
+        message: result.data.token,
+        autoClose: false,
+      });
+    } catch {
+      notifications.show({
+        color: 'red',
+        title: 'Reissue failed',
+        message: 'Something went wrong. Please try again.',
+      });
+    } finally {
+      setBusyInstance(null);
     }
-    notifications.show({
-      color: 'blue',
-      title: 'Token reissued',
-      message: result.token,
-      autoClose: false,
-    });
   }
 
   if (activations.length === 0) {

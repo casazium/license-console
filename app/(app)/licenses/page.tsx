@@ -1,6 +1,8 @@
 import { Group, Text, Title } from '@mantine/core';
 import { listLicenses } from '@/lib/license-client';
+import { isRateLimited } from '@/lib/errors';
 import { MockDataNotice } from '@/components/MockDataNotice';
+import { RateLimitNotice } from '@/components/RateLimitNotice';
 import { IssueLicenseButton } from './IssueLicenseButton';
 import { LicensesFilters } from './LicensesFilters';
 import { LicensesPagination } from './LicensesPagination';
@@ -21,13 +23,33 @@ export default async function LicensesPage({
   const productId = params.product_id?.trim() || undefined;
   const hasFilters = Boolean(status || productId);
 
-  const { licenses, total } = await listLicenses({
-    status,
-    product_id: productId,
-    limit: PAGE_SIZE,
-    offset: (page - 1) * PAGE_SIZE,
-  });
+  // See dashboard/page.tsx's matching comment - only a rate-limited
+  // admin bucket gets a friendly inline message; any other error still
+  // throws unchanged.
+  let listResult;
+  try {
+    listResult = await listLicenses({
+      status,
+      product_id: productId,
+      limit: PAGE_SIZE,
+      offset: (page - 1) * PAGE_SIZE,
+    });
+  } catch (err) {
+    if (isRateLimited(err)) {
+      return (
+        <>
+          <Group justify="space-between" mb="md">
+            <Title order={2}>Licenses</Title>
+            <IssueLicenseButton />
+          </Group>
+          <RateLimitNotice />
+        </>
+      );
+    }
+    throw err;
+  }
 
+  const { licenses, total } = listResult;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (

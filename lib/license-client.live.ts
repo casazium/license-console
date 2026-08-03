@@ -20,6 +20,7 @@
  */
 
 import { cache } from 'react';
+import { LicenseApiError } from './errors';
 import type {
   Activation,
   DashboardStats,
@@ -82,7 +83,7 @@ async function fetchRawLicenses(params: {
 
   const res = await liveFetch(`/list-licenses?${query.toString()}`);
   if (!res.ok) {
-    throw new Error(`Failed to list licenses: ${res.status} ${res.statusText}`);
+    throw new LicenseApiError(`Failed to list licenses: ${res.status} ${res.statusText}`, res.status);
   }
   return res.json();
 }
@@ -123,7 +124,7 @@ export async function getLicense(key: string): Promise<License | null> {
   const res = await liveFetch(`/admin/license/${encodeURIComponent(key)}`);
   if (res.status === 404) return null;
   if (!res.ok) {
-    throw new Error(`Failed to get license: ${res.status} ${res.statusText}`);
+    throw new LicenseApiError(`Failed to get license: ${res.status} ${res.statusText}`, res.status);
   }
   return res.json();
 }
@@ -134,7 +135,7 @@ export async function issueLicense(input: IssueLicenseInput): Promise<{ key: str
     body: JSON.stringify(input),
   });
   if (!res.ok) {
-    throw new Error(`Failed to issue license: ${res.status} ${res.statusText}`);
+    throw new LicenseApiError(`Failed to issue license: ${res.status} ${res.statusText}`, res.status);
   }
   const data: { key: string } = await res.json();
   return { key: data.key };
@@ -149,7 +150,10 @@ export async function setLicenseRevoked(key: string, revoked: boolean): Promise<
   // successful no-op rather than an error, since the end result (the
   // license's status matches what was requested) is the same either way.
   if (!res.ok && res.status !== 409) {
-    throw new Error(`Failed to update license status: ${res.status} ${res.statusText}`);
+    throw new LicenseApiError(
+      `Failed to update license status: ${res.status} ${res.statusText}`,
+      res.status,
+    );
   }
 }
 
@@ -160,7 +164,7 @@ export async function deleteLicense(key: string): Promise<boolean> {
   });
   if (res.status === 404) return false;
   if (!res.ok) {
-    throw new Error(`Failed to delete license: ${res.status} ${res.statusText}`);
+    throw new LicenseApiError(`Failed to delete license: ${res.status} ${res.statusText}`, res.status);
   }
   return true;
 }
@@ -169,7 +173,7 @@ export async function listActivations(key: string): Promise<Activation[]> {
   const res = await liveFetch(`/list-activations/${encodeURIComponent(key)}`);
   if (res.status === 404) return [];
   if (!res.ok) {
-    throw new Error(`Failed to list activations: ${res.status} ${res.statusText}`);
+    throw new LicenseApiError(`Failed to list activations: ${res.status} ${res.statusText}`, res.status);
   }
   const data: { key: string; activations: Activation[] } = await res.json();
   return data.activations;
@@ -185,7 +189,10 @@ export async function reissueActivationToken(
   });
   if (res.status === 404) return null;
   if (!res.ok) {
-    throw new Error(`Failed to reissue activation token: ${res.status} ${res.statusText}`);
+    throw new LicenseApiError(
+      `Failed to reissue activation token: ${res.status} ${res.statusText}`,
+      res.status,
+    );
   }
   const data: { reissued: boolean; token: string } = await res.json();
   return { token: data.token };
@@ -194,7 +201,10 @@ export async function reissueActivationToken(
 export async function getDashboardStats(): Promise<DashboardStats> {
   const res = await liveFetch('/admin/stats');
   if (!res.ok) {
-    throw new Error(`Failed to get dashboard stats: ${res.status} ${res.statusText}`);
+    throw new LicenseApiError(
+      `Failed to get dashboard stats: ${res.status} ${res.statusText}`,
+      res.status,
+    );
   }
   const data: {
     activeLicenses: number;
@@ -215,7 +225,10 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 export async function getRecentActivations(limit = 5): Promise<RecentActivation[]> {
   const res = await liveFetch(`/recent-activations?limit=${limit}`);
   if (!res.ok) {
-    throw new Error(`Failed to get recent activations: ${res.status} ${res.statusText}`);
+    throw new LicenseApiError(
+      `Failed to get recent activations: ${res.status} ${res.statusText}`,
+      res.status,
+    );
   }
   return res.json();
 }
