@@ -115,7 +115,17 @@ export function ActivationsTable({
         {activations.map((activation) => (
           <Table.Tr key={activation.instance_id}>
             <Table.Td>{activation.instance_id}</Table.Td>
-            <Table.Td>{new Date(activation.activated_at).toLocaleString()}</Table.Td>
+            {/*
+              Fixed locale + UTC - see the matching comment in
+              LicensesTable.tsx. Same bug: this is a 'use client'
+              component, so an un-pinned toLocaleString() runs once with
+              the server's runtime locale (SSR) and again with the
+              browser's locale/timezone (hydration), which can disagree
+              and throw a React #418 hydration-mismatch crash.
+            */}
+            <Table.Td>
+              {new Date(activation.activated_at).toLocaleString('en-US', { timeZone: 'UTC' })}
+            </Table.Td>
             <Table.Td>
               <Button
                 size="xs"
