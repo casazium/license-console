@@ -6,6 +6,7 @@ import {
   issueLicense,
   reissueActivationToken,
   setLicenseRevoked,
+  updateLicenseNotes,
   type IssueLicenseInput,
 } from '@/lib/license-client';
 import { isRateLimited } from '@/lib/errors';
@@ -60,6 +61,21 @@ export async function deleteLicenseAction(key: string): Promise<ActionResult<boo
     revalidatePath('/licenses');
     revalidatePath('/dashboard');
     return { ok: true, data: deleted };
+  } catch (err) {
+    if (isRateLimited(err)) return { ok: false, rateLimited: true };
+    throw err;
+  }
+}
+
+export async function updateLicenseNotesAction(
+  key: string,
+  notes: string,
+): Promise<ActionResult<void>> {
+  await requireSessionForAction();
+  try {
+    await updateLicenseNotes(key, notes);
+    revalidatePath(`/licenses/${key}`);
+    return { ok: true, data: undefined };
   } catch (err) {
     if (isRateLimited(err)) return { ok: false, rateLimited: true };
     throw err;

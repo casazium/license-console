@@ -41,6 +41,7 @@ function seedStore(): Store {
         usage_count: 421,
         max_activations: 3,
         revoked_at: null,
+        notes: 'Enterprise pilot - upgraded from trial 2026-05-20',
       },
       {
         key: 'CASZ-DEMO-BETA-0002',
@@ -54,6 +55,7 @@ function seedStore(): Store {
         usage_count: 998,
         max_activations: 1,
         revoked_at: null,
+        notes: null,
       },
       {
         key: 'CASZ-DEMO-GAMMA-0003',
@@ -67,6 +69,7 @@ function seedStore(): Store {
         usage_count: 100,
         max_activations: 1,
         revoked_at: '2026-04-02T00:00:00Z',
+        notes: 'Churned - non-payment. Do not renew without finance sign-off.',
       },
       {
         // Demonstrates the "expiring soon" dashboard widget - relative to
@@ -82,6 +85,7 @@ function seedStore(): Store {
         usage_count: 3120,
         max_activations: 2,
         revoked_at: null,
+        notes: null,
       },
       ...synthetic.licenses,
     ],
@@ -136,6 +140,7 @@ function generateSyntheticLicenses(count: number): { licenses: License[]; activa
       usage_count: 50 * (i % 20),
       max_activations: maxActivations,
       revoked_at: revoked ? new Date(issuedAt + 2 * day).toISOString() : null,
+      notes: i % 5 === 0 ? 'Sample note - resold via reseller partner' : null,
     });
 
     if (used > 0) {
@@ -202,6 +207,7 @@ export async function issueLicense(input: IssueLicenseInput): Promise<{ key: str
     usage_count: 0,
     max_activations: input.max_activations,
     revoked_at: null,
+    notes: input.notes || null,
   };
   getStore().licenses.push(license);
   return { key: license.key };
@@ -212,6 +218,12 @@ export async function setLicenseRevoked(key: string, revoked: boolean): Promise<
   if (!license) return;
   license.status = revoked ? 'revoked' : 'active';
   license.revoked_at = revoked ? new Date().toISOString() : null;
+}
+
+export async function updateLicenseNotes(key: string, notes: string): Promise<void> {
+  const license = getStore().licenses.find((entry) => entry.key === key);
+  if (!license) return;
+  license.notes = notes || null;
 }
 
 export async function deleteLicense(key: string): Promise<boolean> {

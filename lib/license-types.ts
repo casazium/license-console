@@ -16,6 +16,14 @@ export type License = {
   usage_count: number;
   max_activations: number;
   revoked_at: string | null;
+  // Freeform operator context ("renewed via phone call", "beta
+  // customer") - editable independently of issuing the license (see
+  // updateLicenseNotes below), not just set once at creation. Not part
+  // of RawLicenseListRow/LicenseListItem below - deliberately left out
+  // of GET /list-licenses's per-row payload on the backend, since that's
+  // a fixed page of table rows and notes is unbounded free text with no
+  // use there. Shown/edited on the license detail page instead.
+  notes: string | null;
 };
 
 export type Activation = {
@@ -66,6 +74,7 @@ export type IssueLicenseInput = {
   issued_to: string;
   expires_at: string;
   max_activations: number;
+  notes?: string;
 };
 
 // GET /list-licenses returns activations_count per row directly (a

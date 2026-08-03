@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, Group, NumberInput, Select, Stack, TextInput, Title } from '@mantine/core';
+import { Button, Group, NumberInput, Select, Stack, Textarea, TextInput, Title } from '@mantine/core';
 import { DateInput, TimeInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
@@ -19,6 +19,7 @@ type IssueLicenseValues = {
   expires_time: string;
   expires_timezone: string;
   max_activations: number;
+  notes: string;
 };
 
 function todayDateString(): string {
@@ -41,6 +42,7 @@ export default function NewLicensePage() {
       expires_time: '00:00',
       expires_timezone: 'America/New_York',
       max_activations: 1,
+      notes: '',
     },
     validate: {
       product_id: (value) => (value.trim() ? null : 'Required'),
@@ -64,6 +66,7 @@ export default function NewLicensePage() {
           values.expires_timezone,
         ),
         max_activations: values.max_activations,
+        notes: values.notes.trim() || undefined,
       });
       if (!result.ok) {
         notifyRateLimited();
@@ -112,6 +115,13 @@ export default function NewLicensePage() {
             {...form.getInputProps('expires_timezone')}
           />
           <NumberInput label="Max activations" min={1} {...form.getInputProps('max_activations')} />
+          <Textarea
+            label="Notes"
+            description="Optional internal context - visible to admins only, editable later"
+            autosize
+            minRows={2}
+            {...form.getInputProps('notes')}
+          />
           <Button type="submit" loading={submitting} style={brandButtonStyle}>
             Issue license
           </Button>

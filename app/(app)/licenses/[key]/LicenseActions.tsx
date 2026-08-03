@@ -2,17 +2,18 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, Group, Modal, Table, Text } from '@mantine/core';
+import { Button, Group, Modal, Stack, Table, Text, Textarea } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import type { Activation } from '@/lib/license-client';
 import { formatDateTime } from '@/lib/format';
 import { notifyRateLimited } from '@/lib/notify';
-import { brandTextButtonStyle } from '@/components/brandButtonStyle';
+import { brandButtonStyle, brandTextButtonStyle } from '@/components/brandButtonStyle';
 import {
   deleteLicenseAction,
   reissueActivationTokenAction,
   setLicenseRevokedAction,
+  updateLicenseNotesAction,
 } from '../actions';
 
 export function RevokeDeleteActions({
@@ -99,6 +100,91 @@ export function RevokeDeleteActions({
         </Group>
       </Modal>
     </>
+  );
+}
+
+export function NotesEditor({
+  licenseKey,
+  notes: initialNotes,
+}: {
+  licenseKey: string;
+  notes: string | null;
+}) {
+  const [notes, setNotes] = useState(initialNotes);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(initialNotes ?? '');
+  const [saving, setSaving] = useState(false);
+
+  function handleCancel() {
+    setDraft(notes ?? '');
+    setEditing(false);
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const result = await updateLicenseNotesAction(licenseKey, draft);
+      if (!result.ok) {
+        notifyRateLimited();
+        return;
+      }
+      setNotes(draft || null);
+      setEditing(false);
+      notifications.show({ color: 'green', title: 'Notes saved', message: licenseKey });
+    } catch {
+      notifications.show({
+        color: 'red',
+        title: 'Failed to save notes',
+        message: 'Something went wrong. Please try again.',
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (editing) {
+    return (
+      <Stack gap={4}>
+        <Text size="sm" fw={700}>
+          Notes
+        </Text>
+        <Textarea
+          autosize
+          minRows={2}
+          value={draft}
+          onChange={(event) => setDraft(event.currentTarget.value)}
+        />
+        <Group gap="xs">
+          <Button size="xs" loading={saving} onClick={handleSave} style={brandButtonStyle}>
+            Save
+          </Button>
+          <Button size="xs" variant="default" disabled={saving} onClick={handleCancel}>
+            Cancel
+          </Button>
+        </Group>
+      </Stack>
+    );
+  }
+
+  return (
+    <Stack gap={4}>
+      <Group justify="space-between">
+        <Text size="sm" fw={700}>
+          Notes
+        </Text>
+        <Button
+          size="xs"
+          variant="subtle"
+          style={brandTextButtonStyle}
+          onClick={() => setEditing(true)}
+        >
+          {notes ? 'Edit' : 'Add note'}
+        </Button>
+      </Group>
+      <Text size="sm" c={notes ? undefined : 'dimmed'} style={{ whiteSpace: 'pre-wrap' }}>
+        {notes || 'No notes yet.'}
+      </Text>
+    </Stack>
   );
 }
 
