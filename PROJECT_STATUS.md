@@ -978,11 +978,264 @@ packaging) - not a deliberate convention change, just how this pass
 happened to go. Worth reverting to branch+PR for the next code change
 unless the operator says otherwise.
 
-## 18. Next authorized step
+## 18. Pre-deployment security audit (2026-08-02)
 
-Operator creates the DNS records (`license.casazium.com`,
-`license-api.casazium.com`, pointed at their respective VPS IPs) and the
-two Coolify resources, using the compose files merged in §14/§15 above
-and each file's own header comment for the required env var list. After
-that: a real `docker build` once registry access is available, to close
-the one verification gap noted in §14 - the last known open item.
+A pre-deployment security audit covered this repo alongside
+`casazium/license`'s own H1/H2 backend findings (see that repo's own
+history). Three fixes, all committed directly to `main` (`e1d44cd`,
+`b715a98`, `2b08863`) - continuing, not reverting, §17's departure from
+the branch+PR convention used through §9-§14.
+
+- **Brute-force login protection** (`e1d44cd`). The login route had no
+  rate limiting at all - verified live, 20 consecutive wrong-password
+  attempts all returned plain 401s with no throttling. One shared admin
+  password with unlimited online guessing meant the whole system's
+  security reduced to that password's entropy. Added a 5-attempts/15-
+  minute in-memory rate limiter keyed on the client's forwarded IP
+  (`lib/login-rate-limit.ts` - adequate for this single-replica
+  deployment; a multi-replica one would need a shared store instead),
+  plus constant-time credential comparison in `lib/auth.ts` to close the
+  secondary timing side-channel on the character-by-character `!==`
+  check. Verified live against the audit's exact test: 20 consecutive
+  wrong attempts now block after the 5th (401×5, 429×15); lockout also
+  blocks the correct password while active; `Retry-After` header
+  present; a fresh client is unaffected; success resets the bucket.
+- **Non-root container user** (`b715a98`). The runner stage ran as root.
+  The Next.js standalone output already prunes to only the
+  `node_modules` subset the server bundle needs, so no dependency
+  trimming was needed - just `--chown=node:node` on the copy steps and
+  `USER node`. Server is stateless (no writable data dir), so no
+  separate `chown` step either. Not verified: actual non-root runtime
+  permission behavior (no Docker daemon available in that session) -
+  functional behavior confirmed, container-level permission enforcement
+  was not (later superseded by real Coolify deployment - see §22).
+- **Four medium-priority findings** (`2b08863`):
+  - Server actions (`app/(app)/licenses/actions.ts`) had no auth check
+    of their own - `proxy.ts`'s middleware never runs for action
+    invocations, only page/route navigation. Not currently exploitable
+    on Next 16.2.12 (action IDs are scoped to the pages that bundle
+    them), but that's a Next internal, not a guarantee. Added
+    `requireSessionForAction()` (`lib/session.ts`) to all four actions.
+  - `getBackendMode()` silently resolved to mock mode whenever
+    `LICENSE_API_URL`/`LICENSE_ADMIN_API_KEY` were both unset - the
+    documented way to deploy an intentional standalone/demo instance,
+    but indistinguishable from an operator forgetting to configure live
+    mode. Now requires an explicit `LICENSE_STANDALONE_MODE=true` in
+    production to confirm mock mode was intentional; dev/test keep the
+    zero-config default.
+  - `next.config.mjs` defined no security headers at all. Added
+    `X-Frame-Options`, `X-Content-Type-Options`, HSTS, `Referrer-Policy`,
+    and a CSP. The first CSP attempt (`script-src 'self'`) broke the app
+    entirely - Next's own inline hydration/bootstrap scripts need inline
+    execution, so login hung forever with the script silently blocked.
+    Relaxed to `'unsafe-inline'` for both `script-src` and `style-src`
+    (the latter for Mantine's runtime style injection); a fully strict
+    `script-src` would need per-request nonces, a much larger change
+    than this pass (the dev-mode follow-up to this CSP is §19's
+    `a27063b`).
+  - `SESSION_SECRET` accepted any non-empty string. Now requires at
+    least 32 characters.
+
+  Verified together against a real production standalone server
+  (`node .next/standalone/server.js`, not dev mode, since the mode-fix
+  is production-gated): full login → dashboard → licenses walkthrough
+  with zero console errors after the CSP fix; `LICENSE_STANDALONE_MODE`
+  fail-loud (missing) and fail-safe (present) behavior both confirmed
+  live; security headers present on responses; a real authenticated
+  revoke action still works end-to-end with the new action guard in
+  place; an unauthenticated direct POST to a real extracted action ID
+  is caught (redirected to `/login`).
+
+## 19. Dependency, dev-environment, and standalone-server fixes (2026-08-03)
+
+Four independent fixes, each merged as its own PR (`#10`-`#13`):
+
+- **`#10` - npm audit overrides.** `npm audit` flagged 3 high-severity
+  findings, all rooted in `next@16.2.12` (the latest published stable
+  release, so no version bump was available): its internally
+  exact-pinned `postcss@8.4.31` (XSS/path traversal advisories) and its
+  optional dependency `sharp@^0.34.5` (inherited libvips CVEs). Added
+  root-level `overrides` forcing the already-patched `postcss@^8.5.25`
+  and a patched `sharp@^0.35.3` across the whole tree, including next's
+  own vendored copies. `next/image` (the only consumer of `sharp`) isn't
+  used anywhere in this app (`components/BrandLogo.tsx` uses a plain
+  `<img>`), so this was precautionary rather than closing an active
+  exposure. Verified: `npm audit` reports 0 vulnerabilities, build and
+  lint both clean.
+- **`#11` - CSP eval() scoped out of development.** §18's CSP applied
+  `script-src 'self' 'unsafe-inline'` unconditionally, which silently
+  broke local development - Next's dev server (Fast Refresh, dev-mode
+  stack traces) calls `eval()` to do its job, and the browser blocked it
+  ("eval() is not supported in this environment"). Next never calls
+  `eval()` in a production build, so `'unsafe-eval'` is now scoped to
+  non-production via `NODE_ENV`, leaving the production policy
+  unchanged. Verified: dev server's CSP header includes `'unsafe-eval'`;
+  a production build + `npm start` still serves the original, stricter
+  policy without it.
+- **`#12` - `npm run start` fixed for `output: standalone`.**
+  `next.config.mjs` sets `output: 'standalone'` (required by the
+  Dockerfile), which `next start` doesn't support - it printed a warning
+  and served an incomplete app, since standalone builds intentionally
+  omit `public/` and `.next/static`. Added a postbuild step
+  (`scripts/copy-standalone-assets.mjs`, `fs.cpSync`-based so it works
+  on any OS) that copies both into `.next/standalone/`, and pointed
+  `start` at `node .next/standalone/server.js` directly. Docker was
+  unaffected - its own multi-stage build already copies both from their
+  original locations independently. Verified: `npm run build && npm run
+  start` boots cleanly with no standalone warning, `GET /login` returns
+  200 with all security headers intact.
+- **`#13` - `.env` files copied into the standalone output.** Follow-up
+  to `#12`: `.next/standalone/server.js` does `process.chdir(__dirname)`
+  before Next's own env-file loading runs, so `.env.local` (and
+  `.env`/`.env.production`/`.env.production.local`) at the project root
+  were invisible to it - `ADMIN_UI_USERNAME`/`ADMIN_UI_PASSWORD`/
+  `SESSION_SECRET` etc. all silently stopped loading even though they
+  were set correctly. Reproduced directly: with a real `.env.local`
+  present, login returned 500 ("Missing required environment variable:
+  ADMIN_UI_USERNAME or ADMIN_UI_PASSWORD"). Fixed by copying Next's
+  production env-file set into `.next/standalone/` alongside
+  `server.js`. Verified: the same login now returns 200 with a session
+  cookie, using only `.env.local` (no shell-exported vars).
+
+## 20. Backend N+1 fix wired in (2026-08-03)
+
+`#14`. Follow-up to `casazium/license`'s
+`perf/list-licenses-activations-count`: `GET /list-licenses` now returns
+`activations_count` per row (a server-side correlated subquery), so
+`listLicenses()` and `getLicensesNearSeatLimit()` no longer need their
+own `GET /list-activations/:key` call per license - closing the real N+1
+cost accepted as a known tradeoff back in §13.
+
+`activations_count` is scoped to a new `RawLicenseListRow` type
+(`License & { activations_count }`) rather than added to the base
+`License` type - `GET /admin/license/:key` (used by `getLicense`) has no
+such field, and adding it to `License` would have made that call site's
+return type claim a field the real response never has.
+`listActivations()` and its one remaining real caller (the license
+detail page, which needs the actual activation list, not just a count)
+are unchanged.
+
+Verified end-to-end against a real `casazium/license` instance using its
+rate-limit response headers as an exact request counter: a dashboard
+load dropped from 9 admin-bucket requests to 4, and critically that 4 no
+longer scales with license count the way the old N+1 pattern did.
+Confirmed the seat-utilization numbers are still correct, not just
+faster, by seeding a license with 2/3 activations used and checking the
+rendered "Seats near capacity" widget showed `used: 2, max_activations:
+3, remaining: 1`.
+
+## 21. Remaining branding gaps and Coolify hostname binding fix (2026-08-03)
+
+Three small fixes, each merged as its own PR (`#15`-`#18`):
+
+- **`#15`/`#16` - two remaining unbranded buttons.** `brandButtonStyle`/
+  `brandTextButtonStyle` was already the established pattern for primary
+  CTAs, but an audit of every `Button` in the app against that
+  convention found two gaps: the "Issue license" form's own submit
+  button (`#15`, fell back to Mantine's default blue instead of
+  `BRANDING_COLOR`) and the "Sign out" button (`#16`, structurally
+  identical to the already-branded "Reissue token" button but had no
+  styling at all - unlike Revoke/Delete/Cancel, it isn't destructive or
+  a dismiss action, so there's no reason to exclude it like those are
+  deliberately excluded). Everything else checked out as already
+  correctly branded or correctly neutral. Verified visually with
+  `BRANDING_COLOR=#16a34a`: both buttons render green.
+- **`#17` - standalone server bound to the wrong hostname in Docker.**
+  `.next/standalone/server.js` binds to `process.env.HOSTNAME ||
+  '0.0.0.0'` - but Docker automatically sets `HOSTNAME` to the
+  container's own short ID for every container, so that fallback never
+  triggers. Left unset, the server ends up bound to that container-ID
+  hostname instead of all interfaces, unreachable by this app's own
+  healthcheck (`http://127.0.0.1:3000/login`) or by external routing
+  through Coolify/Traefik. Reproduced directly: setting `HOSTNAME` to a
+  container-ID-like value reproduces the exact `Local:
+  http://<container-id>:3000` log line and makes `127.0.0.1`
+  unreachable; setting `HOSTNAME=0.0.0.0` fixes both. Set as `ENV
+  HOSTNAME=0.0.0.0` in the Dockerfile (baked into the image) and
+  reinforced in `docker-compose-coolify.yml`'s environment list in case
+  Coolify's own env injection ever takes precedence over the image-baked
+  value.
+- **`#18` - doc correction, not a code bug.** `.env.example` claimed
+  `BRANDING_TITLE_HTML` shows "on the login page and in the app header,"
+  but `AppShellClient.tsx`'s header only ever renders `BrandLogo` - a
+  full-app grep confirmed `app/login/page.tsx` is the only call site.
+  Confirmed the component itself works correctly (a real production
+  build's computed style matched `BRANDING_COLOR` exactly), so the bug
+  was the documentation's claim, not the code. Corrected the comment.
+
+## 22. Production debugging: hydration mismatch, admin rate-limit exhaustion, and branding-color quoting (2026-08-03)
+
+Operator reported the deployed Coolify instance (`license.casazium.com`)
+was missing both the "Issue license" button and the branding color,
+despite both working correctly in local dev and in a local production
+build. Three distinct, unrelated root causes, found and fixed across
+this and the prior conversation segment:
+
+- **`#19` - React #418 hydration mismatch from locale-dependent date
+  formatting.** `LicensesTable.tsx` and `LicenseActions.tsx`'s
+  `ActivationsTable` are both `'use client'` components calling
+  `toLocaleDateString()`/`toLocaleString()` with no fixed locale/time
+  zone - since client components render once server-side (container
+  locale) and again client-side during hydration (browser locale), a
+  visitor whose browser locale differs from the server's crashed with a
+  React #418 hydration-mismatch error that unmounted the table's sibling
+  content, including the "Issue license" button. Rigorously verified
+  with a before/after Playwright repro using a deliberately
+  locale-mismatched browser context (`locale: 'de-DE', timezoneId:
+  'America/Los_Angeles'`) - reproduced the exact error on old code, zero
+  errors after pinning both call sites to `'en-US'` + `timeZone: 'UTC'`.
+  **Confirmed real and independently valuable, but not this operator's
+  actual production symptom** - their browser locale likely already
+  matched the server's, so this specific mismatch never fired for them;
+  the button was still missing after this fix deployed.
+- **Admin rate-limit exhaustion (not a code bug).** The real symptom:
+  `GET /licenses` returned a genuine 500, with the server's own runtime
+  log showing `Error: Failed to list licenses: 429 Too Many Requests`.
+  `casazium/license`'s admin-bucket rate limit (50 requests/15 min, keyed
+  per IP) was being exhausted by the debugging session's own repeated
+  testing/reloading - and because `license-console`'s server, not each
+  admin's browser, is the actual caller against those endpoints, the
+  whole admin team sharing one console deployment shares a single
+  IP-keyed bucket, sized more for a single slow human than a multi-call
+  admin console. Fixed on the `casazium/license` side: the limit is now
+  configurable via `ADMIN_RATE_LIMIT_MAX` (default raised to 300,
+  matching the existing "license activation" tier) - see
+  `casazium/license#38` (merged).
+- **`#20` - `BRANDING_COLOR` quote-stripping.** Even after both fixes
+  above, the button stayed invisible. Root cause: `BRANDING_COLOR` was
+  set with literal wrapping double quotes (matching `.env.example`'s
+  dotenv-quoting example, e.g. `"#2563eb"`), but Coolify's env-var UI
+  passes values through verbatim - no shell/dotenv-style quote stripping
+  like a `.env` file gets. The quote characters became part of
+  `--brand-color`, turning it into a CSS `<string>` instead of a
+  `<color>`; every `var(--brand-color)` substitution went invalid at
+  computed-value time, so `background-color` silently fell back to
+  `transparent` - a white-on-transparent (invisible) button. Reproduced
+  and confirmed via Playwright: computed `background-color` was
+  `rgba(0,0,0,0)` with the quoted value, `rgb(37,99,235)` after the fix.
+  Fixed by stripping a single layer of wrapping quotes for
+  `BRANDING_COLOR` in `lib/branding.ts` (handles both quoted-`.env`-file
+  and unquoted-platform-UI input); corrected `.env.example`'s guidance
+  to clarify the quoting is a `.env`-file convention, not something to
+  type into a platform's env-var UI.
+- **`#21` - Coolify's "Is Literal" checkbox.** Operator found a second,
+  deployment-side cause behind the same symptom: Coolify's environment
+  variables UI has a per-variable "Is Literal" checkbox that must be
+  enabled for `BRANDING_TITLE_HTML` and `BRANDING_COLOR` - left off,
+  Coolify reprocesses the value before injecting it into the container,
+  corrupting both (the quoting bug above was one concrete way this
+  showed up). Documented in `.env.example` and
+  `docker-compose-coolify.yml`, matching each file's established pattern
+  of noting Coolify-specific quirks inline.
+
+Net result: production `license.casazium.com` now shows the "Issue
+license" button and the configured branding color correctly, verified
+by the operator directly.
+
+## 23. Next authorized step
+
+No known open items. Production is live and confirmed working at
+`license.casazium.com` (backed by `license-api.casazium.com`), closing
+§14's last verification gap (a real `docker build`, done implicitly by
+the live Coolify deployment) and every debugging thread opened in §22.
+Next work is operator-directed - nothing is queued.
