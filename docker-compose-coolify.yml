@@ -18,6 +18,12 @@
 # misconfiguration rather than a silent fallback to demo data, see
 # lib/license-client.ts's getBackendMode(). BRANDING_* vars are all
 # optional either way.
+#
+# BRANDING_TITLE_HTML and BRANDING_COLOR specifically: enable Coolify's
+# per-variable "Is Literal" checkbox for both (confirmed - without it,
+# Coolify reprocesses the value before injecting it, which corrupted both
+# in testing; see .env.example's BRANDING_COLOR note for the quoting angle
+# of that same failure mode).
 services:
   console:
     build:
