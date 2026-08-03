@@ -5,6 +5,14 @@
 // build does this same copy at the image-layer level (see Dockerfile); this
 // script exists so `npm run build && npm run start` produces a working
 // server without Docker too, on any OS (fs.cpSync instead of a shell `cp`).
+//
+// .next/standalone/server.js also does process.chdir(__dirname) before
+// Next's own env-file loading runs, so .env.local etc at the project root
+// are invisible to it - confirmed by reproducing a "Missing required
+// environment variable" 500 with a real .env.local present. These are
+// Next's own production env-file names (loadEnvConfig's precedence order,
+// highest first); copy whichever exist so standalone mode sees the same
+// values `next start` would have.
 import { cpSync, existsSync } from 'node:fs';
 
 const STANDALONE_DIR = '.next/standalone';
@@ -18,3 +26,10 @@ if (!existsSync(STANDALONE_DIR)) {
 
 cpSync('public', `${STANDALONE_DIR}/public`, { recursive: true });
 cpSync('.next/static', `${STANDALONE_DIR}/.next/static`, { recursive: true });
+
+const ENV_FILES = ['.env.production.local', '.env.local', '.env.production', '.env'];
+for (const file of ENV_FILES) {
+  if (existsSync(file)) {
+    cpSync(file, `${STANDALONE_DIR}/${file}`);
+  }
+}
