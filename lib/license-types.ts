@@ -68,12 +68,16 @@ export type IssueLicenseInput = {
   max_activations: number;
 };
 
-// The real GET /list-licenses response has no activation-count field at
-// all (confirmed against casazium/license's src/routes/list-licenses.js) -
-// activations_used is enrichment both implementations add: the mock reads
-// its own in-memory store, the live client makes one GET
-// /list-activations/:key call per row in the current page (bounded by
-// page size, not the full dataset - see license-client.live.ts).
+// GET /list-licenses returns activations_count per row directly (a
+// correlated subquery server-side - see casazium/license's
+// src/routes/list-licenses.js). Scoped to this list-row shape rather than
+// added to the base License type above: GET /admin/license/:key (used by
+// getLicense) has no such field, and the license detail page that calls it
+// already fetches the activation list separately - adding
+// activations_count to License itself would make that call site's return
+// type claim a field the real response never has.
+export type RawLicenseListRow = License & { activations_count: number };
+
 export type LicenseListItem = License & { activations_used: number };
 
 export type ListLicensesParams = {

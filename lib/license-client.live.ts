@@ -4,16 +4,22 @@
  * Used for connected mode - see license-client.ts's mode dispatcher.
  *
  * Endpoint mapping and known gaps are documented in PROJECT_STATUS.md §14.
- * Two gaps worth knowing before reading further:
- * - activations_used (the Seats column) has no backend field - computed
- *   here with a GET /list-activations/:key call per license row.
- * - getExpiringLicenses/getLicensesNearSeatLimit have no backend
- *   equivalent at all - computed here from a broad GET /list-licenses
- *   fetch (up to the backend's own 1000-row max), since GET /list-licenses
- *   has no sort parameter to do this server-side. Real cost at high
- *   license counts; accepted for now, see PROJECT_STATUS.md §14.
+ * One gap worth knowing before reading further: getExpiringLicenses/
+ * getLicensesNearSeatLimit have no backend equivalent at all - computed
+ * here from a broad GET /list-licenses fetch (up to the backend's own
+ * 1000-row max, deduped between the two via getBroadActiveLicenses since
+ * both need the same data), since GET /list-licenses has no sort
+ * parameter to do this server-side. Real cost at high license counts;
+ * accepted for now, see PROJECT_STATUS.md §14.
+ *
+ * activations_used (the Seats column) used to be the same kind of gap -
+ * one GET /list-activations/:key call per license row - until
+ * GET /list-licenses grew a server-side activations_count field
+ * (casazium/license's list-licenses.js), which every function below now
+ * reads directly instead.
  */
 
+import { cache } from 'react';
 import type {
   Activation,
   DashboardStats,
@@ -22,6 +28,7 @@ import type {
   License,
   ListLicensesParams,
   ListLicensesResult,
+  RawLicenseListRow,
   RecentActivation,
   RecentlyIssuedLicense,
   SeatUtilization,
@@ -66,7 +73,7 @@ async function fetchRawLicenses(params: {
   product_id?: string;
   limit: number;
   offset: number;
-}): Promise<{ licenses: License[]; total: number }> {
+}): Promise<{ licenses: RawLicenseListRow[]; total: number }> {
   const query = new URLSearchParams();
   if (params.status) query.set('status', params.status);
   if (params.product_id) query.set('product_id', params.product_id);
@@ -80,20 +87,36 @@ async function fetchRawLicenses(params: {
   return res.json();
 }
 
+// getExpiringLicenses and getLicensesNearSeatLimit both need every active
+// license (there's no server-side way to ask for just "expiring soon" or
+// "near its seat limit" - see the module docblock), and the dashboard page
+// calls both in the same render. Without this, that's the same broad
+// GET /list-licenses fetch made twice per dashboard load, on top of an
+// already-restrictive per-IP admin rate limit. cache() (React's
+// per-request-render memoization, not a persistent cache) takes no
+// arguments here specifically so there's no risk of two structurally-equal
+// but referentially-distinct option objects missing each other in the
+// memoization lookup.
+const getBroadActiveLicenses = cache(async (): Promise<RawLicenseListRow[]> => {
+  const { licenses } = await fetchRawLicenses({
+    status: 'active',
+    limit: BROAD_FETCH_LIMIT,
+    offset: 0,
+  });
+  return licenses;
+});
+
 export async function listLicenses(params: ListLicensesParams = {}): Promise<ListLicensesResult> {
   const { status, product_id, limit = 10, offset = 0 } = params;
   const { licenses, total } = await fetchRawLicenses({ status, product_id, limit, offset });
 
-  // Bounded by this page's size (10 by default), not the full dataset -
-  // see the module docblock.
-  const enriched = await Promise.all(
-    licenses.map(async (license) => ({
+  return {
+    licenses: licenses.map((license) => ({
       ...license,
-      activations_used: (await listActivations(license.key)).length,
-    }))
-  );
-
-  return { licenses: enriched, total };
+      activations_used: license.activations_count,
+    })),
+    total,
+  };
 }
 
 export async function getLicense(key: string): Promise<License | null> {
@@ -198,11 +221,7 @@ export async function getRecentActivations(limit = 5): Promise<RecentActivation[
 }
 
 export async function getExpiringLicenses(withinDays = 30, limit = 5): Promise<ExpiringLicense[]> {
-  const { licenses } = await fetchRawLicenses({
-    status: 'active',
-    limit: BROAD_FETCH_LIMIT,
-    offset: 0,
-  });
+  const licenses = await getBroadActiveLicenses();
 
   const now = Date.now();
   const cutoff = now + withinDays * 24 * 60 * 60 * 1000;
@@ -224,27 +243,17 @@ export async function getExpiringLicenses(withinDays = 30, limit = 5): Promise<E
 }
 
 export async function getLicensesNearSeatLimit(limit = 5): Promise<SeatUtilization[]> {
-  const { licenses } = await fetchRawLicenses({
-    status: 'active',
-    limit: BROAD_FETCH_LIMIT,
-    offset: 0,
-  });
+  const licenses = await getBroadActiveLicenses();
 
-  const withUsage = await Promise.all(
-    licenses.map(async (license) => {
-      const used = (await listActivations(license.key)).length;
-      return {
-        key: license.key,
-        product_id: license.product_id,
-        tier: license.tier,
-        used,
-        max_activations: license.max_activations,
-        remaining: license.max_activations - used,
-      };
-    })
-  );
-
-  return withUsage
+  return licenses
+    .map((license) => ({
+      key: license.key,
+      product_id: license.product_id,
+      tier: license.tier,
+      used: license.activations_count,
+      max_activations: license.max_activations,
+      remaining: license.max_activations - license.activations_count,
+    }))
     .filter((entry) => entry.remaining <= 1)
     .sort((a, b) => a.remaining - b.remaining)
     .slice(0, limit);
