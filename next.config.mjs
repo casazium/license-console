@@ -10,9 +10,19 @@
 // source (plus data: for inlined assets) because BRANDING_LOGO_URL and
 // BRANDING_FAVICON_URL are operator-configured and may point anywhere -
 // restricting this would break legitimate branding config, not attackers.
+// Next's dev server (Fast Refresh, dev-mode stack traces) calls eval() to
+// do its job - blocking it doesn't harden anything locally, it just breaks
+// the dev server. Next never calls eval() in a production build, so
+// 'unsafe-eval' is scoped out there, where it'd actually be a real
+// loosening of the policy.
+const scriptSrc =
+  process.env.NODE_ENV === 'production'
+    ? "script-src 'self' 'unsafe-inline'"
+    : "script-src 'self' 'unsafe-inline' 'unsafe-eval'";
+
 const CSP = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline'",
+  scriptSrc,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' https: data:",
   "font-src 'self' data:",
