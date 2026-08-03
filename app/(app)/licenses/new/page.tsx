@@ -9,6 +9,7 @@ import { notifications } from '@mantine/notifications';
 import { issueLicenseAction } from '../actions';
 import { brandButtonStyle } from '@/components/brandButtonStyle';
 import { US_TIMEZONE_OPTIONS, zonedDateTimeToIso } from '@/lib/timezone';
+import { notifyRateLimited } from '@/lib/notify';
 
 type IssueLicenseValues = {
   product_id: string;
@@ -53,7 +54,7 @@ export default function NewLicensePage() {
   async function handleSubmit(values: IssueLicenseValues) {
     setSubmitting(true);
     try {
-      const license = await issueLicenseAction({
+      const result = await issueLicenseAction({
         product_id: values.product_id,
         tier: values.tier,
         issued_to: values.issued_to,
@@ -64,12 +65,17 @@ export default function NewLicensePage() {
         ),
         max_activations: values.max_activations,
       });
+      if (!result.ok) {
+        notifyRateLimited();
+        setSubmitting(false);
+        return;
+      }
       notifications.show({
         color: 'green',
         title: 'License issued',
-        message: license.key,
+        message: result.data.key,
       });
-      router.push(`/licenses/${license.key}`);
+      router.push(`/licenses/${result.data.key}`);
     } catch {
       notifications.show({
         color: 'red',

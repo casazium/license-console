@@ -6,7 +6,9 @@ import {
   getRecentActivations,
   getRecentlyIssuedLicenses,
 } from '@/lib/license-client';
+import { isRateLimited } from '@/lib/errors';
 import { MockDataNotice } from '@/components/MockDataNotice';
+import { RateLimitNotice } from '@/components/RateLimitNotice';
 import { ExpiringLicensesTable } from './ExpiringLicensesTable';
 import { RecentActivationsTable } from './RecentActivationsTable';
 import { RecentlyIssuedLicensesTable } from './RecentlyIssuedLicensesTable';
@@ -15,14 +17,38 @@ import { SeatUtilizationTable } from './SeatUtilizationTable';
 export const dynamic = 'force-dynamic';
 
 export default async function DashboardPage() {
-  const [stats, recentActivations, recentlyIssued, expiringLicenses, seatsNearLimit] =
-    await Promise.all([
+  // Caught here, not left to throw into Next's default Server Component
+  // error boundary: a rate-limited admin bucket is a routine, expected
+  // condition (this console's own server is the caller against a shared
+  // per-IP limit), not a bug worth an "an error occurred" crash screen.
+  // Any other error still throws unchanged - only this specific, expected
+  // case gets a friendlier inline message instead of Next's default
+  // handling.
+  let dashboardData;
+  try {
+    dashboardData = await Promise.all([
       getDashboardStats(),
       getRecentActivations(),
       getRecentlyIssuedLicenses(),
       getExpiringLicenses(),
       getLicensesNearSeatLimit(),
     ]);
+  } catch (err) {
+    if (isRateLimited(err)) {
+      return (
+        <>
+          <Title order={2} mb="md">
+            Dashboard
+          </Title>
+          <RateLimitNotice />
+        </>
+      );
+    }
+    throw err;
+  }
+
+  const [stats, recentActivations, recentlyIssued, expiringLicenses, seatsNearLimit] =
+    dashboardData;
 
   return (
     <>

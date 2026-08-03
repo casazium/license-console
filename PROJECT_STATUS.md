@@ -1358,7 +1358,57 @@ date/datetime across the dashboard, licenses list, and detail page now
 reads in the same `YYYY-MM-DD`/`YYYY-MM-DD HH:mm:ss` format as the
 "Issue license" form's own date picker.
 
-## 26. Next authorized step
+## 26. Friendly rate-limit message instead of a crash (2026-08-03)
+
+Operator, testing production in Coolify: hitting the admin rate limit
+(§22) shouldn't "throw up an error" - wanted a proper "try again later"
+message instead. Before implementing, verified an important
+architectural constraint empirically rather than assuming: built a
+throwaway Server Action that threw a plain `Error` with a distinctive
+message, called it from a Client Component in a real production build,
+and read what the client actually received. Confirmed Next.js redacts
+thrown-error details (message, name, any custom properties) to a
+generic "An error occurred..." message plus an opaque `digest` once an
+error crosses *either* a Server Component render boundary *or* a Server
+Action's return - not just the page-render case §22 already knew about.
+This ruled out the obvious approach (throw a typed error, let a client
+component's catch block inspect its `status`) for both surfaces.
+
+Built accordingly - detection has to happen server-side, before either
+boundary, or the status information is lost:
+
+- `lib/errors.ts`: `LicenseApiError` (carries the real HTTP `status`)
+  and `isRateLimited()`. `lib/license-client.live.ts`'s 8 `!res.ok`
+  branches now throw this instead of a plain `Error`.
+- The three data-fetching Server Component pages (`dashboard/page.tsx`,
+  `licenses/page.tsx`, `licenses/[key]/page.tsx`) now catch inline and
+  render a shared `<RateLimitNotice />` (a Mantine `Alert`) instead of
+  the normal content when `isRateLimited()` - any other error still
+  throws unchanged, so this stays scoped to the one expected condition
+  rather than becoming a general error-UX redesign.
+- `app/(app)/licenses/actions.ts`'s four Server Actions
+  (issue/revoke/delete/reissue) now catch internally and return a
+  structured `{ ok: true, data } | { ok: false, rateLimited: true }`
+  instead of throwing - the "expected errors as return values" pattern,
+  now confirmed necessary rather than just a Next.js docs suggestion.
+  Their three client call sites show a shared `notifyRateLimited()`
+  toast (`lib/notify.ts`) on the `rateLimited` case.
+- Fixed a latent, unrelated bug found while touching this code:
+  `RevokeDeleteActions`'s revoke/delete handlers had no error handling
+  at all - any failure left the button stuck in its loading state
+  forever with no feedback. Now wrapped in try/catch/finally alongside
+  the rate-limit handling, matching the pattern already used by the
+  "Issue license" form.
+
+Verified: `npm run lint` and `npm run build` both clean. Live-tested
+against a stub HTTP server that always returns 429 (LICENSE_API_URL
+pointed at it) rather than waiting on a real rate-limit window:
+confirmed the dashboard, licenses list, and license detail page all
+show the friendly notice with zero uncaught page errors, and that
+submitting the "Issue license" form against the same stub shows the
+"Too many requests" toast and stays on the form instead of crashing.
+
+## 27. Next authorized step
 
 No known open items. Production is live and confirmed working at
 `license.casazium.com` (backed by `license-api.casazium.com`), closing
