@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { getBranding } from '@/lib/branding';
+import { getAppVersion } from '@/lib/version';
 import { AppShellClient } from './AppShellClient';
 
 // Branding is env-configured and expected to change without a rebuild.
@@ -10,6 +11,11 @@ export const dynamic = 'force-dynamic';
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const branding = getBranding();
+  const appVersion = getAppVersion();
 
-  return <AppShellClient branding={branding}>{children}</AppShellClient>;
+  return (
+    <AppShellClient branding={branding} appVersion={appVersion}>
+      {children}
+    </AppShellClient>
+  );
 }

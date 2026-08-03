@@ -1,8 +1,10 @@
-import { Box, Stack } from '@mantine/core';
+import { Box, Group, Stack, Text } from '@mantine/core';
 import { getBranding } from '@/lib/branding';
+import { getAppVersion } from '@/lib/version';
 import { BrandLogo } from '@/components/BrandLogo';
 import { BrandTitle } from '@/components/BrandTitle';
 import { BrandCopyright } from '@/components/BrandCopyright';
+import { VersionStamp } from '@/components/VersionStamp';
 import { LoginForm } from './LoginForm';
 
 // Branding is env-configured and expected to change without a rebuild
@@ -13,6 +15,7 @@ export const dynamic = 'force-dynamic';
 
 export default function LoginPage() {
   const branding = getBranding();
+  const appVersion = getAppVersion();
 
   return (
     <Box style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
@@ -40,11 +43,19 @@ export default function LoginPage() {
         <BrandTitle titleHtml={branding.titleHtml} style={{ fontSize: '1.75rem', fontWeight: 600, textAlign: 'center' }} />
         <LoginForm />
       </Stack>
-      {branding.copyrightHolder && (
-        <Box component="footer" p="md">
-          <BrandCopyright holder={branding.copyrightHolder} />
-        </Box>
-      )}
+      <Box component="footer" p="md">
+        <Group justify="center" gap="xs">
+          {branding.copyrightHolder && (
+            <>
+              <BrandCopyright holder={branding.copyrightHolder} />
+              <Text size="xs" c="dimmed">
+                &middot;
+              </Text>
+            </>
+          )}
+          <VersionStamp {...appVersion} />
+        </Group>
+      </Box>
     </Box>
   );
 }
