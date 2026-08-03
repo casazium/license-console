@@ -83,6 +83,8 @@ export const getLicense: typeof mock.getLicense = (key) => client().getLicense(k
 export const issueLicense: typeof mock.issueLicense = (input) => client().issueLicense(input);
 export const setLicenseRevoked: typeof mock.setLicenseRevoked = (key, revoked) =>
   client().setLicenseRevoked(key, revoked);
+export const updateLicenseNotes: typeof mock.updateLicenseNotes = (key, notes) =>
+  client().updateLicenseNotes(key, notes);
 export const deleteLicense: typeof mock.deleteLicense = (key) => client().deleteLicense(key);
 export const listActivations: typeof mock.listActivations = (key) => client().listActivations(key);
 export const reissueActivationToken: typeof mock.reissueActivationToken = (key, instanceId) =>

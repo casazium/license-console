@@ -157,6 +157,19 @@ export async function setLicenseRevoked(key: string, revoked: boolean): Promise<
   }
 }
 
+export async function updateLicenseNotes(key: string, notes: string): Promise<void> {
+  const res = await liveFetch('/admin/update-notes', {
+    method: 'POST',
+    body: JSON.stringify({ key, notes }),
+  });
+  if (!res.ok) {
+    throw new LicenseApiError(
+      `Failed to update license notes: ${res.status} ${res.statusText}`,
+      res.status,
+    );
+  }
+}
+
 export async function deleteLicense(key: string): Promise<boolean> {
   const res = await liveFetch('/delete-license', {
     method: 'DELETE',

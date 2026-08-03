@@ -1436,7 +1436,50 @@ dashboard, licenses list, and license detail page now reads
 `YYYY-MM-DD HH:mm:ss UTC` consistently, while date-only cells are
 unchanged.
 
-## 28. Next authorized step
+## 28. Freeform notes on licenses, editable after issuance (2026-08-03)
+
+Operator asked for a way to attach internal context to a license
+("renewed via phone call", "beta customer") - confirmed upfront that
+notes should be editable after issuance too, not just captured once at
+creation. Console side of a cross-repo change - `casazium/license#39`
+added the backend `notes` column, `POST /issue-license`'s optional
+`notes` field, `GET /admin/license/:key`'s `notes` in its response, and
+a new `POST /admin/update-notes` endpoint.
+
+- `lib/license-types.ts`: `License.notes: string | null`,
+  `IssueLicenseInput.notes?: string`.
+- `lib/license-client.live.ts`: `issueLicense`/`getLicense` needed no
+  changes (they already pass through/return the full payload); added
+  `updateLicenseNotes(key, notes)` calling the new endpoint. Mirrored in
+  the mock client, plus sample notes seeded on a few demo licenses for a
+  more realistic standalone-mode look.
+- `app/(app)/licenses/actions.ts`: new `updateLicenseNotesAction`,
+  following §26's established rate-limit-safe pattern (catch
+  `LicenseApiError`, return a structured result instead of throwing).
+- "Issue license" form: optional `Notes` `Textarea`.
+- License detail page: new `NotesEditor` component
+  (`LicenseActions.tsx`) - shows the current note (or "No notes yet.")
+  with an Edit/Add note button that swaps in a `Textarea` + Save/Cancel;
+  updates its own local state on a successful save rather than needing
+  a `router.refresh()`, matching this component's self-contained scope.
+
+Verified end-to-end, not just via lint/build: `npm run lint` and
+`npm run build` both clean. Standalone (mock) mode: confirmed seeded
+notes display correctly, editing an existing note persists and
+displays immediately, "Add note" works for a license with none, and
+issuing a new license with a note from the form shows it correctly on
+the resulting detail page. **Also verified against the real backend**,
+matching this session's practice for cross-repo changes (§13) rather
+than trusting the mock/live split alone: ran a real local
+`casazium/license` instance on the `feat/license-notes` branch,
+`curl`-confirmed the full backend round-trip directly (issue with
+notes -> `GET /admin/license/:key` returns it -> `POST
+/admin/update-notes` -> confirmed updated), then pointed a live-mode
+console build at that same real instance and repeated the issue+edit
+flow through the actual UI - zero console errors, notes correctly
+persisted through real HTTP calls both ways.
+
+## 29. Next authorized step
 
 No known open items beyond the profile-settings/per-admin-timezone idea
 noted in §27, which is explicitly deferred, not queued. Production is

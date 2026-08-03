@@ -4,7 +4,7 @@ import { formatDateTime } from '@/lib/format';
 import { isRateLimited } from '@/lib/errors';
 import { MockDataNotice } from '@/components/MockDataNotice';
 import { RateLimitNotice } from '@/components/RateLimitNotice';
-import { ActivationsTable, RevokeDeleteActions } from './LicenseActions';
+import { ActivationsTable, NotesEditor, RevokeDeleteActions } from './LicenseActions';
 
 export const dynamic = 'force-dynamic';
 
@@ -94,6 +94,8 @@ export default async function LicenseDetailPage({
           </Text>
         )}
       </SimpleGrid>
+
+      <NotesEditor licenseKey={license.key} notes={license.notes} />
 
       <RevokeDeleteActions licenseKey={license.key} status={license.status} />
 
