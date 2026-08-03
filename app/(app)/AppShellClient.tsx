@@ -8,6 +8,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import type { Branding } from '@/lib/branding';
 import { BrandLogo } from '@/components/BrandLogo';
 import { BrandCopyright } from '@/components/BrandCopyright';
+import { brandTextButtonStyle } from '@/components/brandButtonStyle';
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard' },
@@ -38,7 +39,7 @@ export function AppShellClient({ branding, children }: { branding: Branding; chi
             <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
             <BrandLogo logoUrl={branding.logoUrl} size={28} />
           </Group>
-          <Button variant="subtle" onClick={handleSignOut}>
+          <Button variant="subtle" style={brandTextButtonStyle} onClick={handleSignOut}>
             Sign out
           </Button>
         </Group>
