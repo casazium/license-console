@@ -1408,10 +1408,40 @@ show the friendly notice with zero uncaught page errors, and that
 submitting the "Issue license" form against the same stub shows the
 "Too many requests" toast and stays on the form instead of crashing.
 
-## 27. Next authorized step
+## 27. Label full timestamps with their timezone (2026-08-03)
 
-No known open items. Production is live and confirmed working at
-`license.casazium.com` (backed by `license-api.casazium.com`), closing
-§14's last verification gap (a real `docker build`, done implicitly by
-the live Coolify deployment) and every debugging thread opened in §22.
+Operator flagged a real gap while reviewing a screenshot: "Activated at"
+(and every other full timestamp - Issued at, Expires at, Revoked at)
+showed a bare value like `2026-08-03 05:06:11` with no timezone at all,
+which reads as the viewer's own local time by default even though it's
+always UTC (§25). Confirmed the intent before changing anything - "UTC"
+is the correct, truthful label (not a placeholder like the operator's
+own example of "IST"), since that's what the underlying value actually
+is.
+
+`formatDateTime` now appends a literal `UTC` suffix
+(`2026-08-03 05:06:11 UTC`). `formatDate` (bare dates, no clock time -
+the "Expires" column on the licenses list, the dashboard's date-only
+cells) is unchanged - the operator's complaint and the screenshot were
+specifically about a *time* being unlabeled, not a date.
+
+Explicitly scoped as a stopgap, not the real fix: the real fix is a
+per-admin timezone preference (a profile settings page, not built yet)
+so every admin sees times in their own zone instead of mentally
+converting from UTC - noted in code as a follow-up, not attempted here.
+
+Verified: `npm run lint` and `npm run build` both clean; a live
+Playwright walkthrough confirmed every full timestamp across the
+dashboard, licenses list, and license detail page now reads
+`YYYY-MM-DD HH:mm:ss UTC` consistently, while date-only cells are
+unchanged.
+
+## 28. Next authorized step
+
+No known open items beyond the profile-settings/per-admin-timezone idea
+noted in §27, which is explicitly deferred, not queued. Production is
+live and confirmed working at `license.casazium.com` (backed by
+`license-api.casazium.com`), closing §14's last verification gap (a
+real `docker build`, done implicitly by the live Coolify deployment)
+and every debugging thread opened in §22.
 Next work is operator-directed - nothing is queued.
