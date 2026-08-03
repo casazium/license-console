@@ -1232,7 +1232,48 @@ Net result: production `license.casazium.com` now shows the "Issue
 license" button and the configured branding color correctly, verified
 by the operator directly.
 
-## 23. Next authorized step
+## 23. Expires-at split into date/time/timezone fields (2026-08-03)
+
+Operator reported the "Issue license" form's single `expires_at` field -
+a raw text input requiring hand-typed ISO 8601 (`2027-01-01T00:00:00Z`) -
+was "extremely hard" to use in practice. Split into three fields that
+compose into that same ISO string on submit, rather than asking the
+operator to produce it directly:
+
+- **Expires on** - `@mantine/dates`' `DateInput`, defaults to today.
+- **At** - `@mantine/dates`' `TimeInput`, defaults to midnight (`00:00`).
+- **Time zone** - a `Select` of common US zones (Eastern, Central,
+  Mountain, Pacific, UTC), defaulting to Eastern per operator preference.
+  Deliberately not an exhaustive IANA list - scoped to the realistic
+  operator base for a US-run license console.
+
+Added `@mantine/dates` as a new dependency - required bumping the whole
+`@mantine/*` family (`core`/`form`/`hooks`/`notifications`) from `9.5.0`
+to `9.5.1` in lockstep, since `@mantine/dates@9.5.1`'s peer dependency
+strictly requires `@mantine/core@9.5.1` exactly. `npm audit`: 0
+vulnerabilities after the bump.
+
+The three fields compose into the backend's expected ISO string via a
+new `lib/timezone.ts` helper (`zonedDateTimeToIso`) rather than pulling
+in a timezone-data library (`dayjs`'s timezone plugin, `date-fns-tz`,
+etc.) - a small, self-contained implementation of the standard two-pass
+`Intl.DateTimeFormat` technique (treat the wall-clock numbers as a UTC
+guess, read back what that guess displays as in the target zone to
+recover its current offset, then apply the offset in reverse) correctly
+accounts for DST on the given date using the runtime's own IANA
+database, with no added dependency surface. `issueLicenseAction`'s
+contract (`expires_at: string`, ISO 8601) is unchanged - composition
+happens entirely in the form's submit handler.
+
+Verified: the offset helper directly against known cases (EST `UTC-5`
+in January, EDT `UTC-4` in July, CST/MST/PST, and UTC itself - all
+correct); `npm run lint` and `npm run build` both clean; a live
+Playwright walkthrough against a production build confirmed the
+defaults render correctly (today's date, `00:00`, "Eastern (ET)") and
+that submitting a license with an explicit date/time/zone produces the
+correct expiration date on the resulting license.
+
+## 24. Next authorized step
 
 No known open items. Production is live and confirmed working at
 `license.casazium.com` (backed by `license-api.casazium.com`), closing
