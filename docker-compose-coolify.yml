@@ -27,6 +27,14 @@ services:
     expose:
       - '3000'
     environment:
+      # Not operator-configurable like the vars below - Docker auto-sets
+      # HOSTNAME to the container's own short ID, which the standalone
+      # server (.next/standalone/server.js) picks up ahead of its own
+      # `|| '0.0.0.0'` fallback, binding to that hostname instead of all
+      # interfaces (see the matching ENV HOSTNAME=0.0.0.0 in Dockerfile,
+      # which this reinforces in case Coolify's own env injection ever
+      # takes precedence over the image-baked value).
+      - HOSTNAME=0.0.0.0
       - SESSION_SECRET=${SESSION_SECRET}
       - ADMIN_UI_USERNAME=${ADMIN_UI_USERNAME}
       - ADMIN_UI_PASSWORD=${ADMIN_UI_PASSWORD}
