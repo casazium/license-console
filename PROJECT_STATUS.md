@@ -2,7 +2,8 @@
 
 Status: Draft
 Last updated: 2026-08-04 (adversarial review of the SaaS-tier plan and a
-revised task breakdown, §31-32 — not yet authorized to begin, see §33)
+revised task breakdown, §31-32, plus a disposability requirement, §33 —
+not yet authorized to begin, see §34)
 
 > Admin console UI for `casazium/license`. This document exists so work can resume
 > across sessions without re-deriving decisions already made. Update it whenever
@@ -1886,12 +1887,55 @@ below folds in its corresponding finding(s).
 
 **Docs & marketing** — E1, E2 unchanged.
 
-## 33. Next authorized step
+## 33. Disposability: build this so it can be cheaply abandoned (2026-08-04)
+
+Operator's explicit requirement, ahead of any implementation: it must be
+cheap to fully discard this initiative if it turns out to be more than
+it's worth, not just cheap to keep isolated from the shipping self-hosted
+product while it's in progress. Those are related but not the same thing
+— isolation (§29's `MULTI_TENANT` flag, additive-only new files) means
+self-hosted is unaffected *while the work exists*; disposability means
+there's a clean, cheap way to make the work *not exist* if abandoned.
+
+**Primary mechanism: a dedicated long-lived branch in both repos (e.g.
+`saas-tier`), not merged to `main` until there's an actual go decision.**
+This is strictly stronger than any code-level isolation technique — a
+feature flag still means the code shipped; an unmerged branch means it
+never did. If abandoned, delete the branch. Nothing to revert, `main` was
+never touched, and no coordination is needed with whatever else lands on
+`main` in the meantime (this also means the branch needs to be rebased
+periodically against `main`, not left to drift indefinitely, or the
+eventual merge-or-delete decision gets harder either way).
+
+This composes with, rather than replaces, §29's isolation design — most
+of §32's task list is genuinely additive (new files: `tenant-scope.js`,
+`billing/*`, new routes, new console pages/tables), so even mid-branch,
+concurrent self-hosted work on `main` never conflicts with it.
+
+**Two places in §32 aren't purely additive, addressed explicitly here
+rather than discovered later:**
+
+- **`SaaS-A1`'s `tenant_id` column.** A nullable `ADD COLUMN` is harmless
+  to leave inert forever if the branch is later merged partially or the
+  initiative stalls after this lands — no urgent down-migration needed,
+  just don't backfill it on self-hosted deployments. If the whole branch
+  is deleted before merge, this is moot anyway.
+- **`SaaS-B2` (threading tenant context through `license-client`).**
+  Build this as an *added* conditional path — branch on whether a tenant
+  context is present at the top of each affected function — rather than
+  rewriting the existing functions in place. Same end state for the SaaS
+  case, but self-hosted's code path stays literally byte-identical and
+  the addition stays deletable, rather than becoming "the new normal"
+  that would need to be un-rewritten if this gets abandoned after B2
+  lands. `SaaS-B2`'s task description is updated accordingly.
+
+## 34. Next authorized step
 
 **Nothing in §29/§32 is authorized to begin.** Documented for
 cross-session continuity per this doc's stated purpose, at the operator's
 explicit request, with an explicit instruction not to start
-implementation. If resuming this thread, follow §32's task list (not
+implementation. If resuming this thread: work happens on a dedicated
+branch per §33, not directly on `main`. Follow §32's task list (not
 §29's — §32 supersedes it), starting with **A0** (tenant-identity
 decision) and **C2** (SQLite/Postgres spike), both of which now precede
 A1 per the review.
