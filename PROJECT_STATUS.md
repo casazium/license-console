@@ -1929,6 +1929,30 @@ rather than discovered later:**
   that would need to be un-rewritten if this gets abandoned after B2
   lands. `SaaS-B2`'s task description is updated accordingly.
 
+**What "`MULTI_TENANT=false` reverts to a standalone deployment" actually
+means, and where that stops being true:**
+
+The flag's disposability guarantee is specifically about *fresh*
+deployments — with it unset, `casazium/license` behaves exactly as it
+does today (single `ADMIN_API_KEY`, no tenant filtering), because every
+new route/hook is either unregistered or a true no-op (per §31 F3's
+fail-closed fix, the no-op path is only reachable when the flag is
+`false` in the first place). It is **not** a safe undo for a database
+that already has real multi-tenant data in it. If a shared instance had
+multiple tenants' licenses actually populated with distinct `tenant_id`
+values and the flag were then flipped to `false`, the scoping helper
+would simply stop filtering — every tenant's data would appear merged
+into one undifferentiated view, not cleanly separated back out. That's
+F3's fail-open disclosure again, just triggered deliberately instead of
+by a bug. The flag selects which product a fresh instance *is*; it does
+not reverse data that's already been shared across tenants.
+
+Separately, don't conflate this with `license-console`'s own, unrelated
+`LICENSE_STANDALONE_MODE` (README, and `lib/license-client.ts`'s
+`getBackendMode()`) — that's a mock-data-vs-real-backend switch with
+nothing to do with tenancy. Two different axes both using the word
+"standalone."
+
 ## 34. Next authorized step
 
 **Nothing in §29/§32 is authorized to begin.** Documented for
