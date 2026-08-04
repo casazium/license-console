@@ -1,7 +1,8 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-02 (closed out the Coolify deployment-packaging milestone, §16)
+Last updated: 2026-08-04 (relocated the SaaS-tier plan, its review, and
+its task breakdown to `casazium/license`'s own PROJECT_STATUS.md — see §29)
 
 > Admin console UI for `casazium/license`. This document exists so work can resume
 > across sessions without re-deriving decisions already made. Update it whenever
@@ -95,7 +96,11 @@ Endpoints called by *licensed software via the SDK*, not by a human admin:
   within a license's detail page only).
 - Multi-account login + per-account audit logging, and 2FA (TOTP) — see §9's
   Login & branding review for full rationale; UI/session layer is already
-  designed not to block on this (§3).
+  designed not to block on this (§3). §9 deferred multi-account specifically
+  until "multiple consoles/admins share one backend" became a real
+  requirement rather than a hypothetical — the SaaS-tier plan in §29 is
+  exactly that requirement, and folds multi-account login into its
+  SaaS-B1 task rather than treating it as a separate deferred item.
 
 ## 6. Sanity check (2026-07-30)
 
@@ -1479,12 +1484,19 @@ console build at that same real instance and repeated the issue+edit
 flow through the actual UI - zero console errors, notes correctly
 persisted through real HTTP calls both ways.
 
-## 29. Next authorized step
+## 29. SaaS tier: relocated to `casazium/license` (2026-08-04)
 
-No known open items beyond the profile-settings/per-admin-timezone idea
-noted in §27, which is explicitly deferred, not queued. Production is
-live and confirmed working at `license.casazium.com` (backed by
-`license-api.casazium.com`), closing §14's last verification gap (a
-real `docker build`, done implicitly by the live Coolify deployment)
-and every debugging thread opened in §22.
-Next work is operator-directed - nothing is queued.
+A hosted multi-tenant SaaS tier alongside (not replacing) the self-hosted
+product was scoped, adversarially reviewed (Opus), and given a revised
+task breakdown in this section (originally §29, §31–34) on 2026-08-04.
+
+**Relocated to `casazium/license`'s own `PROJECT_STATUS.md`** the same
+day, on reconsideration — the actual risk in that plan (tenant isolation,
+the auth boundary, schema changes) is overwhelmingly server-side, and
+nearly every finding in its review was about that repo, not this one.
+Full content, including this repo's own tasks (`SaaS-B1a`–`B5`) as part
+of the whole plan, now lives there. See `casazium/license/PROJECT_STATUS.md`
+§1 for the relocation note and §2–6 for the plan itself.
+
+**Nothing in it is authorized to begin implementation.**
+
