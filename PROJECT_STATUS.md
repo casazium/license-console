@@ -2434,3 +2434,33 @@ routes 404, "Forgot password?" link absent from the rendered login
 page (`0` occurrences, checked directly, not just "presumably hidden by
 the same conditional"). `npm run lint` and `npm run build` both clean.
 
+## 45. README: fixed a stale claim, documented local SaaS-tier testing (2026-08-05)
+
+Operator asked directly whether the combined local-testing setup
+(both repos, wired together, `MULTI_TENANT=true`) that's been given
+in conversation each session was written down anywhere. Checked rather
+than assumed: it wasn't - `casazium/license`'s own README never
+mentions `MULTI_TENANT` at all, that var is only documented for
+`casazium/license`'s Coolify production path in its `DEPLOYMENT.md`,
+and this repo's own README documented each SaaS-mode var individually
+but never walked through running both services together.
+
+Also found a real stale claim while checking: this README still said
+*"Password-reset is not yet built — blocked on choosing an email
+provider, deliberately deferred rather than guessed at"* - no longer
+true since §41/§44. Fixed.
+
+Added a new "Local SaaS-tier testing" section: start a real
+`casazium/license` server, wire this console at it, optional real-vs-stub
+email (`EMAIL_PROVIDER=resend`, defaulting to `onboarding@resend.dev`
+- no domain verification needed for a quick real-send test), what to
+try, and how to reset to a clean slate.
+
+Verified by literally following the new section's own commands, not
+just re-reading the prose: fresh `.env`/`.env.local` generated exactly
+as documented, both servers booted, and a real Playwright pass through
+every "Try it" bullet - signup, the verify-email banner appearing,
+the in-app billing demo checkout completing, and the "Forgot password?"
+link present after sign-out. Every step matched the doc exactly, no
+corrections needed after the walkthrough.
+
