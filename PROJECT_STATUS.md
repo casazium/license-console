@@ -2047,3 +2047,42 @@ assertions:
   resubmitted the issue-license form: the "Subscription inactive"
   notification appeared.
 
+## 37. SaaS-D3: console-side half closed out (2026-08-05)
+
+`SaaS-D3`'s revised scope (`casazium/license`'s `PROJECT_STATUS.md` §4,
+F15) is "quota enforcement test, plus verification of `B4`'s
+console-side over-quota error mapping, not just the server-side 403."
+The server-side half was done first and left explicitly partial (§31 in
+that repo), console-side blocked on `SaaS-B4` not existing yet.
+
+`SaaS-B4`'s own verification (§36 above) already did real browser
+testing of the core ask - both blocked states (over-quota,
+payment-failed) correctly show their distinct notification through the
+actual console UI. What that testing didn't cover, and what this pass
+adds: **recovery through the console UI**, not just via direct API
+calls (which is all `SaaS-D3`'s original server-side pass, §31 in that
+repo, tested). A blocked state that clears server-side but stays stuck
+client-side (stale session data, a cached decision, whatever the actual
+cause might be) is exactly the kind of gap a server-only test can't
+catch.
+
+### Verified
+
+Same real two-server, real-browser setup as `B4`'s own test:
+
+- Hit the free-tier quota (5 licenses), confirmed the 6th shows the
+  over-quota notification through the real form - re-confirming `B4`'s
+  own result, not assumed still true.
+- Sent a real `subscription_updated` webhook upgrading the tenant to
+  `pro`: `/billing` correctly showed the new plan, and a subsequent
+  issue-license submission through the real form **succeeded** -
+  redirected to the new license's own detail page, not stuck showing a
+  stale quota notification.
+- Sent `payment_failed`, confirmed the form shows "Subscription
+  inactive"; sent `subscription_updated` again, confirmed a further
+  submission succeeded - the same recovery proof for the other trigger.
+
+`SaaS-D3` is now fully closed - both server-side (that repo's
+`PROJECT_STATUS.md` §31) and console-side (this section) are verified,
+not partial.
+
