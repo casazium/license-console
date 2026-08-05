@@ -374,3 +374,7 @@ export async function createCheckoutSession(
 ): Promise<{ url: string }> {
   return { url: `https://stub-billing.invalid/checkout/demo-tenant/${plan}` };
 }
+
+export async function completeStubCheckout(plan: string, _tenantApiKey?: string): Promise<BillingStatus> {
+  return { status: 'active', plan };
+}

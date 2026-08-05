@@ -418,3 +418,26 @@ export async function createCheckoutSession(plan: string, tenantApiKey?: string)
   }
   return res.json();
 }
+
+// Demo-only counterpart to createCheckoutSession above - completes the
+// in-app stub checkout confirmation page's flow by hitting
+// POST /billing/complete-stub-checkout, which does what a real Stripe
+// webhook eventually would. Only meaningful while BILLING_PROVIDER=stub
+// server-side; that route itself 404s otherwise.
+export async function completeStubCheckout(plan: string, tenantApiKey?: string): Promise<BillingStatus> {
+  const res = await liveFetch(
+    '/billing/complete-stub-checkout',
+    {
+      method: 'POST',
+      body: JSON.stringify({ plan }),
+    },
+    tenantApiKey
+  );
+  if (!res.ok) {
+    throw new LicenseApiError(
+      `Failed to complete stub checkout: ${res.status} ${res.statusText}`,
+      res.status,
+    );
+  }
+  return res.json();
+}

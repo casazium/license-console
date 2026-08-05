@@ -112,3 +112,5 @@ export const getBillingStatus: typeof mock.getBillingStatus = (tenantApiKey) =>
   client().getBillingStatus(tenantApiKey);
 export const createCheckoutSession: typeof mock.createCheckoutSession = (plan, tenantApiKey) =>
   client().createCheckoutSession(plan, tenantApiKey);
+export const completeStubCheckout: typeof mock.completeStubCheckout = (plan, tenantApiKey) =>
+  client().completeStubCheckout(plan, tenantApiKey);
