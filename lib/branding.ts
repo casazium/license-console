@@ -1,3 +1,6 @@
+import { isMultiTenant } from './config';
+import { getDb } from './db';
+
 const DEFAULT_TITLE_HTML = 'License Console';
 
 // Mantine's default primary blue (blue.6) - used whenever BRANDING_COLOR is
@@ -40,7 +43,7 @@ function unwrapQuotes(value: string): string {
  * are optional - an unconfigured deployment falls back to the default title,
  * default color, no logo/copyright, and Next's own default favicon.
  */
-export function getBranding(): Branding {
+function getPlatformBranding(): Branding {
   const rawColor = process.env.BRANDING_COLOR?.trim();
 
   return {
@@ -49,5 +52,56 @@ export function getBranding(): Branding {
     copyrightHolder: process.env.BRANDING_COPYRIGHT_HOLDER?.trim() || null,
     color: rawColor ? unwrapQuotes(rawColor) : DEFAULT_COLOR,
     faviconUrl: process.env.BRANDING_FAVICON_URL?.trim() || null,
+  };
+}
+
+type TenantBrandingRow = {
+  logo_url: string | null;
+  title_html: string | null;
+  copyright_holder: string | null;
+  color: string | null;
+  favicon_url: string | null;
+};
+
+/**
+ * SaaS-B3. `tenantId` is only meaningful under MULTI_TENANT, and only
+ * once a session exists - pre-auth pages (/login, /signup) have no
+ * tenant to look up yet and always get the env-var/platform branding,
+ * same as self-hosted always does (see app/layout.tsx's session peek
+ * for where that split actually happens). Falls back field-by-field to
+ * the platform default, not row-absent-or-not: a tenant can override
+ * just BRANDING_COLOR via a future settings UI without needing to also
+ * supply a logo. Nothing writes tenant_branding yet - no task in the
+ * current plan owns building that settings page - so in practice every
+ * lookup here returns the platform default today; the resolution logic
+ * itself is what this task is responsible for.
+ */
+export function getBranding(tenantId?: string): Branding {
+  const platform = getPlatformBranding();
+
+  if (!tenantId || !isMultiTenant()) {
+    return platform;
+  }
+
+  const row = getDb()
+    .prepare(
+      'SELECT logo_url, title_html, copyright_holder, color, favicon_url FROM tenant_branding WHERE tenant_id = ?'
+    )
+    .get(tenantId) as TenantBrandingRow | undefined;
+
+  if (!row) {
+    return platform;
+  }
+
+  return {
+    logoUrl: row.logo_url?.trim() || platform.logoUrl,
+    titleHtml: row.title_html?.trim() || platform.titleHtml,
+    copyrightHolder: row.copyright_holder?.trim() || platform.copyrightHolder,
+    // No unwrapQuotes() here, unlike the platform/env path above - a
+    // DB-stored value came from a settings form (once one exists), not
+    // a dotenv/platform-env-var-UI pipeline, so that quoting quirk
+    // doesn't apply to it.
+    color: row.color?.trim() || platform.color,
+    faviconUrl: row.favicon_url?.trim() || platform.faviconUrl,
   };
 }

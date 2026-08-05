@@ -37,3 +37,8 @@ instead, and requires `ACCOUNT_ENCRYPTION_KEY` plus a live
 tenant — there's no standalone/mock equivalent). Password-reset is not yet
 built — blocked on choosing an email provider, deliberately deferred rather
 than guessed at.
+
+Under `MULTI_TENANT=true`, the `BRANDING_*` vars become the *platform*
+default (`SaaS-B3`) — shown pre-auth and to any tenant without its own
+override in `tenant_branding`. No settings UI writes that table yet; only
+the DB-driven resolution itself is built.

@@ -118,6 +118,20 @@ export async function verifySessionToken(token: string): Promise<Identity | null
 }
 
 /**
+ * Non-throwing peek at the current session, for the one real place that
+ * legitimately doesn't know in advance whether a session exists: the
+ * root layout (app/layout.tsx, SaaS-B3), which wraps both pre-auth pages
+ * (/login, /signup - no session, by definition) and the authenticated
+ * app (always has one, per proxy.ts). Everywhere else that needs "there
+ * must be a session" should use requireSession() below, not this.
+ */
+export async function getSession(): Promise<Identity | null> {
+  const store = await cookies();
+  const token = store.get(SESSION_COOKIE_NAME)?.value;
+  return token ? await verifySessionToken(token) : null;
+}
+
+/**
  * Two distinct reasons to call this, both real: Server Actions have no
  * request object to read - proxy.ts's middleware check never runs for
  * them (its matcher only covers page/route navigation, not action
@@ -135,9 +149,7 @@ export async function verifySessionToken(token: string): Promise<Identity | null
  * use; the underlying check is identical either way.
  */
 export async function requireSession(): Promise<Identity> {
-  const store = await cookies();
-  const token = store.get(SESSION_COOKIE_NAME)?.value;
-  const identity = token ? await verifySessionToken(token) : null;
+  const identity = await getSession();
   if (!identity) {
     throw new Error('Unauthorized');
   }

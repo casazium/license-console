@@ -45,3 +45,22 @@ CREATE TABLE IF NOT EXISTS accounts (
 -- own convention (that repo's idx_tenants_api_key_hash comment) of
 -- adding uniqueness as a separate index rather than inline.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_email ON accounts(email);
+
+-- SaaS-B3: one row per tenant, only under MULTI_TENANT. tenant_id is not
+-- a foreign key here either, same reasoning as accounts.tenant_id above.
+-- Every column nullable and independently optional - lib/branding.ts
+-- falls back field-by-field to the env-var/platform default (not
+-- row-absent-or-not), so a tenant can override just BRANDING_COLOR
+-- without needing to also supply a logo. No row at all (the common
+-- case - nothing writes this table yet, see lib/branding.ts's own
+-- comment) falls back to the platform default entirely, byte-identical
+-- to self-hosted.
+CREATE TABLE IF NOT EXISTS tenant_branding (
+  tenant_id TEXT PRIMARY KEY,
+  logo_url TEXT,
+  title_html TEXT,
+  copyright_holder TEXT,
+  color TEXT,
+  favicon_url TEXT,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);

@@ -1883,3 +1883,77 @@ identical `requireSessionWithTenantKey()` helper and identical
 dispatcher functions already proven correct on the read side, so this
 is a low residual risk, not zero.
 
+## 35. SaaS-B3: branding moves to DB-driven per tenant (2026-08-05)
+
+Grounded before writing code: `getBranding()` is called from 4 places,
+and one of them - the root layout (`app/layout.tsx`) - wraps *both*
+pre-auth pages (`/login`, `/signup`, no session by definition) and the
+authenticated app. There's no signal available pre-auth (no subdomain
+routing, no tenant-identifying URL) to know which tenant's branding to
+show before login succeeds - genuinely unreachable information at that
+point, not something this task's own scope (branding's *resolution*
+mechanism) should try to solve by redesigning login. Resolved by
+splitting branding into two tiers: platform default (env vars - shown
+pre-auth, and to self-hosted always) and tenant override (DB - shown
+only once a session with a `tenantId` exists).
+
+### What was built
+
+- **`lib/db/schema.sql`** — `tenant_branding`, one row per tenant, every
+  column independently nullable. Field-level fallback, not
+  row-absent-or-not: a tenant can override just `color` without also
+  needing a logo - verified directly (see below), not just designed
+  that way.
+- **`lib/session.ts`** — new `getSession()`, a non-throwing peek,
+  alongside the existing `requireSession()` (which still throws) - the
+  root layout is the one place that legitimately doesn't know in
+  advance whether a session exists; `requireSession()` refactored to
+  call it internally rather than duplicating the cookie-read logic.
+- **`lib/branding.ts`** — `getBranding(tenantId?)`. No `tenantId`, or
+  `MULTI_TENANT` off: today's exact env-var behavior, unchanged. With a
+  `tenantId`: looks up `tenant_branding`, falling back per-field to the
+  platform default for anything unset. The env-only quoting workaround
+  (`unwrapQuotes`, for dotenv/platform-UI quirks) deliberately isn't
+  applied to DB-stored values - a settings form (once one exists) has no
+  such quoting pipeline to work around.
+- **`app/layout.tsx`** (root) — now `async`, calls `getSession()` and
+  passes `session?.tenantId` through to both `generateMetadata()`
+  (favicon) and the page body (`--brand-color`).
+- **`app/(app)/layout.tsx`** — calls `requireSession()` (not
+  `getSession()`) - every route under this layout is already gated by
+  `proxy.ts`, so a session is always expected; fail loud if that's ever
+  untrue instead of silently rendering platform branding on what should
+  be a tenant's own page.
+- **No settings UI** writes `tenant_branding` — no task in the current
+  plan owns building one (not `B4`, not `B5`). Out of this task's scope,
+  flagged explicitly rather than silently built or silently skipped.
+  Verified instead the same way `SaaS-B1c`'s revocation mechanism was:
+  direct DB writes, proving the read-side mechanism end-to-end.
+
+### Verified
+
+`npm run lint` clean; `npm run build` compiles, passes TypeScript.
+Noted, not a bug: `/` went from statically prerendered to
+server-rendered-on-demand in the build output, since the root layout now
+reads cookies on every request - the correct, expected consequence of
+branding genuinely depending on request-specific session state.
+
+Real end-to-end test against a live `casazium/license` instance and this
+console's real standalone server, `MULTI_TENANT=true`:
+
+- Pre-auth `/login` showed the platform (env-var) title, confirmed
+  before any tenant existed.
+- Signed up a tenant; its dashboard fell back to platform branding with
+  no `tenant_branding` row yet.
+- Inserted a row for that tenant (custom title + color) directly;
+  reloaded - dashboard now showed the tenant's own title and
+  `--brand-color`. `/login` was re-checked immediately after and still
+  showed the platform title, unaffected.
+- Signed up a second tenant, inserted a *partial* row (color only, no
+  title) - its dashboard showed the custom color combined with the
+  *platform* title, confirming field-level (not row-level) fallback.
+- Restarted with `MULTI_TENANT` unset against a genuinely self-hosted
+  server instance: `/login` and the post-login dashboard both showed the
+  env-var branding, exactly as before this task - self-hosted is
+  unaffected.
+
