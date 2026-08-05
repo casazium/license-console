@@ -1,9 +1,18 @@
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
+import { isMultiTenant } from './config';
+import { getDb } from './db';
 
 export type Identity = {
   id: string;
   role: 'admin';
+  // Only populated under MULTI_TENANT=true (SaaS-B1c), re-derived from
+  // the accounts table on every verifySessionToken() call rather than
+  // embedded in the signed JWT payload at issuance - the DB is the
+  // single source of truth for an account's current tenant, and a
+  // lookup is already required per request under SaaS mode to check
+  // revocation (below), so this doesn't cost an extra query.
+  tenantId?: string;
 };
 
 export const SESSION_COOKIE_NAME = 'license_console_session';
@@ -39,13 +48,70 @@ export async function createSessionToken(identity: Identity): Promise<string> {
     .sign(getSecretKey());
 }
 
+/**
+ * SaaS-B1c revocation. Sessions are stateless 8h JWTs (no server-side
+ * session table - a deliberate choice, see PROJECT_STATUS.md §31) so
+ * there's nothing to delete on revoke; instead, every account carries a
+ * `sessions_revoked_at` watermark (lib/db/schema.sql), and any token
+ * issued at or before that watermark is rejected here regardless of its
+ * own (still-valid) signature and expiry. Coarse by design - revokes
+ * every session for the account, not one specific device - which is
+ * exactly the granularity both of B1c's actual triggers need: a future
+ * password-reset flow revoking that one account, or a whole tenant being
+ * revoked on casazium/license cascading to every account under it
+ * (`UPDATE ... WHERE tenant_id = ?` instead of `WHERE id = ?`, once
+ * SaaS-B1b's "one account per tenant" simplification is lifted).
+ */
+export function revokeAccountSessions(accountId: string): void {
+  getDb().prepare('UPDATE accounts SET sessions_revoked_at = CURRENT_TIMESTAMP WHERE id = ?').run(accountId);
+}
+
 export async function verifySessionToken(token: string): Promise<Identity | null> {
   try {
     const { payload } = await jwtVerify(token, getSecretKey());
     if (typeof payload.id !== 'string' || payload.role !== 'admin') {
       return null;
     }
-    return { id: payload.id, role: payload.role };
+    const identity: Identity = { id: payload.id, role: payload.role };
+
+    if (isMultiTenant()) {
+      const account = getDb()
+        .prepare('SELECT tenant_id, sessions_revoked_at FROM accounts WHERE id = ?')
+        .get(identity.id) as { tenant_id: string; sessions_revoked_at: string | null } | undefined;
+
+      // The account backing this token no longer exists (or was never a
+      // SaaS account, e.g. a stale token from before MULTI_TENANT was
+      // enabled) - reject rather than return a sessionless Identity.
+      if (!account) {
+        return null;
+      }
+
+      if (account.sessions_revoked_at && typeof payload.iat === 'number') {
+        // SQLite's CURRENT_TIMESTAMP has no timezone marker but is always
+        // UTC - appending 'Z' is required for Date to parse it as UTC
+        // instead of the server's local time (confirmed empirically).
+        const revokedAtSeconds = Math.floor(new Date(`${account.sessions_revoked_at}Z`).getTime() / 1000);
+        // Strictly less-than, not <=: both `iat` (JWT's NumericDate, per
+        // spec) and CURRENT_TIMESTAMP are whole-second precision, so a
+        // fresh re-login in the same wall-clock second as the revocation
+        // it's meant to follow (e.g. reset password, log back in
+        // immediately) would otherwise compare equal and be wrongly
+        // rejected - confirmed empirically, this was a real bug during
+        // this task's own verification, not a hypothetical. The
+        // trade-off is a real one but narrow: a token issued a fraction
+        // of a second *before* the revocation, in that same second,
+        // survives one extra second past its revocation instead of dying
+        // immediately - inherent to JWT `iat`'s second-level resolution,
+        // not something fixable by changing this comparison alone.
+        if (payload.iat < revokedAtSeconds) {
+          return null;
+        }
+      }
+
+      identity.tenantId = account.tenant_id;
+    }
+
+    return identity;
   } catch {
     return null;
   }

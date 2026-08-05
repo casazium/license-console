@@ -1700,3 +1700,69 @@ HTTP between them:
   refactor of `license-client.ts`'s dispatcher functions, not something
   this task's narrower signup/login scope should reach into.
 
+## 32. SaaS-B1c: session model + revocation (2026-08-05)
+
+Resolves the fork `SaaS-B1a`'s own `schema.sql` comment left open: a
+sessions table, or a JWT-blocklist watermark. Decision: watermark - both
+of this task's actual triggers (password reset, a tenant revoked on
+`casazium/license`) only ever need to invalidate *every* session for an
+account at once, never one specific device, so a per-session table would
+buy nothing here. Full rationale in `casazium/license/PROJECT_STATUS.md`
+§37.
+
+### What was built
+
+- **`lib/db/schema.sql`** — `accounts.sessions_revoked_at DATETIME`
+  (nullable), added directly into the existing `CREATE TABLE`, not a
+  defensive `ALTER` - this table is new on an unmerged branch with no
+  real deployment to migrate (§5's disposability rule).
+- **`lib/session.ts`** — `Identity` gains an optional `tenantId`, *not*
+  embedded in the signed JWT payload at issuance. Re-derived fresh from
+  `accounts.tenant_id` on every `verifySessionToken()` call instead,
+  under `MULTI_TENANT` only - the DB is the single source of truth, and
+  the lookup is already required per request to check revocation, so
+  this doesn't cost an extra query. `revokeAccountSessions(accountId)`
+  sets the watermark; not wired to any caller yet since password-reset
+  (the trigger that would call it) is still deferred (`SaaS-B1b`) - it
+  exists and is tested so that flow's eventual implementation is a small
+  addition, not new plumbing.
+
+### A real bug found by testing, not assumed away
+
+Both the JWT `iat` claim (per spec, `NumericDate` - whole seconds) and
+SQLite's `CURRENT_TIMESTAMP` are second-granularity. The first
+comparison written (`revokedAtSeconds >= payload.iat`) rejects a
+same-second re-login after revocation - confirmed empirically (not
+hypothetical) while verifying this task: log in, revoke, log in again
+immediately, and the fresh session was itself treated as already
+revoked, since the fast automated test's revoke-then-relogin landed in
+the same wall-clock second. Fixed to strict `<` (only tokens issued
+*before* the revoked second are rejected), accepting a narrower,
+inherent trade-off instead: a token issued a fraction of a second
+*before* the revocation, in that same second, survives one extra second
+past it. Re-verified with a deliberate 2-second gap between login and
+revoke to get an unambiguous signal (the first, unpaced version of this
+test wasn't actually distinguishing the two cases it claimed to).
+
+### Verified
+
+`npm run lint` clean; `npm run build` compiles, passes TypeScript, no
+warnings - notably including whether `lib/session.ts`'s new
+`better-sqlite3` import (via `lib/db.ts`) even works inside `proxy.ts`'s
+middleware/proxy runtime at all, a real open question going in (Next.js
+middleware has historically run in a restricted Edge runtime that
+doesn't support native addons) - resolved empirically, not assumed: a
+real `.next/standalone/server.js` run, through the actual middleware,
+correctly let an active session through and correctly redirected a
+revoked one to `/login`, proving the DB call inside the proxy genuinely
+executes. Full sequence tested: login grants access; revoke (after a
+deliberate 2s gap) rejects the pre-existing cookie with a 307 to
+`/login`; an immediate fresh re-login in the same second as the
+revocation works right away, not delayed a full second.
+
+Not independently re-verified beyond code review: `Identity.tenantId`
+actually being populated correctly end-to-end (no route yet surfaces it
+to check against) - the query that populates it is the identical query
+already proven correct for the revocation check above, so this is a low
+residual risk, not zero.
+

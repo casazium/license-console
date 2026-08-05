@@ -6,25 +6,38 @@
 -- casazium/license's own src/db/schema.sql + src/app.js use - no
 -- migration framework, safe to re-run unconditionally.
 --
--- SaaS-B1c (a sessions table, if the revocation strategy decided there
--- ends up needing server-side session state rather than a pure
--- JWT-blocklist approach) adds its own statements here.
+-- SaaS-B1c resolved the revocation-strategy fork this comment used to
+-- describe: a JWT-blocklist watermark (accounts.sessions_revoked_at
+-- below), not a separate sessions table - both of B1c's actual triggers
+-- (password reset, a tenant revoked on casazium/license) only ever need
+-- to invalidate *every* session for an account/tenant at once, never one
+-- specific device, so there's nothing a dedicated per-session table would
+-- buy here. See lib/session.ts's verifySessionToken() for the check.
 
 -- SaaS-B1b: one row per human console login, only under MULTI_TENANT.
 -- tenant_id is this server's tenant id (casazium/license, SaaS-A0) - not
 -- a foreign key to anything in *this* DB, since tenants live in that
 -- repo's own separate database. Stored alongside the encrypted key
--- (rather than derived by decrypting it) so a future session (SaaS-B1c)
--- can carry tenantId without a decrypt on every request. Multiple
--- accounts sharing one tenant_id (team invites) is schema-compatible but
--- not built by this task - SaaS-B1b's own signup flow only ever creates
--- a new tenant + its first account together.
+-- (rather than derived by decrypting it) so a session (SaaS-B1c) can
+-- carry tenantId without a decrypt on every request. Multiple accounts
+-- sharing one tenant_id (team invites) is schema-compatible but not
+-- built by this task - SaaS-B1b's own signup flow only ever creates a
+-- new tenant + its first account together.
+--
+-- sessions_revoked_at (SaaS-B1c): nullable watermark, unset until the
+-- first revocation. Directly on accounts rather than a separate table
+-- for the same "no per-session granularity needed" reason above - added
+-- straight into this CREATE TABLE, not a defensive ALTER, since this
+-- table is new on an unmerged branch with no real deployment yet to
+-- migrate (PROJECT_STATUS.md §5's disposability rule: an unmerged branch
+-- means the old shape never shipped).
 CREATE TABLE IF NOT EXISTS accounts (
   id TEXT PRIMARY KEY,
   email TEXT NOT NULL,
   password_hash TEXT NOT NULL,
   tenant_id TEXT NOT NULL,
   tenant_api_key_encrypted TEXT NOT NULL,
+  sessions_revoked_at DATETIME,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
