@@ -19,9 +19,15 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const session = await requireSession();
   const branding = getBranding(session.tenantId);
   const appVersion = getAppVersion();
+  // SaaS-B4: billing is a SaaS-only concept - self-hosted has no
+  // subscription/quota at all (quota.js's own MULTI_TENANT-only gate on
+  // the server side). session.tenantId is only ever set under
+  // MULTI_TENANT (SaaS-B1c), so it doubles as that check here without a
+  // separate isMultiTenant() import.
+  const showBilling = Boolean(session.tenantId);
 
   return (
-    <AppShellClient branding={branding} appVersion={appVersion}>
+    <AppShellClient branding={branding} appVersion={appVersion} showBilling={showBilling}>
       {children}
     </AppShellClient>
   );

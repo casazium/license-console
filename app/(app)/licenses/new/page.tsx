@@ -9,7 +9,7 @@ import { notifications } from '@mantine/notifications';
 import { issueLicenseAction } from '../actions';
 import { brandButtonStyle } from '@/components/brandButtonStyle';
 import { US_TIMEZONE_OPTIONS, zonedDateTimeToIso } from '@/lib/timezone';
-import { notifyRateLimited } from '@/lib/notify';
+import { notifyRateLimited, notifyOverQuota, notifyPaymentFailed } from '@/lib/notify';
 
 type IssueLicenseValues = {
   product_id: string;
@@ -69,7 +69,16 @@ export default function NewLicensePage() {
         notes: values.notes.trim() || undefined,
       });
       if (!result.ok) {
-        notifyRateLimited();
+        // SaaS-B4: explicit mapping, not a generic "something went wrong" -
+        // over-quota and payment-failed each need their own message since
+        // they call for a different next action (upgrade vs. fix billing).
+        if (result.reason === 'over-quota') {
+          notifyOverQuota();
+        } else if (result.reason === 'payment-failed') {
+          notifyPaymentFailed();
+        } else {
+          notifyRateLimited();
+        }
         setSubmitting(false);
         return;
       }

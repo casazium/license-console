@@ -12,7 +12,7 @@ import { BrandCopyright } from '@/components/BrandCopyright';
 import { VersionStamp } from '@/components/VersionStamp';
 import { brandTextButtonStyle } from '@/components/brandButtonStyle';
 
-const NAV_ITEMS = [
+const BASE_NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/licenses', label: 'Licenses' },
 ];
@@ -20,12 +20,20 @@ const NAV_ITEMS = [
 export function AppShellClient({
   branding,
   appVersion,
+  showBilling,
   children,
 }: {
   branding: Branding;
   appVersion: AppVersion;
+  // SaaS-B4: only true under MULTI_TENANT (see app/(app)/layout.tsx) -
+  // self-hosted has no billing concept, so no nav item and no route to
+  // reach one.
+  showBilling: boolean;
   children: ReactNode;
 }) {
+  const navItems = showBilling
+    ? [...BASE_NAV_ITEMS, { href: '/billing', label: 'Billing' }]
+    : BASE_NAV_ITEMS;
   const [opened, { toggle }] = useDisclosure();
   const pathname = usePathname();
   const router = useRouter();
@@ -55,7 +63,7 @@ export function AppShellClient({
         </Group>
       </AppShell.Header>
       <AppShell.Navbar p="md">
-        {NAV_ITEMS.map((item) => (
+        {navItems.map((item) => (
           <NavLink
             key={item.href}
             component={Link}

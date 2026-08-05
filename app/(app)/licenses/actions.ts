@@ -9,18 +9,26 @@ import {
   updateLicenseNotes,
   type IssueLicenseInput,
 } from '@/lib/license-client';
-import { isRateLimited } from '@/lib/errors';
+import { isRateLimited, isOverQuota, isPaymentFailed } from '@/lib/errors';
 import { requireSessionWithTenantKey } from '@/lib/tenant-context';
 
 // Next.js redacts thrown-error details (message, name, any custom
 // properties) once an error crosses a Server Action's return boundary in
 // a production build - confirmed directly, both this and a Server
 // Component render error come back identically generic client-side. So a
-// rate-limited request can't be detected client-side from a thrown
-// error's status - it has to be caught here, server-side, and returned
-// as a plain value instead. Any other error still throws unchanged (same
-// scoping as the read-only pages' matching try/catch).
-type ActionResult<T> = { ok: true; data: T } | { ok: false; rateLimited: true };
+// rate-limited (or, for issueLicenseAction specifically - SaaS-B4 -
+// over-quota/payment-failed) request can't be detected client-side from
+// a thrown error's status - it has to be caught here, server-side, and
+// returned as a plain value instead. Any other error still throws
+// unchanged (same scoping as the read-only pages' matching try/catch).
+//
+// 'over-quota'/'payment-failed' can only actually come from
+// issueLicenseAction (quota.js's check is on POST /issue-license alone) -
+// the shared type still includes them so all 5 actions return the same
+// shape, not because the other 4 can produce them.
+type ActionResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; reason: 'rate-limited' | 'over-quota' | 'payment-failed' };
 
 export async function issueLicenseAction(
   input: IssueLicenseInput,
@@ -32,7 +40,9 @@ export async function issueLicenseAction(
     revalidatePath('/dashboard');
     return { ok: true, data: license };
   } catch (err) {
-    if (isRateLimited(err)) return { ok: false, rateLimited: true };
+    if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
+    if (isOverQuota(err)) return { ok: false, reason: 'over-quota' };
+    if (isPaymentFailed(err)) return { ok: false, reason: 'payment-failed' };
     throw err;
   }
 }
@@ -49,7 +59,7 @@ export async function setLicenseRevokedAction(
     revalidatePath('/dashboard');
     return { ok: true, data: undefined };
   } catch (err) {
-    if (isRateLimited(err)) return { ok: false, rateLimited: true };
+    if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
     throw err;
   }
 }
@@ -62,7 +72,7 @@ export async function deleteLicenseAction(key: string): Promise<ActionResult<boo
     revalidatePath('/dashboard');
     return { ok: true, data: deleted };
   } catch (err) {
-    if (isRateLimited(err)) return { ok: false, rateLimited: true };
+    if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
     throw err;
   }
 }
@@ -77,7 +87,7 @@ export async function updateLicenseNotesAction(
     revalidatePath(`/licenses/${key}`);
     return { ok: true, data: undefined };
   } catch (err) {
-    if (isRateLimited(err)) return { ok: false, rateLimited: true };
+    if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
     throw err;
   }
 }
@@ -91,7 +101,7 @@ export async function reissueActivationTokenAction(
     const result = await reissueActivationToken(key, instanceId, tenantApiKey);
     return { ok: true, data: result };
   } catch (err) {
-    if (isRateLimited(err)) return { ok: false, rateLimited: true };
+    if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
     throw err;
   }
 }

@@ -34,6 +34,7 @@ import { LicenseApiError } from './errors';
 import { isMultiTenant } from './config';
 import type {
   Activation,
+  BillingStatus,
   DashboardStats,
   ExpiringLicense,
   IssueLicenseInput,
@@ -179,6 +180,15 @@ export async function issueLicense(
     tenantApiKey
   );
   if (!res.ok) {
+    // SaaS-B4: for 403s specifically, surface the server's own error
+    // text (quota.js's two known messages: over-quota / payment-failed)
+    // rather than the generic "Failed to X: status statusText" every
+    // other function throws - lib/errors.ts's isOverQuota()/
+    // isPaymentFailed() need the real message to tell them apart.
+    if (res.status === 403) {
+      const body: { error?: string } = await res.json().catch(() => ({}));
+      throw new LicenseApiError(body.error || 'Forbidden', 403);
+    }
     throw new LicenseApiError(`Failed to issue license: ${res.status} ${res.statusText}`, res.status);
   }
   const data: { key: string } = await res.json();
@@ -374,4 +384,37 @@ export async function getRecentlyIssuedLicenses(
     issued_to,
     issued_at,
   }));
+}
+
+// SaaS-B4: casazium/license's new tenant-scoped self-service billing
+// routes (GET /billing/status, POST /billing/checkout) - unlike every
+// function above, these are only ever meaningful under MULTI_TENANT
+// (self-hosted has no billing concept), but still routed through the
+// same live/mock dispatch as everything else for standalone-mode
+// consistency (getBackendMode() decides live vs. mock, not
+// isMultiTenant() - see license-client.ts).
+export async function getBillingStatus(tenantApiKey?: string): Promise<BillingStatus> {
+  const res = await liveFetch('/billing/status', {}, tenantApiKey);
+  if (!res.ok) {
+    throw new LicenseApiError(`Failed to get billing status: ${res.status} ${res.statusText}`, res.status);
+  }
+  return res.json();
+}
+
+export async function createCheckoutSession(plan: string, tenantApiKey?: string): Promise<{ url: string }> {
+  const res = await liveFetch(
+    '/billing/checkout',
+    {
+      method: 'POST',
+      body: JSON.stringify({ plan }),
+    },
+    tenantApiKey
+  );
+  if (!res.ok) {
+    throw new LicenseApiError(
+      `Failed to create checkout session: ${res.status} ${res.statusText}`,
+      res.status,
+    );
+  }
+  return res.json();
 }

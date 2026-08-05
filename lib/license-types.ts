@@ -100,3 +100,10 @@ export type ListLicensesResult = {
   licenses: LicenseListItem[];
   total: number;
 };
+
+// Mirrors casazium/license's own BillingProvider.getSubscriptionStatus
+// return shape exactly (src/lib/billing/provider.js) - SaaS-B4.
+export type BillingStatus = {
+  status: 'active' | 'past_due' | 'canceled';
+  plan: string | null;
+};

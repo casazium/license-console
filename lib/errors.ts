@@ -27,3 +27,27 @@ export class LicenseApiError extends Error {
 export function isRateLimited(error: unknown): boolean {
   return error instanceof LicenseApiError && error.status === 429;
 }
+
+// SaaS-B4. Both are 403s from POST /issue-license specifically -
+// casazium/license's src/lib/quota.js is the only place either of these
+// exact strings comes from (checked in that order there too: a
+// non-active subscription blocks before the quota count is even read).
+// license-client.live.ts's issueLicense() is the one function that
+// preserves the server's own error text for 403s rather than the
+// generic "Failed to X: status statusText" every other function throws,
+// specifically so these two are distinguishable here.
+export function isOverQuota(error: unknown): boolean {
+  return (
+    error instanceof LicenseApiError &&
+    error.status === 403 &&
+    error.message === 'License issuance quota exceeded'
+  );
+}
+
+export function isPaymentFailed(error: unknown): boolean {
+  return (
+    error instanceof LicenseApiError &&
+    error.status === 403 &&
+    error.message === 'Subscription is not active'
+  );
+}

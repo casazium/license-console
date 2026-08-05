@@ -6,6 +6,7 @@
 
 import type {
   Activation,
+  BillingStatus,
   DashboardStats,
   ExpiringLicense,
   IssueLicenseInput,
@@ -356,4 +357,20 @@ export async function getRecentlyIssuedLicenses(
       issued_to,
       issued_at,
     }));
+}
+
+// SaaS-B4: mock equivalents so standalone/demo mode can also show the
+// billing page's look and feel, matching this file's own purpose - real
+// tenant billing state doesn't exist here, so a fixed demo value stands
+// in (an "active, pro plan" tenant is a more useful/representative demo
+// than an empty "no plan" one).
+export async function getBillingStatus(_tenantApiKey?: string): Promise<BillingStatus> {
+  return { status: 'active', plan: 'pro' };
+}
+
+export async function createCheckoutSession(
+  plan: string,
+  _tenantApiKey?: string
+): Promise<{ url: string }> {
+  return { url: `https://stub-billing.invalid/checkout/demo-tenant/${plan}` };
 }

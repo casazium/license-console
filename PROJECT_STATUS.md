@@ -1957,3 +1957,93 @@ console's real standalone server, `MULTI_TENANT=true`:
   env-var branding, exactly as before this task - self-hosted is
   unaffected.
 
+## 36. SaaS-B4: billing UI + explicit over-quota error mapping (2026-08-05)
+
+Grounded before writing code: this task needs the console to call
+`casazium/license`'s billing provider on a tenant's own behalf, but that
+server exposed exactly one billing route (`POST /billing-webhook`,
+admin-key-only). Confirmed with the operator before proceeding rather
+than assuming either way - this task ended up spanning both repos:
+`GET /billing/status` and `POST /billing/checkout` were added there
+first (that repo's own `PROJECT_STATUS.md` §45), tenant-scoped like the
+9 other admin routes, not admin-key-gated.
+
+### What was built here
+
+- **`lib/license-types.ts`** — `BillingStatus`, mirroring
+  `casazium/license`'s `BillingProvider.getSubscriptionStatus` shape
+  exactly.
+- **`lib/license-client.{live,mock,ts}`** — `getBillingStatus`,
+  `createCheckoutSession`, following the exact same
+  live/mock-dispatch + trailing-`tenantApiKey` pattern `SaaS-B2`
+  established for every other function - even though billing is only
+  ever meaningful under `MULTI_TENANT`, routing it through the same
+  dispatcher (rather than a live-only bypass) keeps standalone/demo mode
+  able to show the billing page's look and feel too, matching that
+  mode's own purpose. Mock returns a fixed "active, pro plan" demo
+  value.
+- **`lib/errors.ts`** — `isOverQuota()`/`isPaymentFailed()`, matching
+  `casazium/license`'s `quota.js`'s exact two error strings.
+  `license-client.live.ts`'s `issueLicense()` now surfaces the server's
+  own `error` text for `403`s specifically (every other function still
+  throws the generic "Failed to X: status statusText" - only
+  `POST /issue-license` can produce this specific pair of messages).
+- **`app/(app)/licenses/actions.ts`** — `ActionResult`'s failure case
+  widened from a single `rateLimited: true` flag to
+  `reason: 'rate-limited' | 'over-quota' | 'payment-failed'`, shared
+  across all 5 actions for a consistent shape even though only
+  `issueLicenseAction` can actually produce the new two reasons.
+- **`app/(app)/billing/`** — new route: `page.tsx` (404s under
+  self-hosted, same posture as `/signup`), `PlanSelector.tsx` (client
+  component, `POST`s to a new `actions.ts`'s `createCheckoutSessionAction`,
+  then a real browser navigation via `window.location.assign()` to the
+  returned URL - not `next/navigation`'s router, which is only for this
+  app's own internal routes). The two plans offered (`free`/`pro`)
+  mirror `casazium/license`'s own `quota.js` `PLAN_LIMITS` exactly -
+  placeholder numbers, not this task's to invent real pricing for.
+- **`app/(app)/AppShellClient.tsx`** — a "Billing" nav item, shown only
+  when `app/(app)/layout.tsx`'s already-resolved `session.tenantId` is
+  set (doubles as the `MULTI_TENANT` check without a second import).
+- **`app/(app)/licenses/new/page.tsx`** — the one place that calls
+  `issueLicenseAction`, now branches on `result.reason` to show the
+  right one of three distinct notifications (`lib/notify.ts`'s new
+  `notifyOverQuota()`/`notifyPaymentFailed()`, alongside the existing
+  `notifyRateLimited()`) instead of always assuming rate-limited.
+
+### Verified
+
+`npm run lint` clean; `npm run build` compiles, passes TypeScript, all
+13 routes generated including `/billing`, no warnings (one lint error
+along the way, not silently worked around: this project's `react-hooks`
+config rejects direct `window.location.href =` mutation from an event
+handler - fixed to `window.location.assign()`, which the linter
+accepts, not a suppression).
+
+Server-side: `casazium/license`'s new routes got their own dedicated
+test file there (5 tests, cross-tenant isolation + the admin-key
+boundary), not re-tested here.
+
+Given this task introduces genuinely new client-side interactive logic
+(a click-to-redirect flow, and three-way error-notification branching)
+that a plain `curl`-based Server Action call can't exercise - unlike
+`SaaS-B2`'s write path, which only threaded already-proven plumbing -
+this was verified with a real headless browser (Chromium, pre-installed
+in this environment) driving the actual running app, not just HTTP
+assertions:
+
+- Signed up a real tenant; `/billing` correctly showed the default
+  "Free (default)" / active state before any real subscription existed.
+- Clicked "Select" on the Pro plan; the browser genuinely attempted to
+  navigate to the stub checkout URL (landed on Chrome's own DNS-error
+  page for the deliberately-fake `stub-billing.invalid` domain, which
+  is exactly the expected outcome, not a bug).
+- Seeded 5 licenses directly against the real backend to hit the
+  free-tier limit, then submitted the real "Issue license" form through
+  the browser for a 6th: the "License quota reached" / "Upgrade your
+  plan" notification appeared, and the form correctly did *not* navigate
+  away as it would on success.
+- Sent a real `payment_failed` webhook event to the real backend, then
+  reloaded `/billing` (showed "past due" and the inactive warning) and
+  resubmitted the issue-license form: the "Subscription inactive"
+  notification appeared.
+

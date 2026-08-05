@@ -17,6 +17,7 @@ import * as mock from './license-client.mock';
 
 export type {
   Activation,
+  BillingStatus,
   DashboardStats,
   ExpiringLicense,
   IssueLicenseInput,
@@ -107,3 +108,7 @@ export const getLicensesNearSeatLimit: typeof mock.getLicensesNearSeatLimit = (l
   client().getLicensesNearSeatLimit(limit, tenantApiKey);
 export const getRecentlyIssuedLicenses: typeof mock.getRecentlyIssuedLicenses = (limit, tenantApiKey) =>
   client().getRecentlyIssuedLicenses(limit, tenantApiKey);
+export const getBillingStatus: typeof mock.getBillingStatus = (tenantApiKey) =>
+  client().getBillingStatus(tenantApiKey);
+export const createCheckoutSession: typeof mock.createCheckoutSession = (plan, tenantApiKey) =>
+  client().createCheckoutSession(plan, tenantApiKey);
