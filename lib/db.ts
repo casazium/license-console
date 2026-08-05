@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 /**
@@ -46,6 +46,13 @@ function openDatabase(): Database.Database {
     ? dbPath
     : path.join(/* turbopackIgnore: true */ process.cwd(), dbPath);
   console.log('Console database path:', absoluteDbPath);
+
+  // better-sqlite3 does not create missing parent directories itself -
+  // the Dockerfile's own `RUN mkdir -p /app/data` masked this for
+  // container deployments, but any bare-metal run (`next dev`,
+  // `node .next/standalone/server.js` outside Docker, or DB_FILE
+  // pointed at a not-yet-created path) crashed on first open instead.
+  mkdirSync(path.dirname(absoluteDbPath), { recursive: true });
 
   const database = new Database(absoluteDbPath);
 
