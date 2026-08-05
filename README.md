@@ -11,6 +11,14 @@ npm install
 npm run dev
 ```
 
+`.env.local`, not plain `.env` — Next.js's own built-in convention
+(this app has no `dotenv` code of its own; env loading is entirely
+Next's own tooling), which specifically designates `.env.local` for
+personal, uncommitted values. `casazium/license` uses plain `.env`
+instead — that's a different framework's own native convention (a
+hand-rolled `dotenv` call, not Next), not an inconsistency between the
+two repos.
+
 `SESSION_SECRET`, `ADMIN_UI_USERNAME`, and `ADMIN_UI_PASSWORD` are required to
 sign in locally.
 

@@ -2477,3 +2477,17 @@ real email reached a real inbox, the real link worked. §44's flow is
 now confirmed working end to end in genuinely real conditions, not
 just simulated ones.
 
+## 47. README: explain the `.env` vs `.env.local` difference (2026-08-05)
+
+Operator asked directly why the two repos differ on the local-dev env
+filename. Not a bug or leftover inconsistency - confirmed by checking,
+not assumed: this app has zero `dotenv` code anywhere (`grep` across
+`lib`/`app`/config files came back empty besides an unrelated comment),
+env loading is entirely Next.js's own built-in tooling, which
+specifically designates `.env.local` for personal/uncommitted values.
+`casazium/license` is plain Node/Fastify with a hand-rolled `dotenv`
+call defaulting to plain `.env` - a different framework's own native
+convention, not a choice either repo made independently. Added a short
+note to that effect right at this README's own `.env.local` step, with
+a matching note in `casazium/license`'s own README.
+
