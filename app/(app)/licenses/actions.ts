@@ -10,7 +10,7 @@ import {
   type IssueLicenseInput,
 } from '@/lib/license-client';
 import { isRateLimited } from '@/lib/errors';
-import { requireSessionForAction } from '@/lib/session';
+import { requireSessionWithTenantKey } from '@/lib/tenant-context';
 
 // Next.js redacts thrown-error details (message, name, any custom
 // properties) once an error crosses a Server Action's return boundary in
@@ -25,9 +25,9 @@ type ActionResult<T> = { ok: true; data: T } | { ok: false; rateLimited: true };
 export async function issueLicenseAction(
   input: IssueLicenseInput,
 ): Promise<ActionResult<{ key: string }>> {
-  await requireSessionForAction();
+  const { tenantApiKey } = await requireSessionWithTenantKey();
   try {
-    const license = await issueLicense(input);
+    const license = await issueLicense(input, tenantApiKey);
     revalidatePath('/licenses');
     revalidatePath('/dashboard');
     return { ok: true, data: license };
@@ -41,9 +41,9 @@ export async function setLicenseRevokedAction(
   key: string,
   revoked: boolean,
 ): Promise<ActionResult<void>> {
-  await requireSessionForAction();
+  const { tenantApiKey } = await requireSessionWithTenantKey();
   try {
-    await setLicenseRevoked(key, revoked);
+    await setLicenseRevoked(key, revoked, tenantApiKey);
     revalidatePath('/licenses');
     revalidatePath(`/licenses/${key}`);
     revalidatePath('/dashboard');
@@ -55,9 +55,9 @@ export async function setLicenseRevokedAction(
 }
 
 export async function deleteLicenseAction(key: string): Promise<ActionResult<boolean>> {
-  await requireSessionForAction();
+  const { tenantApiKey } = await requireSessionWithTenantKey();
   try {
-    const deleted = await deleteLicense(key);
+    const deleted = await deleteLicense(key, tenantApiKey);
     revalidatePath('/licenses');
     revalidatePath('/dashboard');
     return { ok: true, data: deleted };
@@ -71,9 +71,9 @@ export async function updateLicenseNotesAction(
   key: string,
   notes: string,
 ): Promise<ActionResult<void>> {
-  await requireSessionForAction();
+  const { tenantApiKey } = await requireSessionWithTenantKey();
   try {
-    await updateLicenseNotes(key, notes);
+    await updateLicenseNotes(key, notes, tenantApiKey);
     revalidatePath(`/licenses/${key}`);
     return { ok: true, data: undefined };
   } catch (err) {
@@ -86,9 +86,9 @@ export async function reissueActivationTokenAction(
   key: string,
   instanceId: string,
 ): Promise<ActionResult<{ token: string } | null>> {
-  await requireSessionForAction();
+  const { tenantApiKey } = await requireSessionWithTenantKey();
   try {
-    const result = await reissueActivationToken(key, instanceId);
+    const result = await reissueActivationToken(key, instanceId, tenantApiKey);
     return { ok: true, data: result };
   } catch (err) {
     if (isRateLimited(err)) return { ok: false, rateLimited: true };

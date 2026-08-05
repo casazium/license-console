@@ -2,6 +2,7 @@ import { Badge, Code, Group, SimpleGrid, Stack, Text, Title } from '@mantine/cor
 import { getLicense, listActivations } from '@/lib/license-client';
 import { formatDateTime } from '@/lib/format';
 import { isRateLimited } from '@/lib/errors';
+import { requireSessionWithTenantKey } from '@/lib/tenant-context';
 import { MockDataNotice } from '@/components/MockDataNotice';
 import { RateLimitNotice } from '@/components/RateLimitNotice';
 import { ActivationsTable, NotesEditor, RevokeDeleteActions } from './LicenseActions';
@@ -15,12 +16,18 @@ export default async function LicenseDetailPage({
 }) {
   const { key } = await params;
 
+  // SaaS-B2: see dashboard/page.tsx's matching comment.
+  const { tenantApiKey } = await requireSessionWithTenantKey();
+
   // See dashboard/page.tsx's matching comment - only a rate-limited
   // admin bucket gets a friendly inline message; any other error still
   // throws unchanged.
   let license, activations;
   try {
-    [license, activations] = await Promise.all([getLicense(key), listActivations(key)]);
+    [license, activations] = await Promise.all([
+      getLicense(key, tenantApiKey),
+      listActivations(key, tenantApiKey),
+    ]);
   } catch (err) {
     if (isRateLimited(err)) {
       return (

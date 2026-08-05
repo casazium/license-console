@@ -7,6 +7,7 @@ import {
   getRecentlyIssuedLicenses,
 } from '@/lib/license-client';
 import { isRateLimited } from '@/lib/errors';
+import { requireSessionWithTenantKey } from '@/lib/tenant-context';
 import { MockDataNotice } from '@/components/MockDataNotice';
 import { RateLimitNotice } from '@/components/RateLimitNotice';
 import { ExpiringLicensesTable } from './ExpiringLicensesTable';
@@ -17,6 +18,12 @@ import { SeatUtilizationTable } from './SeatUtilizationTable';
 export const dynamic = 'force-dynamic';
 
 export default async function DashboardPage() {
+  // SaaS-B2: resolves which tenant's key (if any - undefined under
+  // self-hosted) the calls below use. proxy.ts's middleware already
+  // gates unauthenticated requests before this page ever renders; this
+  // call's job here is tenant context, not the authorization check.
+  const { tenantApiKey } = await requireSessionWithTenantKey();
+
   // Caught here, not left to throw into Next's default Server Component
   // error boundary: a rate-limited admin bucket is a routine, expected
   // condition (this console's own server is the caller against a shared
@@ -27,11 +34,11 @@ export default async function DashboardPage() {
   let dashboardData;
   try {
     dashboardData = await Promise.all([
-      getDashboardStats(),
-      getRecentActivations(),
-      getRecentlyIssuedLicenses(),
-      getExpiringLicenses(),
-      getLicensesNearSeatLimit(),
+      getDashboardStats(tenantApiKey),
+      getRecentActivations(undefined, tenantApiKey),
+      getRecentlyIssuedLicenses(undefined, tenantApiKey),
+      getExpiringLicenses(undefined, undefined, tenantApiKey),
+      getLicensesNearSeatLimit(undefined, tenantApiKey),
     ]);
   } catch (err) {
     if (isRateLimited(err)) {

@@ -78,23 +78,32 @@ function client() {
   return getBackendMode() === 'live' ? live : mock;
 }
 
-export const listLicenses: typeof mock.listLicenses = (params) => client().listLicenses(params);
-export const getLicense: typeof mock.getLicense = (key) => client().getLicense(key);
-export const issueLicense: typeof mock.issueLicense = (input) => client().issueLicense(input);
-export const setLicenseRevoked: typeof mock.setLicenseRevoked = (key, revoked) =>
-  client().setLicenseRevoked(key, revoked);
-export const updateLicenseNotes: typeof mock.updateLicenseNotes = (key, notes) =>
-  client().updateLicenseNotes(key, notes);
-export const deleteLicense: typeof mock.deleteLicense = (key) => client().deleteLicense(key);
-export const listActivations: typeof mock.listActivations = (key) => client().listActivations(key);
-export const reissueActivationToken: typeof mock.reissueActivationToken = (key, instanceId) =>
-  client().reissueActivationToken(key, instanceId);
-export const getDashboardStats: typeof mock.getDashboardStats = () => client().getDashboardStats();
-export const getRecentActivations: typeof mock.getRecentActivations = (limit) =>
-  client().getRecentActivations(limit);
-export const getExpiringLicenses: typeof mock.getExpiringLicenses = (withinDays, limit) =>
-  client().getExpiringLicenses(withinDays, limit);
-export const getLicensesNearSeatLimit: typeof mock.getLicensesNearSeatLimit = (limit) =>
-  client().getLicensesNearSeatLimit(limit);
-export const getRecentlyIssuedLicenses: typeof mock.getRecentlyIssuedLicenses = (limit) =>
-  client().getRecentlyIssuedLicenses(limit);
+// Every export below forwards its trailing `tenantApiKey` straight
+// through (SaaS-B2) - self-hosted callers never pass it, so `undefined`
+// flows through unchanged and each function behaves exactly as it did
+// before this task.
+export const listLicenses: typeof mock.listLicenses = (params, tenantApiKey) =>
+  client().listLicenses(params, tenantApiKey);
+export const getLicense: typeof mock.getLicense = (key, tenantApiKey) => client().getLicense(key, tenantApiKey);
+export const issueLicense: typeof mock.issueLicense = (input, tenantApiKey) =>
+  client().issueLicense(input, tenantApiKey);
+export const setLicenseRevoked: typeof mock.setLicenseRevoked = (key, revoked, tenantApiKey) =>
+  client().setLicenseRevoked(key, revoked, tenantApiKey);
+export const updateLicenseNotes: typeof mock.updateLicenseNotes = (key, notes, tenantApiKey) =>
+  client().updateLicenseNotes(key, notes, tenantApiKey);
+export const deleteLicense: typeof mock.deleteLicense = (key, tenantApiKey) =>
+  client().deleteLicense(key, tenantApiKey);
+export const listActivations: typeof mock.listActivations = (key, tenantApiKey) =>
+  client().listActivations(key, tenantApiKey);
+export const reissueActivationToken: typeof mock.reissueActivationToken = (key, instanceId, tenantApiKey) =>
+  client().reissueActivationToken(key, instanceId, tenantApiKey);
+export const getDashboardStats: typeof mock.getDashboardStats = (tenantApiKey) =>
+  client().getDashboardStats(tenantApiKey);
+export const getRecentActivations: typeof mock.getRecentActivations = (limit, tenantApiKey) =>
+  client().getRecentActivations(limit, tenantApiKey);
+export const getExpiringLicenses: typeof mock.getExpiringLicenses = (withinDays, limit, tenantApiKey) =>
+  client().getExpiringLicenses(withinDays, limit, tenantApiKey);
+export const getLicensesNearSeatLimit: typeof mock.getLicensesNearSeatLimit = (limit, tenantApiKey) =>
+  client().getLicensesNearSeatLimit(limit, tenantApiKey);
+export const getRecentlyIssuedLicenses: typeof mock.getRecentlyIssuedLicenses = (limit, tenantApiKey) =>
+  client().getRecentlyIssuedLicenses(limit, tenantApiKey);

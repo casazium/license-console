@@ -1789,3 +1789,97 @@ untouched. Revisit together with B1a's own SQLite choice if/when
 `SaaS-C1` actually decides multi-replica hosting - not before, and not
 one without the other.
 
+## 34. SaaS-B2: thread tenant context through license-client (2026-08-05)
+
+Grounded before writing code (per F8, §5): the real call graph is small
+- only 4 places actually call the 13 dispatcher functions (3 read pages
+plus `app/(app)/licenses/actions.ts`, which already called
+`requireSessionForAction()` at the top of every mutation, discarding its
+return value). Every one of the 13 functions also funnels through a
+single `liveFetch` choke point. Given that shape, explicit parameter
+threading was the clear choice over `AsyncLocalStorage` - small,
+auditable, and (see below) it fixes F8's cache-poisoning flag as a side
+effect rather than needing separate handling.
+
+### What was built
+
+- **`lib/session.ts`** — `requireSessionForAction` renamed to
+  `requireSession`; same check, now also called from read pages (gated
+  by `proxy.ts` already, but pages still need the identity to resolve
+  tenant context).
+- **`lib/tenant-context.ts`** (new) — `getTenantApiKey(accountId)`
+  decrypts `accounts.tenant_api_key_encrypted` on demand.
+  `requireSessionWithTenantKey()` is the actual call-site helper (all 8
+  real call sites - 5 actions, 3 pages - use it, not 8 hand-copied
+  inline pairs): resolves the session, then the tenant key only if
+  `identity.tenantId` is set. Factored out deliberately - F8's own
+  warning was that *one missed call site* silently operates as the
+  cross-tenant superuser, and a shared helper is what makes that
+  auditable in one place instead of trusting 8 sites to stay consistent.
+- **`lib/license-client.live.ts`** — every exported function gains a
+  trailing `tenantApiKey?: string`. `resolveApiKey()` replaces the old
+  bare `adminKey()`: under `MULTI_TENANT`, a missing key is a **hard
+  error**, never a silent fallback to `LICENSE_ADMIN_API_KEY` - the
+  literal fail-closed rule F8 asked for ("delete the old global-env
+  fallback rather than leaving it as a silent cross-tenant-superuser
+  escape hatch"). Self-hosted callers never pass the parameter, so
+  `resolveApiKey()` falls through to today's exact env-var read,
+  unchanged.
+- **`getBroadActiveLicenses`'s `cache()` wrapper** now takes
+  `tenantApiKey` as an argument - this is the fix for F8's other flagged
+  risk ("no cache-key args... a cross-tenant cache-poisoning risk once
+  per-tenant"), and falls out naturally from the parameter-threading
+  design rather than needing a separate change: React's `cache()` keys
+  by argument value, so a plain string argument partitions the
+  memoization per tenant without reintroducing the referential-equality
+  bug the original no-args design was written to avoid.
+- **`lib/license-client.mock.ts`** — all 13 functions gain the same
+  trailing parameter for type parity with the live client (`license-client.ts`'s
+  dispatcher types every export as `typeof mock.xxx`), unused in mock
+  mode's own body - mock mode has no real tenant concept, and
+  `MULTI_TENANT=true` + mock/standalone mode isn't a reachable
+  combination in practice (signup requires a real `LICENSE_API_URL`/`LICENSE_ADMIN_API_KEY`
+  backend to provision tenants against).
+- **`license-client.ts`** — every dispatcher export forwards the new
+  parameter straight through.
+- **4 call sites updated**: `app/(app)/dashboard/page.tsx`,
+  `app/(app)/licenses/page.tsx`, `app/(app)/licenses/[key]/page.tsx`, and
+  `app/(app)/licenses/actions.ts`'s 5 actions - all now call
+  `requireSessionWithTenantKey()` and thread the result through.
+
+### Verified
+
+`npm run lint` clean; `npm run build` compiles, passes TypeScript, all
+11 routes generated, no warnings. Then the test that actually matters
+for what this task exists to guarantee - not just a clean build, a real
+cross-tenant isolation check: booted a real `casazium/license` instance
+(`MULTI_TENANT=true`) and this console's real standalone server, signed
+up **two separate tenants** (Acme Corp, Widget Inc), issued a distinct
+real license under each directly against the backend using each
+tenant's own decrypted key, then hit the console's real `/licenses` and
+`/dashboard` pages as each tenant:
+
+- Acme's `/licenses` page showed only its own license
+  (`acme-customer@example.com` / `widget-pro`) - no trace of Widget's.
+- Widget's `/licenses` page showed only its own
+  (`widget-customer@example.com` / `gadget-basic`) - no trace of Acme's.
+
+Also verified self-hosted mode is unaffected, but caught a test-setup
+mistake along the way worth recording: pairing a self-hosted console
+against the *same* `MULTI_TENANT=true` server instance used for the
+isolation test produced a 500, not a working page - not a B2 bug, but
+`casazium/license`'s own pre-existing, already-established rule
+(`SaaS-A0`/`A3`) that the admin key is never valid on the 10
+tenant-scoped routes once `MULTI_TENANT=true`. Self-hosted console only
+pairs with a self-hosted server, never with the same server backing a
+SaaS deployment - re-ran against a genuine self-hosted (`MULTI_TENANT`
+unset) server instance instead, which worked correctly (200, the
+expected license visible).
+
+Not independently re-verified: an actual Server Action invocation
+through the browser/form (Next's Server Action wire protocol isn't
+something plain `curl` can replicate) - `actions.ts` calls the
+identical `requireSessionWithTenantKey()` helper and identical
+dispatcher functions already proven correct on the read side, so this
+is a low residual risk, not zero.
+

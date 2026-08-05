@@ -118,15 +118,23 @@ export async function verifySessionToken(token: string): Promise<Identity | null
 }
 
 /**
- * Server Actions have no request object to read - proxy.ts's middleware
- * check never runs for them (its matcher only covers page/route navigation,
- * not action invocations), so each action must verify the session itself
- * rather than relying on middleware alone. Confirmed not currently
- * exploitable on Next 16.2.12 (action IDs are scoped to the pages that
- * bundle them), but that's a Next internal, not a guarantee - this is the
- * actual authorization boundary for actions.
+ * Two distinct reasons to call this, both real: Server Actions have no
+ * request object to read - proxy.ts's middleware check never runs for
+ * them (its matcher only covers page/route navigation, not action
+ * invocations), so each action must verify the session itself rather
+ * than relying on middleware alone. Confirmed not currently exploitable
+ * on Next 16.2.12 (action IDs are scoped to the pages that bundle them),
+ * but that's a Next internal, not a guarantee - this is the actual
+ * authorization boundary for actions.
+ *
+ * Read pages (Server Components) are already gated by proxy.ts, so this
+ * isn't their authorization boundary - they call it instead (SaaS-B2) to
+ * resolve the current account's `tenantId`, which license-client's
+ * dispatcher functions need threaded through to know which tenant's key
+ * to use. Renamed from requireSessionForAction to reflect this broader
+ * use; the underlying check is identical either way.
  */
-export async function requireSessionForAction(): Promise<Identity> {
+export async function requireSession(): Promise<Identity> {
   const store = await cookies();
   const token = store.get(SESSION_COOKIE_NAME)?.value;
   const identity = token ? await verifySessionToken(token) : null;

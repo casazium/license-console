@@ -167,7 +167,13 @@ function generateKey(): string {
   return `CASZ-${segment()}-${segment()}-${segment()}`;
 }
 
-export async function listLicenses(params: ListLicensesParams = {}): Promise<ListLicensesResult> {
+export async function listLicenses(
+  params: ListLicensesParams = {},
+  // SaaS-B2: accepted for signature parity with license-client.live.ts
+  // (license-client.ts's dispatcher types every export as `typeof
+  // mock.xxx`) - unused here, mock mode has no real tenant concept.
+  _tenantApiKey?: string
+): Promise<ListLicensesResult> {
   const { status, product_id, limit = 10, offset = 0 } = params;
   const { licenses, activations } = getStore();
 
@@ -190,11 +196,14 @@ export async function listLicenses(params: ListLicensesParams = {}): Promise<Lis
   return { licenses: page, total: sorted.length };
 }
 
-export async function getLicense(key: string): Promise<License | null> {
+export async function getLicense(key: string, _tenantApiKey?: string): Promise<License | null> {
   return getStore().licenses.find((license) => license.key === key) ?? null;
 }
 
-export async function issueLicense(input: IssueLicenseInput): Promise<{ key: string }> {
+export async function issueLicense(
+  input: IssueLicenseInput,
+  _tenantApiKey?: string
+): Promise<{ key: string }> {
   const license: License = {
     key: generateKey(),
     product_id: input.product_id,
@@ -213,20 +222,28 @@ export async function issueLicense(input: IssueLicenseInput): Promise<{ key: str
   return { key: license.key };
 }
 
-export async function setLicenseRevoked(key: string, revoked: boolean): Promise<void> {
+export async function setLicenseRevoked(
+  key: string,
+  revoked: boolean,
+  _tenantApiKey?: string
+): Promise<void> {
   const license = getStore().licenses.find((entry) => entry.key === key);
   if (!license) return;
   license.status = revoked ? 'revoked' : 'active';
   license.revoked_at = revoked ? new Date().toISOString() : null;
 }
 
-export async function updateLicenseNotes(key: string, notes: string): Promise<void> {
+export async function updateLicenseNotes(
+  key: string,
+  notes: string,
+  _tenantApiKey?: string
+): Promise<void> {
   const license = getStore().licenses.find((entry) => entry.key === key);
   if (!license) return;
   license.notes = notes || null;
 }
 
-export async function deleteLicense(key: string): Promise<boolean> {
+export async function deleteLicense(key: string, _tenantApiKey?: string): Promise<boolean> {
   const store = getStore();
   const index = store.licenses.findIndex((entry) => entry.key === key);
   if (index === -1) return false;
@@ -235,13 +252,14 @@ export async function deleteLicense(key: string): Promise<boolean> {
   return true;
 }
 
-export async function listActivations(key: string): Promise<Activation[]> {
+export async function listActivations(key: string, _tenantApiKey?: string): Promise<Activation[]> {
   return getStore().activations[key] ?? [];
 }
 
 export async function reissueActivationToken(
   key: string,
-  instanceId: string
+  instanceId: string,
+  _tenantApiKey?: string
 ): Promise<{ token: string } | null> {
   const activations = getStore().activations[key];
   if (!activations?.some((activation) => activation.instance_id === instanceId)) {
@@ -250,7 +268,7 @@ export async function reissueActivationToken(
   return { token: `reissued_${Math.random().toString(36).slice(2, 10)}` };
 }
 
-export async function getDashboardStats(): Promise<DashboardStats> {
+export async function getDashboardStats(_tenantApiKey?: string): Promise<DashboardStats> {
   const { licenses, activations } = getStore();
   return {
     active_licenses: licenses.filter((license) => license.status === 'active').length,
@@ -259,7 +277,10 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   };
 }
 
-export async function getRecentActivations(limit = 5): Promise<RecentActivation[]> {
+export async function getRecentActivations(
+  limit = 5,
+  _tenantApiKey?: string
+): Promise<RecentActivation[]> {
   const { activations } = getStore();
   const flattened: RecentActivation[] = Object.entries(activations).flatMap(([key, list]) =>
     list.map((activation) => ({ key, ...activation }))
@@ -269,7 +290,11 @@ export async function getRecentActivations(limit = 5): Promise<RecentActivation[
     .slice(0, limit);
 }
 
-export async function getExpiringLicenses(withinDays = 30, limit = 5): Promise<ExpiringLicense[]> {
+export async function getExpiringLicenses(
+  withinDays = 30,
+  limit = 5,
+  _tenantApiKey?: string
+): Promise<ExpiringLicense[]> {
   const { licenses } = getStore();
   const now = Date.now();
   const cutoff = now + withinDays * 24 * 60 * 60 * 1000;
@@ -291,7 +316,10 @@ export async function getExpiringLicenses(withinDays = 30, limit = 5): Promise<E
     }));
 }
 
-export async function getLicensesNearSeatLimit(limit = 5): Promise<SeatUtilization[]> {
+export async function getLicensesNearSeatLimit(
+  limit = 5,
+  _tenantApiKey?: string
+): Promise<SeatUtilization[]> {
   const { licenses, activations } = getStore();
 
   return licenses
@@ -312,7 +340,10 @@ export async function getLicensesNearSeatLimit(limit = 5): Promise<SeatUtilizati
     .slice(0, limit);
 }
 
-export async function getRecentlyIssuedLicenses(limit = 5): Promise<RecentlyIssuedLicense[]> {
+export async function getRecentlyIssuedLicenses(
+  limit = 5,
+  _tenantApiKey?: string
+): Promise<RecentlyIssuedLicense[]> {
   const { licenses } = getStore();
 
   return [...licenses]
