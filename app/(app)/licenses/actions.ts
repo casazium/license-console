@@ -10,7 +10,7 @@ import {
   type IssueLicenseInput,
 } from '@/lib/license-client';
 import { isRateLimited, isOverQuota, isPaymentFailed } from '@/lib/errors';
-import { requireSessionWithTenantKey } from '@/lib/tenant-context';
+import { requireSessionWithTenantKey, markIfTenantRejected } from '@/lib/tenant-context';
 
 // Next.js redacts thrown-error details (message, name, any custom
 // properties) once an error crosses a Server Action's return boundary in
@@ -33,7 +33,7 @@ type ActionResult<T> =
 export async function issueLicenseAction(
   input: IssueLicenseInput,
 ): Promise<ActionResult<{ key: string }>> {
-  const { tenantApiKey } = await requireSessionWithTenantKey();
+  const { identity, tenantApiKey } = await requireSessionWithTenantKey();
   try {
     const license = await issueLicense(input, tenantApiKey);
     revalidatePath('/licenses');
@@ -43,6 +43,7 @@ export async function issueLicenseAction(
     if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
     if (isOverQuota(err)) return { ok: false, reason: 'over-quota' };
     if (isPaymentFailed(err)) return { ok: false, reason: 'payment-failed' };
+    markIfTenantRejected(err, identity.tenantId);
     throw err;
   }
 }
@@ -51,7 +52,7 @@ export async function setLicenseRevokedAction(
   key: string,
   revoked: boolean,
 ): Promise<ActionResult<void>> {
-  const { tenantApiKey } = await requireSessionWithTenantKey();
+  const { identity, tenantApiKey } = await requireSessionWithTenantKey();
   try {
     await setLicenseRevoked(key, revoked, tenantApiKey);
     revalidatePath('/licenses');
@@ -60,12 +61,13 @@ export async function setLicenseRevokedAction(
     return { ok: true, data: undefined };
   } catch (err) {
     if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
+    markIfTenantRejected(err, identity.tenantId);
     throw err;
   }
 }
 
 export async function deleteLicenseAction(key: string): Promise<ActionResult<boolean>> {
-  const { tenantApiKey } = await requireSessionWithTenantKey();
+  const { identity, tenantApiKey } = await requireSessionWithTenantKey();
   try {
     const deleted = await deleteLicense(key, tenantApiKey);
     revalidatePath('/licenses');
@@ -73,6 +75,7 @@ export async function deleteLicenseAction(key: string): Promise<ActionResult<boo
     return { ok: true, data: deleted };
   } catch (err) {
     if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
+    markIfTenantRejected(err, identity.tenantId);
     throw err;
   }
 }
@@ -81,13 +84,14 @@ export async function updateLicenseNotesAction(
   key: string,
   notes: string,
 ): Promise<ActionResult<void>> {
-  const { tenantApiKey } = await requireSessionWithTenantKey();
+  const { identity, tenantApiKey } = await requireSessionWithTenantKey();
   try {
     await updateLicenseNotes(key, notes, tenantApiKey);
     revalidatePath(`/licenses/${key}`);
     return { ok: true, data: undefined };
   } catch (err) {
     if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
+    markIfTenantRejected(err, identity.tenantId);
     throw err;
   }
 }
@@ -96,12 +100,13 @@ export async function reissueActivationTokenAction(
   key: string,
   instanceId: string,
 ): Promise<ActionResult<{ token: string } | null>> {
-  const { tenantApiKey } = await requireSessionWithTenantKey();
+  const { identity, tenantApiKey } = await requireSessionWithTenantKey();
   try {
     const result = await reissueActivationToken(key, instanceId, tenantApiKey);
     return { ok: true, data: result };
   } catch (err) {
     if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
+    markIfTenantRejected(err, identity.tenantId);
     throw err;
   }
 }

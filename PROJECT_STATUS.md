@@ -2491,3 +2491,108 @@ convention, not a choice either repo made independently. Added a short
 note to that effect right at this README's own `.env.local` step, with
 a matching note in `casazium/license`'s own README.
 
+## 48. "Trigger 2": a tenant revoked on casazium/license locks this console out (2026-08-05)
+
+The last remaining item from `lib/session.ts`'s original two-triggers
+docblock (`SaaS-B1c`) - password reset (trigger 1) was built long ago;
+this was the one flagged as unbuilt ever since. No task ID owns this;
+operator asked for it directly after a design discussion.
+
+### Design process, not just the outcome
+
+Given three sketched options (reactive-on-403, a webhook, polling) and
+asked which to build, operator asked for an Opus agent's independent
+recommendation first, briefed with the real code (not just a summary)
+rather than my own analysis alone. That review found real problems
+with the *reactive* option's own naive framing before recommending
+anything: the license server's 403 is deliberately identical for every
+rejection reason (missing/unknown/revoked credential - a
+credential-type-oracle guard, `require-tenant-scoped-access.js`'s own
+comment), so a blanket "403 means revoked" rule would have wrongly
+logged out a tenant who simply hit their plan's own quota (`quota.js`
+also 403s, with a distinct message) - a real bug that was never
+implemented, caught at the design stage instead. It also found that a
+purely reactive check, with no durable state, can't actually lock
+anyone out: login is a local password check with no license-server
+call at all, and a fresh login always produces a token issued *after*
+the point-in-time `sessions_revoked_at` watermark, so it would just
+flap - revoked, then immediately usable again on next login.
+
+Operator then asked specifically how serious the resulting reactive
+design's own residual exposure (no push notification - the console
+only finds out on its own next license-server call) actually is,
+before approving a build. A second review pass, reading the real page
+code rather than reasoning abstractly, found: only two authenticated
+pages in the whole app make zero license-server calls
+(`licenses/new`, `onboarding` - both empty/local-only), everything
+else calls out on every render with no caching anywhere in the repo
+(`dynamic = 'force-dynamic'`, `cache: 'no-store'` throughout), issuing
+a license is blocked unconditionally and instantly regardless (the
+license server's own auth hook, not this console, is what's
+authoritative), and the console holds no mirror of tenant data to leak
+- the tenant API key is encrypted at rest and has exactly one
+server-side decrypt call site, never rendered. Verdict: a UX/staleness
+issue, not a security one, and the threat model (the tenant's own
+revoked operator, not a third party) narrows it further - the
+revocation's real purpose, stopping new value extraction, is already
+achieved unconditionally by the license server itself. **This is the
+recorded reason that residual window is accepted, not re-litigated as
+an open gap by a future reader of this code**, per that review's own
+explicit recommendation to write exactly this down.
+
+### What was built
+
+- **`lib/db/schema.sql`** - `accounts.tenant_revoked_at`, a nullable
+  watermark but checked as a persistent gate (`lib/session.ts`), not a
+  point-in-time comparison like `sessions_revoked_at` - a revoked
+  tenant must stay locked out of every *future* login too, not just
+  whatever sessions existed when it was set. Deliberately a separate
+  column, not the same watermark reused, for exactly that reason.
+- **`lib/errors.ts`** - `isTenantRejected()`, matching the license
+  server's own exact `'Unauthorized'` 403 message, alongside the
+  existing `isOverQuota`/`isPaymentFailed` (which match their own
+  distinct strings - the three can never be confused with each other).
+- **`lib/license-client.live.ts`** - refactored all 14 of this file's
+  own `!res.ok` throw sites through one new shared
+  `throwForFailedResponse()` helper, so every 403 (not just
+  `issueLicense`'s own quota/payment cases, which is as far as this
+  went before) preserves the server's real error text - required for
+  `isTenantRejected()` to have anything to classify.
+- **`lib/tenant-context.ts`** - `markTenantRevoked(tenantId)` (a
+  `WHERE tenant_id = ?` cascade, not `WHERE id = ?` - correct once
+  `SaaS-B1b`'s one-account-per-tenant simplification is eventually
+  lifted, matching `revokeAccountSessions`'s own documented intent for
+  the same trigger) and `markIfTenantRejected()`, the actual shared
+  call-site helper (one function, not the classify+mark pair
+  duplicated at each site).
+- **Reactive detection**: all 6 real call-site files (the same set
+  `requireSessionWithTenantKey()`'s own header comment already
+  enumerates - 3 read pages, 2 actions files covering 7 actions)
+  now call `markIfTenantRejected()` in their existing catch block,
+  alongside whatever they already checked - a side effect, not a new
+  response variant; the existing `throw err` / `return {ok:false,...}`
+  still runs unchanged right after.
+- **Login-time probe** (`app/api/login/route.ts`) - one extra call to
+  the already-existing `GET /billing/status` after the password check,
+  before issuing a session - closes the fresh-login bypass a purely
+  reactive check can't. **Fails open on anything except the exact
+  `isTenantRejected` classification** - a network error, timeout, 5xx,
+  or 429 here must not turn a transient license-server hiccup into a
+  console-wide login outage; only an authoritative rejection blocks.
+
+### Verified end-to-end against real servers, not just by reading the diff
+
+Full real scenario via Playwright: signed up, confirmed the dashboard
+works, looked up the real `tenant_id` from the console's own SQLite
+file, called `POST /admin/tenants/:id/revoke` directly against a real
+running license server, then continued the *same* browser session -
+first post-revocation request failed (500, the reactive detection's
+own side effect firing as designed), second request was redirected to
+`/login` (the persistent-gate check now rejecting the session
+outright), and a completely fresh login attempt in a new browser
+context was blocked immediately with the same generic "Invalid
+username or password" message (the login-time probe). Self-hosted
+mode regression-checked separately: login still works normally, the
+whole mechanism never engages (gated on `isMultiTenant()`).
+`npm run lint` and `npm run build` both clean.
+

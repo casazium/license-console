@@ -1,6 +1,7 @@
 import { getDb } from './db';
 import { decrypt } from './crypto';
 import { requireSession, type Identity } from './session';
+import { isTenantRejected } from './errors';
 
 /**
  * SaaS-B2. Resolves the current account's tenant API key for use against
@@ -35,6 +36,55 @@ export function getTenantName(accountId: string): string | null {
     | { tenant_name: string | null }
     | undefined;
   return account?.tenant_name ?? null;
+}
+
+/**
+ * "Trigger 2" - a tenant revoked on casazium/license, cascading to every
+ * console account under it. See lib/db/schema.sql's own comment on
+ * accounts.tenant_revoked_at for the full design record and why this is
+ * keyed by tenant_id (a `WHERE tenant_id = ?` cascade), not accountId -
+ * today, under SaaS-B1b's one-account-per-tenant simplification, that's
+ * exactly one row either way, but this is the version that stays correct
+ * once that simplification is lifted, matching revokeAccountSessions's
+ * own documented intent (lib/session.ts) for the same trigger.
+ *
+ * Called from two places: reactively, wherever a license-server call
+ * surfaces the tenant's own rejection (lib/errors.ts's
+ * isTenantRejected()), and at login time (app/api/login/route.ts's own
+ * fresh probe against the license server).
+ */
+export function markTenantRevoked(tenantId: string): void {
+  getDb().prepare('UPDATE accounts SET tenant_revoked_at = CURRENT_TIMESTAMP WHERE tenant_id = ?').run(tenantId);
+}
+
+/**
+ * The shared call-site helper for the reactive half of trigger 2 -
+ * every read page and Server Action that calls the license server (the
+ * same set requireSessionWithTenantKey() below already unifies) calls
+ * this in its existing catch block, alongside whatever else it already
+ * checks (isRateLimited, etc.). A side effect only, not a different
+ * control-flow branch - the caller's own existing `throw err` (or
+ * `return { ok: false, ... }`) still runs unchanged right after this;
+ * see markTenantRevoked()'s own comment for why the lockout doesn't
+ * take effect until the account's next request.
+ */
+export function markIfTenantRejected(err: unknown, tenantId: string | undefined): void {
+  if (isTenantRejected(err) && tenantId) {
+    markTenantRevoked(tenantId);
+  }
+}
+
+/**
+ * Only used at login time (app/api/login/route.ts), before a session -
+ * and therefore identity.tenantId (lib/session.ts) - exists yet.
+ * Every other call site already has identity.tenantId directly from
+ * requireSessionWithTenantKey() below and has no need for this.
+ */
+export function getAccountTenantId(accountId: string): string | null {
+  const account = getDb().prepare('SELECT tenant_id FROM accounts WHERE id = ?').get(accountId) as
+    | { tenant_id: string }
+    | undefined;
+  return account?.tenant_id ?? null;
 }
 
 /**

@@ -81,15 +81,32 @@ export async function verifySessionToken(token: string): Promise<Identity | null
 
     if (isMultiTenant()) {
       const account = getDb()
-        .prepare('SELECT tenant_id, sessions_revoked_at, email_verified_at FROM accounts WHERE id = ?')
+        .prepare(
+          'SELECT tenant_id, sessions_revoked_at, email_verified_at, tenant_revoked_at FROM accounts WHERE id = ?'
+        )
         .get(identity.id) as
-        | { tenant_id: string; sessions_revoked_at: string | null; email_verified_at: string | null }
+        | {
+            tenant_id: string;
+            sessions_revoked_at: string | null;
+            email_verified_at: string | null;
+            tenant_revoked_at: string | null;
+          }
         | undefined;
 
       // The account backing this token no longer exists (or was never a
       // SaaS account, e.g. a stale token from before MULTI_TENANT was
       // enabled) - reject rather than return a sessionless Identity.
       if (!account) {
+        return null;
+      }
+
+      // tenant_revoked_at ("trigger 2", lib/db/schema.sql's own comment on
+      // this column): a persistent gate, not a point-in-time watermark
+      // like sessions_revoked_at below - checked as "is this set at all",
+      // not compared against payload.iat, since a revoked tenant must
+      // stay locked out of every *future* login too, not just whatever
+      // sessions existed at the moment it was set.
+      if (account.tenant_revoked_at) {
         return null;
       }
 

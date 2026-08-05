@@ -45,6 +45,26 @@
 -- is actually clicked. Added straight into this CREATE TABLE rather than
 -- a defensive ALTER for the same reason tenant_name was (§5's
 -- disposability rule: no real deployment yet to migrate).
+--
+-- tenant_revoked_at: the "trigger 2" session.ts's own header comment on
+-- sessions_revoked_at flagged as unbuilt - a tenant being revoked on
+-- casazium/license, cascading to every account under it. Deliberately a
+-- SEPARATE column from sessions_revoked_at, not the same watermark
+-- reused: sessions_revoked_at only rejects tokens issued *before* it (a
+-- fresh login always produces a newer, still-valid token, which is
+-- exactly right for password-reset - the person proved they own the
+-- account and should get back in immediately - but wrong here, where a
+-- revoked tenant must stay locked out of *every* future login too, not
+-- just their currently-open sessions). This is checked as a persistent
+-- gate (is it set at all), not a time comparison - see
+-- lib/session.ts's verifySessionToken(). Set reactively (a
+-- license-server call surfacing the tenant's own "Unauthorized" 403,
+-- lib/errors.ts's isTenantRejected()) or at login time (a fresh probe
+-- against the license server, app/api/login/route.ts) - never proactively
+-- pushed from casazium/license, which has no way to reach this console
+-- at all today and isn't being given one; see PROJECT_STATUS.md for the
+-- full design record and why that gap is accepted, not a bug to fix
+-- later.
 CREATE TABLE IF NOT EXISTS accounts (
   id TEXT PRIMARY KEY,
   email TEXT NOT NULL,
@@ -54,6 +74,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   tenant_api_key_encrypted TEXT NOT NULL,
   sessions_revoked_at DATETIME,
   email_verified_at DATETIME,
+  tenant_revoked_at DATETIME,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

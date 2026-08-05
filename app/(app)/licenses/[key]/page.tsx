@@ -2,7 +2,7 @@ import { Badge, Code, Group, SimpleGrid, Stack, Text, Title } from '@mantine/cor
 import { getLicense, listActivations } from '@/lib/license-client';
 import { formatDateTime } from '@/lib/format';
 import { isRateLimited } from '@/lib/errors';
-import { requireSessionWithTenantKey } from '@/lib/tenant-context';
+import { requireSessionWithTenantKey, markIfTenantRejected } from '@/lib/tenant-context';
 import { MockDataNotice } from '@/components/MockDataNotice';
 import { RateLimitNotice } from '@/components/RateLimitNotice';
 import { ActivationsTable, NotesEditor, RevokeDeleteActions } from './LicenseActions';
@@ -17,7 +17,7 @@ export default async function LicenseDetailPage({
   const { key } = await params;
 
   // SaaS-B2: see dashboard/page.tsx's matching comment.
-  const { tenantApiKey } = await requireSessionWithTenantKey();
+  const { identity, tenantApiKey } = await requireSessionWithTenantKey();
 
   // See dashboard/page.tsx's matching comment - only a rate-limited
   // admin bucket gets a friendly inline message; any other error still
@@ -37,6 +37,8 @@ export default async function LicenseDetailPage({
         </Stack>
       );
     }
+    // "Trigger 2" - see dashboard/page.tsx's matching comment.
+    markIfTenantRejected(err, identity.tenantId);
     throw err;
   }
 

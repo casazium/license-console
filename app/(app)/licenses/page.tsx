@@ -1,7 +1,7 @@
 import { Group, Text, Title } from '@mantine/core';
 import { listLicenses } from '@/lib/license-client';
 import { isRateLimited } from '@/lib/errors';
-import { requireSessionWithTenantKey } from '@/lib/tenant-context';
+import { requireSessionWithTenantKey, markIfTenantRejected } from '@/lib/tenant-context';
 import { MockDataNotice } from '@/components/MockDataNotice';
 import { RateLimitNotice } from '@/components/RateLimitNotice';
 import { IssueLicenseButton } from './IssueLicenseButton';
@@ -25,7 +25,7 @@ export default async function LicensesPage({
   const hasFilters = Boolean(status || productId);
 
   // SaaS-B2: see dashboard/page.tsx's matching comment.
-  const { tenantApiKey } = await requireSessionWithTenantKey();
+  const { identity, tenantApiKey } = await requireSessionWithTenantKey();
 
   // See dashboard/page.tsx's matching comment - only a rate-limited
   // admin bucket gets a friendly inline message; any other error still
@@ -53,6 +53,8 @@ export default async function LicensesPage({
         </>
       );
     }
+    // "Trigger 2" - see dashboard/page.tsx's matching comment.
+    markIfTenantRejected(err, identity.tenantId);
     throw err;
   }
 

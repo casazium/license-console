@@ -32,10 +32,11 @@ export function isRateLimited(error: unknown): boolean {
 // casazium/license's src/lib/quota.js is the only place either of these
 // exact strings comes from (checked in that order there too: a
 // non-active subscription blocks before the quota count is even read).
-// license-client.live.ts's issueLicense() is the one function that
-// preserves the server's own error text for 403s rather than the
-// generic "Failed to X: status statusText" every other function throws,
-// specifically so these two are distinguishable here.
+// license-client.live.ts preserves the server's own error text for every
+// 403 (a shared helper, not just issueLicense() specifically - see that
+// file's own throwForFailedResponse()), which is what makes these three
+// 403-message checks (this pair, plus isTenantRejected below)
+// distinguishable from each other and from an ordinary 403.
 export function isOverQuota(error: unknown): boolean {
   return (
     error instanceof LicenseApiError &&
@@ -50,4 +51,21 @@ export function isPaymentFailed(error: unknown): boolean {
     error.status === 403 &&
     error.message === 'Subscription is not active'
   );
+}
+
+// The exact, deliberately generic message require-tenant-scoped-access.js
+// (casazium/license) returns for every rejection reason alike - missing
+// credential, unknown credential, or (this trigger's actual case) a
+// tenant whose status isn't 'active' - specifically to avoid letting a
+// caller distinguish those cases from the outside (a credential-type
+// oracle). That's correct for the license server's own boundary, but it
+// means this classifier can't tell "wrong/missing key" apart from "right
+// key, revoked tenant" either - both are legitimate reasons this console
+// itself would only ever see this exact error using a key it already
+// decrypted from its own accounts table, so treating either as "this
+// tenant is no longer usable" (see lib/tenant-context.ts's
+// markTenantRevoked()) is the correct call regardless of which one it
+// actually was.
+export function isTenantRejected(error: unknown): boolean {
+  return error instanceof LicenseApiError && error.status === 403 && error.message === 'Unauthorized';
 }

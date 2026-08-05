@@ -7,7 +7,7 @@ import {
   getRecentlyIssuedLicenses,
 } from '@/lib/license-client';
 import { isRateLimited } from '@/lib/errors';
-import { requireSessionWithTenantKey } from '@/lib/tenant-context';
+import { requireSessionWithTenantKey, markIfTenantRejected } from '@/lib/tenant-context';
 import { MockDataNotice } from '@/components/MockDataNotice';
 import { RateLimitNotice } from '@/components/RateLimitNotice';
 import { ExpiringLicensesTable } from './ExpiringLicensesTable';
@@ -22,7 +22,7 @@ export default async function DashboardPage() {
   // self-hosted) the calls below use. proxy.ts's middleware already
   // gates unauthenticated requests before this page ever renders; this
   // call's job here is tenant context, not the authorization check.
-  const { tenantApiKey } = await requireSessionWithTenantKey();
+  const { identity, tenantApiKey } = await requireSessionWithTenantKey();
 
   // Caught here, not left to throw into Next's default Server Component
   // error boundary: a rate-limited admin bucket is a routine, expected
@@ -51,6 +51,11 @@ export default async function DashboardPage() {
         </>
       );
     }
+    // "Trigger 2" (lib/tenant-context.ts's own comment on
+    // markIfTenantRejected) - a side effect, not a different response:
+    // still falls through to the same `throw err` below, unchanged for
+    // *this* request.
+    markIfTenantRejected(err, identity.tenantId);
     throw err;
   }
 

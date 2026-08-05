@@ -96,6 +96,23 @@ async function liveFetch(path: string, init: RequestInit = {}, tenantApiKey?: st
   });
 }
 
+// Shared by every !res.ok branch below - preserves the server's own
+// error text for every 403 (not just issue-license's quota/payment
+// cases, which is where this started - SaaS-B4). lib/errors.ts's
+// isOverQuota()/isPaymentFailed()/isTenantRejected() all classify by
+// matching this exact message text, and none of them work without it -
+// the generic `Failed to X: status statusText` fallback below (used for
+// every other status, and for a 403 whose body doesn't parse) carries no
+// classifiable information on purpose, since it's not one of the known,
+// specifically-handled cases.
+async function throwForFailedResponse(res: Response, fallbackMessage: string): Promise<never> {
+  if (res.status === 403) {
+    const body: { error?: string } = await res.json().catch(() => ({}));
+    throw new LicenseApiError(body.error || 'Forbidden', 403);
+  }
+  throw new LicenseApiError(`${fallbackMessage}: ${res.status} ${res.statusText}`, res.status);
+}
+
 async function fetchRawLicenses(
   params: {
     status?: 'active' | 'revoked';
@@ -113,7 +130,7 @@ async function fetchRawLicenses(
 
   const res = await liveFetch(`/list-licenses?${query.toString()}`, {}, tenantApiKey);
   if (!res.ok) {
-    throw new LicenseApiError(`Failed to list licenses: ${res.status} ${res.statusText}`, res.status);
+    await throwForFailedResponse(res, 'Failed to list licenses');
   }
   return res.json();
 }
@@ -162,7 +179,7 @@ export async function getLicense(key: string, tenantApiKey?: string): Promise<Li
   const res = await liveFetch(`/admin/license/${encodeURIComponent(key)}`, {}, tenantApiKey);
   if (res.status === 404) return null;
   if (!res.ok) {
-    throw new LicenseApiError(`Failed to get license: ${res.status} ${res.statusText}`, res.status);
+    await throwForFailedResponse(res, 'Failed to get license');
   }
   return res.json();
 }
@@ -180,16 +197,7 @@ export async function issueLicense(
     tenantApiKey
   );
   if (!res.ok) {
-    // SaaS-B4: for 403s specifically, surface the server's own error
-    // text (quota.js's two known messages: over-quota / payment-failed)
-    // rather than the generic "Failed to X: status statusText" every
-    // other function throws - lib/errors.ts's isOverQuota()/
-    // isPaymentFailed() need the real message to tell them apart.
-    if (res.status === 403) {
-      const body: { error?: string } = await res.json().catch(() => ({}));
-      throw new LicenseApiError(body.error || 'Forbidden', 403);
-    }
-    throw new LicenseApiError(`Failed to issue license: ${res.status} ${res.statusText}`, res.status);
+    await throwForFailedResponse(res, 'Failed to issue license');
   }
   const data: { key: string } = await res.json();
   return { key: data.key };
@@ -212,10 +220,7 @@ export async function setLicenseRevoked(
   // successful no-op rather than an error, since the end result (the
   // license's status matches what was requested) is the same either way.
   if (!res.ok && res.status !== 409) {
-    throw new LicenseApiError(
-      `Failed to update license status: ${res.status} ${res.statusText}`,
-      res.status,
-    );
+    await throwForFailedResponse(res, 'Failed to update license status');
   }
 }
 
@@ -229,10 +234,7 @@ export async function updateLicenseNotes(key: string, notes: string, tenantApiKe
     tenantApiKey
   );
   if (!res.ok) {
-    throw new LicenseApiError(
-      `Failed to update license notes: ${res.status} ${res.statusText}`,
-      res.status,
-    );
+    await throwForFailedResponse(res, 'Failed to update license notes');
   }
 }
 
@@ -247,7 +249,7 @@ export async function deleteLicense(key: string, tenantApiKey?: string): Promise
   );
   if (res.status === 404) return false;
   if (!res.ok) {
-    throw new LicenseApiError(`Failed to delete license: ${res.status} ${res.statusText}`, res.status);
+    await throwForFailedResponse(res, 'Failed to delete license');
   }
   return true;
 }
@@ -256,7 +258,7 @@ export async function listActivations(key: string, tenantApiKey?: string): Promi
   const res = await liveFetch(`/list-activations/${encodeURIComponent(key)}`, {}, tenantApiKey);
   if (res.status === 404) return [];
   if (!res.ok) {
-    throw new LicenseApiError(`Failed to list activations: ${res.status} ${res.statusText}`, res.status);
+    await throwForFailedResponse(res, 'Failed to list activations');
   }
   const data: { key: string; activations: Activation[] } = await res.json();
   return data.activations;
@@ -277,10 +279,7 @@ export async function reissueActivationToken(
   );
   if (res.status === 404) return null;
   if (!res.ok) {
-    throw new LicenseApiError(
-      `Failed to reissue activation token: ${res.status} ${res.statusText}`,
-      res.status,
-    );
+    await throwForFailedResponse(res, 'Failed to reissue activation token');
   }
   const data: { reissued: boolean; token: string } = await res.json();
   return { token: data.token };
@@ -289,10 +288,7 @@ export async function reissueActivationToken(
 export async function getDashboardStats(tenantApiKey?: string): Promise<DashboardStats> {
   const res = await liveFetch('/admin/stats', {}, tenantApiKey);
   if (!res.ok) {
-    throw new LicenseApiError(
-      `Failed to get dashboard stats: ${res.status} ${res.statusText}`,
-      res.status,
-    );
+    await throwForFailedResponse(res, 'Failed to get dashboard stats');
   }
   const data: {
     activeLicenses: number;
@@ -313,10 +309,7 @@ export async function getDashboardStats(tenantApiKey?: string): Promise<Dashboar
 export async function getRecentActivations(limit = 5, tenantApiKey?: string): Promise<RecentActivation[]> {
   const res = await liveFetch(`/recent-activations?limit=${limit}`, {}, tenantApiKey);
   if (!res.ok) {
-    throw new LicenseApiError(
-      `Failed to get recent activations: ${res.status} ${res.statusText}`,
-      res.status,
-    );
+    await throwForFailedResponse(res, 'Failed to get recent activations');
   }
   return res.json();
 }
@@ -396,7 +389,7 @@ export async function getRecentlyIssuedLicenses(
 export async function getBillingStatus(tenantApiKey?: string): Promise<BillingStatus> {
   const res = await liveFetch('/billing/status', {}, tenantApiKey);
   if (!res.ok) {
-    throw new LicenseApiError(`Failed to get billing status: ${res.status} ${res.statusText}`, res.status);
+    await throwForFailedResponse(res, 'Failed to get billing status');
   }
   return res.json();
 }
@@ -411,10 +404,7 @@ export async function createCheckoutSession(plan: string, tenantApiKey?: string)
     tenantApiKey
   );
   if (!res.ok) {
-    throw new LicenseApiError(
-      `Failed to create checkout session: ${res.status} ${res.statusText}`,
-      res.status,
-    );
+    await throwForFailedResponse(res, 'Failed to create checkout session');
   }
   return res.json();
 }
@@ -434,10 +424,7 @@ export async function completeStubCheckout(plan: string, tenantApiKey?: string):
     tenantApiKey
   );
   if (!res.ok) {
-    throw new LicenseApiError(
-      `Failed to complete stub checkout: ${res.status} ${res.statusText}`,
-      res.status,
-    );
+    await throwForFailedResponse(res, 'Failed to complete stub checkout');
   }
   return res.json();
 }

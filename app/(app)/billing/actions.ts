@@ -2,7 +2,7 @@
 
 import { createCheckoutSession, completeStubCheckout } from '@/lib/license-client';
 import { isRateLimited } from '@/lib/errors';
-import { requireSessionWithTenantKey } from '@/lib/tenant-context';
+import { requireSessionWithTenantKey, markIfTenantRejected } from '@/lib/tenant-context';
 import type { BillingStatus } from '@/lib/license-types';
 
 type ActionResult<T> = { ok: true; data: T } | { ok: false; reason: 'rate-limited' };
@@ -16,7 +16,7 @@ type ActionResult<T> = { ok: true; data: T } | { ok: false; reason: 'rate-limite
 const STUB_CHECKOUT_HOST = 'stub-billing.invalid';
 
 export async function createCheckoutSessionAction(plan: string): Promise<ActionResult<{ url: string }>> {
-  const { tenantApiKey } = await requireSessionWithTenantKey();
+  const { identity, tenantApiKey } = await requireSessionWithTenantKey();
   try {
     const session = await createCheckoutSession(plan, tenantApiKey);
     if (new URL(session.url).hostname === STUB_CHECKOUT_HOST) {
@@ -25,6 +25,7 @@ export async function createCheckoutSessionAction(plan: string): Promise<ActionR
     return { ok: true, data: session };
   } catch (err) {
     if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
+    markIfTenantRejected(err, identity.tenantId);
     throw err;
   }
 }
@@ -38,12 +39,13 @@ export async function createCheckoutSessionAction(plan: string): Promise<ActionR
 // the confirm page above, which itself is only ever navigated to when
 // createCheckoutSessionAction detected the stub's own unreachable URL.
 export async function completeStubCheckoutAction(plan: string): Promise<ActionResult<BillingStatus>> {
-  const { tenantApiKey } = await requireSessionWithTenantKey();
+  const { identity, tenantApiKey } = await requireSessionWithTenantKey();
   try {
     const status = await completeStubCheckout(plan, tenantApiKey);
     return { ok: true, data: status };
   } catch (err) {
     if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
+    markIfTenantRejected(err, identity.tenantId);
     throw err;
   }
 }

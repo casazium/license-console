@@ -3,7 +3,7 @@ import { Badge, Stack, Text, Title } from '@mantine/core';
 import { getBillingStatus } from '@/lib/license-client';
 import { isMultiTenant } from '@/lib/config';
 import { isRateLimited } from '@/lib/errors';
-import { requireSessionWithTenantKey } from '@/lib/tenant-context';
+import { requireSessionWithTenantKey, markIfTenantRejected } from '@/lib/tenant-context';
 import { RateLimitNotice } from '@/components/RateLimitNotice';
 import { PlanSelector } from './PlanSelector';
 
@@ -25,7 +25,7 @@ export default async function BillingPage() {
     notFound();
   }
 
-  const { tenantApiKey } = await requireSessionWithTenantKey();
+  const { identity, tenantApiKey } = await requireSessionWithTenantKey();
 
   // See dashboard/page.tsx's matching comment - only a rate-limited
   // admin bucket gets a friendly inline message; any other error still
@@ -42,6 +42,8 @@ export default async function BillingPage() {
         </Stack>
       );
     }
+    // "Trigger 2" - see dashboard/page.tsx's matching comment.
+    markIfTenantRejected(err, identity.tenantId);
     throw err;
   }
 
