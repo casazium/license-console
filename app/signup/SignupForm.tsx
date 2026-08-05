@@ -44,7 +44,9 @@ export function SignupForm() {
       return;
     }
 
-    router.push('/dashboard');
+    // SaaS-B5: every successful signup is a brand new, license-less
+    // tenant - straight to onboarding, not the (empty) dashboard.
+    router.push('/onboarding');
     router.refresh();
   }
 

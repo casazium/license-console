@@ -25,6 +25,19 @@ export function getTenantApiKey(accountId: string): string {
 }
 
 /**
+ * SaaS-B5. The "Company / organization" name collected (and previously
+ * discarded) at signup, for the onboarding flow's welcome copy - see
+ * lib/db/schema.sql's accounts.tenant_name comment for why this lives
+ * here rather than being fetched from casazium/license.
+ */
+export function getTenantName(accountId: string): string | null {
+  const account = getDb().prepare('SELECT tenant_name FROM accounts WHERE id = ?').get(accountId) as
+    | { tenant_name: string | null }
+    | undefined;
+  return account?.tenant_name ?? null;
+}
+
+/**
  * The actual call-site helper (SaaS-B2's 4 real call sites - actions.ts's
  * 5 actions, and the 3 read pages - all need exactly this pair of steps).
  * Factored out deliberately, not left as 8 near-identical inline copies:

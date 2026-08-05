@@ -31,11 +31,21 @@
 -- table is new on an unmerged branch with no real deployment yet to
 -- migrate (PROJECT_STATUS.md §5's disposability rule: an unmerged branch
 -- means the old shape never shipped).
+-- tenant_name (SaaS-B5): the "Company / organization" value collected
+-- (and previously discarded) by the signup form, stored so the
+-- onboarding flow can personalize its welcome copy without a round
+-- trip to casazium/license - that server's own tenants.name isn't
+-- exposed by any tenant-scoped route, and fetching it would mean a new
+-- one just for this. Nullable, not because it's ever actually unset for
+-- a signed-up account (SaaS-B1b's flow always collects and would
+-- populate it), but so old rows from before this column existed don't
+-- need a backfill on an unmerged branch with no real data anyway (§5).
 CREATE TABLE IF NOT EXISTS accounts (
   id TEXT PRIMARY KEY,
   email TEXT NOT NULL,
   password_hash TEXT NOT NULL,
   tenant_id TEXT NOT NULL,
+  tenant_name TEXT,
   tenant_api_key_encrypted TEXT NOT NULL,
   sessions_revoked_at DATETIME,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP

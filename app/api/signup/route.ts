@@ -119,9 +119,9 @@ export async function POST(request: NextRequest) {
 
   try {
     db.prepare(
-      `INSERT INTO accounts (id, email, password_hash, tenant_id, tenant_api_key_encrypted)
-       VALUES (?, ?, ?, ?, ?)`
-    ).run(accountId, email, passwordHash, tenant.id, encryptedApiKey);
+      `INSERT INTO accounts (id, email, password_hash, tenant_id, tenant_name, tenant_api_key_encrypted)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(accountId, email, passwordHash, tenant.id, tenantName.trim(), encryptedApiKey);
   } catch (err) {
     // The tenant above was already provisioned on casazium/license and is
     // now orphaned (no local account references it) - most likely cause is

@@ -2086,3 +2086,73 @@ Same real two-server, real-browser setup as `B4`'s own test:
 `PROJECT_STATUS.md` §31) and console-side (this section) are verified,
 not partial.
 
+## 38. SaaS-B5: signup to first-license onboarding flow (2026-08-05)
+
+Grounded before writing code: every successful signup (`SaaS-B1b`)
+provisions a brand new, license-less tenant - there is no existing-
+tenant case to distinguish, so signup can always redirect to onboarding
+unconditionally, with no new "has this tenant already onboarded" flag
+needed. The license detail page already shows a "how to activate this
+license" snippet (built well before this task), so onboarding's natural
+completion is just: issue the first license, land on that existing page
+- not a second, parallel completion screen invented for this task.
+Entirely console-side; `casazium/license` has no stake in this one.
+
+### What was built
+
+- **`lib/db/schema.sql`** — `accounts.tenant_name`, the "Company /
+  organization" value the signup form already collected and previously
+  discarded. Added directly to the `CREATE TABLE` (this table is still
+  new on an unmerged branch, §5), not a defensive `ALTER`.
+- **`app/api/signup/route.ts`** — persists it.
+- **`lib/tenant-context.ts`** — `getTenantName(accountId)`, for
+  onboarding's welcome copy. Not fetched from `casazium/license`
+  instead - that server's `tenants.name` isn't exposed by any
+  tenant-scoped route, and adding one just for this wasn't worth it
+  when the value was already sitting unused in this console's own DB.
+- **`app/(app)/licenses/IssueLicenseForm.tsx`** (new, extracted from
+  the former `licenses/new/page.tsx`) — identical fields/validation/
+  submit handling, now shared by both `/licenses/new` and
+  `/onboarding`, parameterized by `heading`, `submitLabel`, and an
+  optional `skipHref`.
+- **`app/(app)/onboarding/page.tsx`** (new) — 404s under self-hosted,
+  same posture as `/signup`/`/billing`. Welcome copy using the tenant's
+  name, then the shared form, then a "Skip for now" link to `/dashboard`.
+- **`app/signup/SignupForm.tsx`** — redirects to `/onboarding` instead
+  of the (empty, for a new tenant) `/dashboard`.
+
+### A real bug caught during verification, not shipped
+
+Passing `<Anchor component={Link}>` (a pre-rendered element holding a
+raw `next/link` component reference) as a prop from the onboarding page
+(a Server Component) into `IssueLicenseForm` (a Client Component)
+crashed the page outright in the real standalone build - "Functions
+cannot be passed directly to Client Components," a genuine React Server
+Components serialization boundary, not something `npm run build`'s
+static analysis alone caught. Fixed by having `IssueLicenseForm` accept
+a plain `skipHref` string and render its own `<Anchor component={Link}>`
+internally, entirely within the already-client component - `Link` is
+never passed across the boundary at all now.
+
+### Verified
+
+`npm run lint` clean; `npm run build` compiles, passes TypeScript, all
+14 routes generated including `/onboarding`, no warnings.
+
+Real browser end-to-end (the RSC crash above was only found this way -
+`npm run build` alone reported success): signed up a real tenant,
+confirmed the redirect landed on `/onboarding` (not `/dashboard`) and
+the welcome copy showed the real company name; submitted the onboarding
+form and confirmed it issued a real license, landing on that license's
+own detail page with the activation snippet and the correct
+`issued_to` visible; separately confirmed the regular `/licenses/new`
+page still works correctly post-extraction (its own heading, no stray
+"Skip for now" link, a real submission redirects correctly - checked
+via a script that doesn't repeat this repo's own previously-documented
+`waitForURL('**/licenses/*')` false-positive pitfall, since the
+starting URL there already matches that glob before any real navigation
+happens). Restarted self-hosted (`MULTI_TENANT` unset) against a
+genuinely self-hosted server: `/onboarding` 404s, `/licenses/new` still
+renders and works correctly - the shared-component extraction didn't
+regress self-hosted.
+
