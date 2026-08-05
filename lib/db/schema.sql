@@ -1,0 +1,12 @@
+-- lib/db/schema.sql
+--
+-- SaaS-B1a: persistence layer only, no application tables yet. This file
+-- is applied via db.exec() on every connection open (lib/db.ts), the same
+-- `CREATE TABLE IF NOT EXISTS` / defensive-migration convention
+-- casazium/license's own src/db/schema.sql + src/app.js use - no
+-- migration framework, safe to re-run unconditionally.
+--
+-- SaaS-B1b (accounts table) and SaaS-B1c (a sessions table, if the
+-- revocation strategy decided there ends up needing server-side session
+-- state rather than a pure JWT-blocklist approach) add their own
+-- statements here.

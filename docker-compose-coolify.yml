@@ -24,6 +24,12 @@
 # Coolify reprocesses the value before injecting it, which corrupted both
 # in testing; see .env.example's BRANDING_COLOR note for the quoting angle
 # of that same failure mode).
+#
+# console-data volume (SaaS-B1a): persists this console's own SQLite DB
+# (accounts, sessions - lib/db.ts) across redeploys, same pattern as
+# casazium/license's own license-data volume. Confirm in the Coolify UI
+# that this is recognized as persistent storage for this service, not
+# discarded on rebuild.
 services:
   console:
     build:
@@ -41,6 +47,7 @@ services:
       # which this reinforces in case Coolify's own env injection ever
       # takes precedence over the image-baked value).
       - HOSTNAME=0.0.0.0
+      - DB_FILE=/app/data/console.db
       - SESSION_SECRET=${SESSION_SECRET}
       - ADMIN_UI_USERNAME=${ADMIN_UI_USERNAME}
       - ADMIN_UI_PASSWORD=${ADMIN_UI_PASSWORD}
@@ -52,6 +59,8 @@ services:
       - BRANDING_COLOR=${BRANDING_COLOR}
       - BRANDING_COPYRIGHT_HOLDER=${BRANDING_COPYRIGHT_HOLDER}
       - BRANDING_FAVICON_URL=${BRANDING_FAVICON_URL}
+    volumes:
+      - console-data:/app/data
     labels:
       - traefik.enable=true
 
@@ -72,3 +81,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+
+volumes:
+  console-data:

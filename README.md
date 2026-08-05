@@ -22,3 +22,9 @@ requires `LICENSE_STANDALONE_MODE=true`, so an operator who meant to
 configure live mode but left it unset fails loudly instead of silently
 serving mock data. See `.env.example` for the full rationale on each var,
 and `PROJECT_STATUS.md` for architecture decisions.
+
+`DB_FILE` (optional, defaults to `./data/console.db`) is this console's own
+SQLite database (`lib/db.ts`, `SaaS-B1a`) — separate from and unrelated to
+`casazium/license`'s own database. It stores this console's human login
+accounts and sessions, not license/tenant data. No tables exist yet as of
+`SaaS-B1a`; `SaaS-B1b`/`B1c` add them.

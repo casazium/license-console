@@ -1500,3 +1500,93 @@ of the whole plan, now lives there. See `casazium/license/PROJECT_STATUS.md`
 
 **Nothing in it is authorized to begin implementation.**
 
+## 30. SaaS-B1a: persistence layer (2026-08-05)
+
+First implementation task from the plan §29 points at. Full decision
+rationale (SQLite vs. Postgres, migration strategy, connection
+lifecycle) lives in `casazium/license/PROJECT_STATUS.md` §33, matching
+§29's own convention of keeping the plan's authoritative narrative
+there. This entry is this repo's own build record.
+
+Branched `saas-tier` from `main` for this and all following `SaaS-B*`
+work (§5 of the plan doc: a long-lived branch, not merged until a go
+decision) — found local `main` and the true `origin/main` had diverged
+(a stale `git fetch` cache masked this at first; `git ls-remote`
+and the push itself both surfaced the real state), resolved by
+fast-forwarding local `main` to `origin/main`'s actual tip
+(`feat/license-notes-ui`'s PR #29 merge) before branching, not by
+force-pushing over anything.
+
+### What was built
+
+- **`lib/db.ts`** — SQLite connection via `better-sqlite3`, matching
+  `casazium/license`'s own choice. `journal_mode = WAL` and
+  `foreign_keys = ON` set on open. A `globalThis`-stashed singleton, the
+  standard Next.js pattern for surviving dev-mode Fast Refresh re-running
+  module top-level code without leaking file handles across saves.
+- **`lib/db/schema.sql`** — empty shell (a header comment only) applied
+  via `db.exec()` on every open, same `CREATE TABLE IF NOT EXISTS`
+  convention as `casazium/license`'s `src/app.js`/`src/db/schema.sql`, no
+  migration framework. No application tables yet — `SaaS-B1b`/`B1c` add
+  them.
+- **`next.config.mjs`** — `serverExternalPackages: ['better-sqlite3']`,
+  required because it's a native addon (compiled `.node` binary); without
+  this Next's bundler would try to webpack it.
+- **`scripts/copy-standalone-assets.mjs`** — extended to also copy
+  `lib/db/schema.sql` into `.next/standalone/lib/db/`, for the same
+  reason it already copies `public/`/`.next/static`: the standalone
+  tracer only follows the JS import graph, not a runtime
+  `fs.readFileSync()` path to a non-JS file.
+- **`Dockerfile`** — `RUN mkdir -p /app/data && chown -R node:node /app`
+  before `USER node`, mirroring `casazium/license`'s own Dockerfile
+  exactly, so the Coolify volume mounted at `/app/data` inherits
+  writable ownership. The old "this server is stateless" comment is no
+  longer true and was removed.
+- **`docker-compose-coolify.yml`** — `DB_FILE=/app/data/console.db` env
+  var and a `console-data` named volume, mirroring
+  `casazium/license`'s `license-data` volume convention exactly. The
+  existing healthcheck still targets `/login`, not this DB — left
+  unchanged, wiring a DB check into it is an easy independent follow-up,
+  not done here to keep this task's scope to what `SaaS-B1a` actually
+  asked for.
+- **`app/api/health/db/route.ts`** — not wired into Coolify's healthcheck
+  (see above); exists purely to prove the connection lifecycle end-to-end
+  during this task, since it isn't otherwise exercised until `B1b`/`B1c`
+  add real tables.
+- **`.env.example`**, **`README.md`**, **`.gitignore`** — `DB_FILE`
+  documented; local dev DB files (`/data/`, `*.db*`) ignored.
+
+### A real risk, checked rather than assumed
+
+`node:22-alpine`'s musl libc is a different ABI than the glibc
+`node:20-slim` `casazium/license` uses for the same dependency — a
+musl-incompatible native binary would only surface as a Docker build
+failure, not a local `npm install` failure, in this exact sandbox (no
+Docker daemon available to build the image directly here). Checked the
+actual `better-sqlite3@11.10.0` GitHub release assets instead of
+guessing: `linuxmusl-x64` prebuilds exist for Node ABI v127 (Node 22's
+ABI), so no extra Alpine build tooling (`python3`/`make`/`g++`) was
+added. **Still not a substitute for an actual `docker build` — recommend
+running one before this ships to Coolify**, since this is inference from
+published release assets, not a direct build confirmation.
+
+### Verified
+
+- `npm run lint` — clean.
+- `npm run build` (Turbopack) — compiles, passes TypeScript, all 9
+  routes generated including the new health route. Turbopack initially
+  warned that `lib/db.ts`'s `DB_FILE`-derived path resolution looked
+  dynamic enough to trace the whole project as a dependency of the
+  health route ("Encountered unexpected file in NFT list") — fixed with
+  the `turbopackIgnore` comment Next's own warning message suggests,
+  confirmed by rebuilding clean with the warning gone.
+- Ran the actual `.next/standalone/server.js` (not `next dev` — the real
+  artifact Docker ships), logged in via `/api/login`, called the new
+  authenticated `/api/health/db` route: `{"ok":true,"journalMode":"wal","foreignKeys":1}`,
+  and confirmed the SQLite file was created on disk at the configured
+  `DB_FILE` path with the schema applied without error.
+- Not run: an actual `docker build` (no daemon in this sandbox) and a
+  live dev-mode Fast-Refresh reload check (the `globalThis` singleton
+  pattern is standard/well-established; not independently re-verified
+  here beyond code review).
+

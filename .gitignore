@@ -27,3 +27,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local dev database (SaaS-B1a, lib/db.ts - DB_FILE)
+/data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm

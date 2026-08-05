@@ -60,6 +60,14 @@ const nextConfig = {
   // shipping the full node_modules tree. Required by Dockerfile.
   output: 'standalone',
 
+  // better-sqlite3 (lib/db.ts, SaaS-B1a) is a native addon (a compiled
+  // .node binary, not pure JS) - left external so Next's bundler doesn't
+  // try to webpack it, which would either fail the build or silently
+  // produce a broken bundle that can't load the binary at runtime. The
+  // standalone output tracer still includes the package's own files
+  // (its node_modules subset) since it's a real dependency, just unbundled.
+  serverExternalPackages: ['better-sqlite3'],
+
   env: {
     APP_VERSION: pkg.version,
     GIT_SHA: getGitSha(),

@@ -36,8 +36,11 @@ COPY --from=builder --chown=node:node /app/.next/standalone ./
 COPY --from=builder --chown=node:node /app/.next/static ./.next/static
 
 # Run as the non-root `node` user this base image already provides, rather
-# than root - this server is stateless (no writable data dir needed), so
-# --chown on the COPY steps above is sufficient without a separate chown RUN.
+# than root. /app/data must be chowned ahead of time so the named volume
+# Coolify mounts there (docker-compose-coolify.yml, SaaS-B1a's SQLite file)
+# inherits writable ownership on first creation - same reasoning and same
+# pattern as casazium/license's own Dockerfile.
+RUN mkdir -p /app/data && chown -R node:node /app
 USER node
 
 EXPOSE 3000
