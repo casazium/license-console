@@ -2329,3 +2329,25 @@ local `.env.local`, never in this conversation.
 
 `npm run lint` and `npm run build` both clean.
 
+## 43. `.gitignore` env-file pattern broadened (2026-08-05)
+
+Operator asked for an env-file convention audit against
+`casazium/license`. This repo's own conventions (a checked-in
+`.env.example`, Next.js's own built-in `.env.local` loading) were
+already sound and needed no change - the actual gap was that repo's
+own missing template plus a real bug in its documented Quickstart, both
+fixed there (full record in `casazium/license/PROJECT_STATUS.md` §56),
+alongside a second, independent instance of the `.env.test`-fallback
+hazard that session's own §53 `.env.test` addition was meant to close.
+
+One real gap found here: `.gitignore` only excluded `.env*.local` and
+`.env` explicitly, not a blanket `.env*` the way `casazium/license`'s
+own does - meaning a stray `.env.production` created here out of habit
+from that repo's own (now-fixed) naming convention would **not** have
+been gitignored. Broadened to `.env*` with a `!.env.example` exception,
+matching `casazium/license` exactly. Verified directly, not assumed:
+`.env.example` still shows as untracked-and-ignorable-exempt via `git
+check-ignore`, and a deliberately-created test `.env.production` file
+is now correctly caught by the new pattern (removed immediately after
+confirming). `npm run lint` and `npm run build` both clean.
+

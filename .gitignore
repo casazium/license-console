@@ -17,9 +17,12 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# env files
-.env*.local
-.env
+# env files. Blanket pattern (matches casazium/license's own .gitignore
+# convention) rather than just .env*.local + .env - that narrower form
+# would silently NOT ignore a stray .env.production or similar if anyone
+# ever created one here out of habit from that repo's own naming.
+.env*
+!.env.example
 
 # vercel
 .vercel
