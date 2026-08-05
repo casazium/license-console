@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Box, Group, Stack, Text } from '@mantine/core';
 import { isMultiTenant } from '@/lib/config';
@@ -41,6 +42,9 @@ export default function SignupPage() {
       >
         <BrandTitle titleHtml={branding.titleHtml} style={{ fontSize: '1.75rem', fontWeight: 600, textAlign: 'center' }} />
         <SignupForm />
+        <Text size="sm" c="dimmed">
+          Already have an account? <Link href="/login">Sign in</Link>
+        </Text>
       </Stack>
       <Box component="footer" p="md">
         <Group justify="center" gap="xs">

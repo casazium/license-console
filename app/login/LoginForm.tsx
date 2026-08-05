@@ -6,7 +6,13 @@ import { Button, Card, PasswordInput, Stack, Text, TextInput } from '@mantine/co
 import { useForm } from '@mantine/form';
 import { brandButtonStyle } from '@/components/brandButtonStyle';
 
-export function LoginForm() {
+// Under MULTI_TENANT, lib/auth.ts's verifyCredentials() matches this
+// field against accounts.email - there's no separate username concept
+// in SaaS mode at all (see lib/db/schema.sql's accounts table). The
+// field/payload name stays `username` either way (app/api/login/route.ts,
+// and self-hosted's own ADMIN_UI_USERNAME still needs it), only the
+// label/input type shown to the person typing into it changes.
+export function LoginForm({ multiTenant = false }: { multiTenant?: boolean }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -14,7 +20,8 @@ export function LoginForm() {
   const form = useForm({
     initialValues: { username: '', password: '' },
     validate: {
-      username: (value) => (value.trim().length > 0 ? null : 'Username is required'),
+      username: (value) =>
+        value.trim().length > 0 ? null : multiTenant ? 'Email is required' : 'Username is required',
       password: (value) => (value.length > 0 ? null : 'Password is required'),
     },
   });
@@ -44,7 +51,12 @@ export function LoginForm() {
     <Card withBorder shadow="sm" padding="lg" w={360}>
       <form onSubmit={form.onSubmit(handleSubmit)} noValidate>
         <Stack>
-          <TextInput label="Username" autoFocus {...form.getInputProps('username')} />
+          <TextInput
+            label={multiTenant ? 'Email' : 'Username'}
+            type={multiTenant ? 'email' : 'text'}
+            autoFocus
+            {...form.getInputProps('username')}
+          />
           <PasswordInput label="Password" {...form.getInputProps('password')} />
           {error && (
             <Text c="red" size="sm">

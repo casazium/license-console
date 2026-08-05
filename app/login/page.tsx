@@ -43,7 +43,7 @@ export default function LoginPage() {
         style={{ flex: 1, paddingTop: 'clamp(24px, 8vh, 96px)' }}
       >
         <BrandTitle titleHtml={branding.titleHtml} style={{ fontSize: '1.75rem', fontWeight: 600, textAlign: 'center' }} />
-        <LoginForm />
+        <LoginForm multiTenant={isMultiTenant()} />
         {isMultiTenant() && (
           <Text size="sm" c="dimmed">
             No account yet? <Link href="/signup">Sign up</Link>
