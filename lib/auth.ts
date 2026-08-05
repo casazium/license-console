@@ -1,5 +1,8 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { Identity } from './session';
+import { isMultiTenant } from './config';
+import { getDb } from './db';
+import { verifyPassword } from './password';
 
 function constantTimeEquals(a: string, b: string): boolean {
   const bufA = Buffer.from(a);
@@ -12,14 +15,32 @@ function constantTimeEquals(a: string, b: string): boolean {
 }
 
 /**
- * Today: a single shared admin username/password (ADMIN_UI_USERNAME /
- * ADMIN_UI_PASSWORD) - not real multi-account, just a configured display
- * identity. Later: swap the body of this function to check a real user
- * store (this app's own DB, or a new /v1/admin/login endpoint on
- * casazium/license) and return per-user identities - callers (the login
- * route, session/middleware layer) don't change. See PROJECT_STATUS.md §9.
+ * Self-hosted (MULTI_TENANT unset, the default): a single shared admin
+ * username/password (ADMIN_UI_USERNAME / ADMIN_UI_PASSWORD) - not real
+ * multi-account, just a configured display identity. Untouched by
+ * SaaS-B1b - a self-hosted deployment has exactly one operator, and
+ * signup/accounts would be pure overhead for it. See PROJECT_STATUS.md §9
+ * for why this shape was chosen originally.
+ *
+ * SaaS mode (MULTI_TENANT=true): checks the accounts table instead
+ * (SaaS-B1b). `username` here is the account's email.
  */
 export async function verifyCredentials(username: string, password: string): Promise<Identity | null> {
+  if (isMultiTenant()) {
+    const account = getDb()
+      .prepare('SELECT id, password_hash FROM accounts WHERE email = ?')
+      .get(username) as { id: string; password_hash: string } | undefined;
+
+    if (!account) {
+      return null;
+    }
+    const passwordMatches = await verifyPassword(password, account.password_hash);
+    if (!passwordMatches) {
+      return null;
+    }
+    return { id: account.id, role: 'admin' };
+  }
+
   const adminUsername = process.env.ADMIN_UI_USERNAME;
   const adminPassword = process.env.ADMIN_UI_PASSWORD;
   if (!adminUsername || !adminPassword) {

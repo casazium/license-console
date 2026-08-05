@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { notFound } from 'next/navigation';
 import { Box, Group, Stack, Text } from '@mantine/core';
 import { isMultiTenant } from '@/lib/config';
 import { getBranding } from '@/lib/branding';
@@ -7,15 +7,21 @@ import { BrandLogo } from '@/components/BrandLogo';
 import { BrandTitle } from '@/components/BrandTitle';
 import { BrandCopyright } from '@/components/BrandCopyright';
 import { VersionStamp } from '@/components/VersionStamp';
-import { LoginForm } from './LoginForm';
+import { SignupForm } from './SignupForm';
 
-// Branding is env-configured and expected to change without a rebuild
-// (e.g. a remote BRANDING_LOGO_URL swapped by the operator) - without this,
-// Next prerenders the page statically at build time and bakes in whatever
-// branding was set then.
+// Same reasoning as app/login/page.tsx: branding is env-configured and
+// expected to change without a rebuild.
 export const dynamic = 'force-dynamic';
 
-export default function LoginPage() {
+export default function SignupPage() {
+  // Self-hosted has no accounts concept - the API route (app/api/signup)
+  // already returns 404 under !isMultiTenant(), but that alone would
+  // still let this page render a form that always fails on submit. This
+  // 404s the page itself, matching the same posture the route takes.
+  if (!isMultiTenant()) {
+    notFound();
+  }
+
   const branding = getBranding();
   const appVersion = getAppVersion();
 
@@ -26,15 +32,6 @@ export default function LoginPage() {
           <BrandLogo logoUrl={branding.logoUrl} size={40} />
         </Box>
       )}
-      {/*
-        justify="flex-start" + a clamped top offset, not justify="center":
-        centering within the full remaining viewport height put a huge,
-        viewport-height-dependent gap above the title on tall screens (the
-        block centers in leftover space that can be 1000px+ tall). A capped
-        offset keeps the title a consistent, comfortable distance below the
-        header regardless of viewport height, and any excess space collects
-        below the card instead of splitting evenly above and below it.
-      */}
       <Stack
         align="center"
         justify="flex-start"
@@ -43,12 +40,7 @@ export default function LoginPage() {
         style={{ flex: 1, paddingTop: 'clamp(24px, 8vh, 96px)' }}
       >
         <BrandTitle titleHtml={branding.titleHtml} style={{ fontSize: '1.75rem', fontWeight: 600, textAlign: 'center' }} />
-        <LoginForm />
-        {isMultiTenant() && (
-          <Text size="sm" c="dimmed">
-            No account yet? <Link href="/signup">Sign up</Link>
-          </Text>
-        )}
+        <SignupForm />
       </Stack>
       <Box component="footer" p="md">
         <Group justify="center" gap="xs">

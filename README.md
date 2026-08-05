@@ -26,5 +26,14 @@ and `PROJECT_STATUS.md` for architecture decisions.
 `DB_FILE` (optional, defaults to `./data/console.db`) is this console's own
 SQLite database (`lib/db.ts`, `SaaS-B1a`) — separate from and unrelated to
 `casazium/license`'s own database. It stores this console's human login
-accounts and sessions, not license/tenant data. No tables exist yet as of
-`SaaS-B1a`; `SaaS-B1b`/`B1c` add them.
+accounts and sessions, not license/tenant data.
+
+`MULTI_TENANT` (optional, defaults to false) switches the console between
+two entirely different login models (`SaaS-B1b`): self-hosted (the default)
+uses the single `ADMIN_UI_USERNAME`/`ADMIN_UI_PASSWORD` pair above; SaaS
+mode uses real per-account signup/login against the `accounts` table
+instead, and requires `ACCOUNT_ENCRYPTION_KEY` plus a live
+`LICENSE_API_URL`/`LICENSE_ADMIN_API_KEY` backend (signup provisions a real
+tenant — there's no standalone/mock equivalent). Password-reset is not yet
+built — blocked on choosing an email provider, deliberately deferred rather
+than guessed at.

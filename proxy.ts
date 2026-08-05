@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { SESSION_COOKIE_NAME, verifySessionToken } from '@/lib/session';
 
-const PUBLIC_PATHS = ['/login', '/api/login'];
+// /signup and /api/signup (SaaS-B1b) are listed unconditionally, not
+// gated on isMultiTenant() here - both self-gate instead (the route
+// returns 404, the page calls notFound()), matching this proxy's own
+// role of session-checking, not feature-flagging.
+const PUBLIC_PATHS = ['/login', '/api/login', '/signup', '/api/signup'];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

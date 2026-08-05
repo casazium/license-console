@@ -1590,3 +1590,113 @@ published release assets, not a direct build confirmation.
   pattern is standard/well-established; not independently re-verified
   here beyond code review).
 
+## 31. SaaS-B1b: accounts, signup, login (2026-08-05)
+
+Two real design gaps surfaced before writing code, both confirmed with
+the operator rather than assumed (full rationale in
+`casazium/license/PROJECT_STATUS.md` §35):
+
+1. `lib/auth.ts`'s own docstring anticipated swapping `verifyCredentials()`
+   wholesale to a real user store - wrong for self-hosted, which has
+   exactly one operator and no use for signup/accounts at all. Resolved
+   by adding a console-side `MULTI_TENANT` flag (`lib/config.ts`,
+   mirroring `casazium/license`'s own): off, `verifyCredentials()` is
+   byte-identical to today; on, it checks the new `accounts` table.
+2. Password-reset needs to email a reset link - no email-sending
+   capability exists anywhere in this repo (checked: `lib/notify.ts` is
+   Mantine toast UI, not email; no email dependency in `package.json`).
+   Deferred rather than picking a provider unprompted - this task ships
+   signup + login only.
+
+### What was built
+
+- **`lib/db/schema.sql`** — `accounts` table (`id`, `email`,
+  `password_hash`, `tenant_id`, `tenant_api_key_encrypted`, `created_at`),
+  unique index on `email` added separately rather than inline (matching
+  `casazium/license`'s own `idx_tenants_api_key_hash` convention).
+  `tenant_id` stored as a plain column, not derived by decrypting the key
+  on every read, so `SaaS-B1c`'s session work can carry it without a
+  decrypt per request. Multiple accounts sharing one `tenant_id` (team
+  invites) is schema-compatible but not built here.
+- **`lib/password.ts`** — scrypt via Node's own `crypto`, not a
+  third-party dependency (bcrypt/argon2). Both ship native addons, the
+  same class of Alpine/musl risk `SaaS-B1a` already worked through once
+  for `better-sqlite3` - not worth taking on twice when Node's built-in
+  is the documented standard for this exact use case.
+- **`lib/crypto.ts`** — AES-256-GCM, same algorithm and wire format as
+  `casazium/license`'s own `src/lib/crypto.js`, but a deliberately
+  separate `ACCOUNT_ENCRYPTION_KEY` - reusing that repo's key across two
+  independently deployable services would be an unintended cross-service
+  credential coupling, not a simplification.
+- **`app/api/signup/route.ts`** — 404s under self-hosted (mirrors
+  `casazium/license`'s own `create-tenant.js` posture under
+  `!isMultiTenant()`). Provisions a new tenant server-to-server via
+  `POST /admin/tenants` using this console's own `LICENSE_ADMIN_API_KEY`
+  (the signing-up human never sees it - `SaaS-A0`'s own note anticipated
+  exactly this), encrypts the returned key, hashes the password, creates
+  the account, and logs the new user straight in. Reuses
+  `lib/login-rate-limit.ts`'s bucket machinery under a `signup:` key
+  prefix rather than a second limiter. The early
+  `SELECT ... WHERE email = ?` existence check is a fast-path, not the
+  correctness guarantee - a concurrent signup could still race across
+  the `await` to the license server, so the actual `INSERT` is also
+  wrapped to catch the unique-index violation. If the tenant was already
+  provisioned when that happens, it's now orphaned on
+  `casazium/license` - logged clearly for manual cleanup via that repo's
+  own revoke endpoint rather than auto-revoked (a network call in an
+  already-failing path has its own failure modes).
+- **`lib/auth.ts`** — branches on `isMultiTenant()` as described above.
+- **`app/signup/`** — page + form, mirroring `app/login/`'s structure
+  and Mantine patterns closely. The page itself also 404s under
+  self-hosted (`notFound()`), not just the API route, so a stale link
+  can't render a form that always fails on submit.
+- **`app/login/page.tsx`** — conditionally shows a "Sign up" link only
+  under `MULTI_TENANT=true`.
+- **`proxy.ts`** — `/signup`/`/api/signup` added to `PUBLIC_PATHS`
+  unconditionally (both routes self-gate instead), matching this file's
+  role of session-checking, not feature-flagging.
+- **`.env.example`**, **`README.md`** — `MULTI_TENANT`,
+  `ACCOUNT_ENCRYPTION_KEY` documented; `ADMIN_UI_USERNAME`/`PASSWORD`'s
+  existing comment updated to note it's self-hosted-only now;
+  `LICENSE_ADMIN_API_KEY`'s comment updated to note its new signup-time
+  dual-use.
+
+### Verified
+
+`npm run lint` clean; `npm run build` compiles, passes TypeScript, all
+11 routes generated (`/signup`, `/api/signup` included) with no tracing
+warnings. Then a real integration test, not mocked: booted an actual
+`casazium/license` server instance (`MULTI_TENANT=true`, a freshly
+generated RSA keypair and encryption key, real SQLite file) alongside
+the console's real `.next/standalone/server.js`, both processes, real
+HTTP between them:
+
+- Signup created a real row in both databases - `accounts.tenant_id`
+  in this console's DB matches the `tenants.id` `casazium/license`
+  actually provisioned.
+- A second signup with the same email correctly rejected (409, generic
+  message - doesn't confirm the email is taken).
+- Decrypted `accounts.tenant_api_key_encrypted` back out and used it as
+  a bare `Authorization: Bearer` against `casazium/license`'s real
+  `POST /issue-license` - it worked, issuing an actual license as that
+  tenant. Proves the encrypt/decrypt round-trip end-to-end, not just
+  that it doesn't throw.
+- Login with the signup credentials succeeded; wrong password rejected
+  with the same generic error.
+- Restarted the console with `MULTI_TENANT` unset (self-hosted):
+  `/signup` and `/api/signup` both 404, the static
+  `ADMIN_UI_USERNAME`/`PASSWORD` pair still logs in, and the login page
+  shows no signup link - confirms the byte-identical claim, not just
+  asserts it.
+
+### Explicitly not in this task's scope
+
+- Password-reset - blocked on an email-provider decision, deferred by
+  operator choice rather than picked unprompted.
+- Team invites (multiple accounts per tenant) - schema-compatible, not
+  built.
+- Threading the account's `tenant_id`/decrypted key into actual
+  license-management API calls - that's `SaaS-B2`'s job, a real
+  refactor of `license-client.ts`'s dispatcher functions, not something
+  this task's narrower signup/login scope should reach into.
+
