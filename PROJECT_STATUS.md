@@ -2464,3 +2464,16 @@ the in-app billing demo checkout completing, and the "Forgot password?"
 link present after sign-out. Every step matched the doc exactly, no
 corrections needed after the walkthrough.
 
+## 46. Operator-confirmed: real password-reset email delivery works (2026-08-05)
+
+Closes the one gap this session's own verification couldn't reach:
+this sandbox's outbound network policy blocks `api.resend.com`
+directly (confirmed via `$HTTPS_PROXY/__agentproxy/status`, §42), so
+the Resend integration was only ever verified here with a deliberately
+fake key against real request-construction, never an actual delivered
+email. Operator tested password reset with `EMAIL_PROVIDER=resend`
+and a real API key on their own machine and confirmed it works - a
+real email reached a real inbox, the real link worked. §44's flow is
+now confirmed working end to end in genuinely real conditions, not
+just simulated ones.
+
