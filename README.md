@@ -42,3 +42,9 @@ Under `MULTI_TENANT=true`, the `BRANDING_*` vars become the *platform*
 default (`SaaS-B3`) — shown pre-auth and to any tenant without its own
 override in `tenant_branding`. No settings UI writes that table yet; only
 the DB-driven resolution itself is built.
+
+## Deployment
+
+See [`DEPLOYMENT.md`](DEPLOYMENT.md) for the Coolify runbook, including
+both the self-hosted and SaaS-tier (multi-tenant) deployment paths and
+how the two coordinate with `casazium/license`'s own deployment.

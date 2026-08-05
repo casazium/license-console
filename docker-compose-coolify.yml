@@ -30,6 +30,15 @@
 # casazium/license's own license-data volume. Confirm in the Coolify UI
 # that this is recognized as persistent storage for this service, not
 # discarded on rebuild.
+#
+# MULTI_TENANT / ACCOUNT_ENCRYPTION_KEY (SaaS-C1): both optional,
+# unset/false for a self-hosted deployment - leave them out of this
+# service's Coolify env vars entirely for that case, same behavior as
+# today. A SaaS-tier deployment is a SEPARATE Coolify resource from this
+# same repo/compose file, with its own Domain, pointed at a SEPARATE
+# MULTI_TENANT=true casazium/license resource (not the self-hosted one) -
+# LICENSE_API_URL/LICENSE_ADMIN_API_KEY above must match that SaaS
+# server resource specifically. See DEPLOYMENT.md.
 services:
   console:
     build:
@@ -48,6 +57,8 @@ services:
       # takes precedence over the image-baked value).
       - HOSTNAME=0.0.0.0
       - DB_FILE=/app/data/console.db
+      - MULTI_TENANT=${MULTI_TENANT}
+      - ACCOUNT_ENCRYPTION_KEY=${ACCOUNT_ENCRYPTION_KEY}
       - SESSION_SECRET=${SESSION_SECRET}
       - ADMIN_UI_USERNAME=${ADMIN_UI_USERNAME}
       - ADMIN_UI_PASSWORD=${ADMIN_UI_PASSWORD}

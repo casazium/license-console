@@ -2156,3 +2156,48 @@ genuinely self-hosted server: `/onboarding` 404s, `/licenses/new` still
 renders and works correctly - the shared-component extraction didn't
 regress self-hosted.
 
+## 39. SaaS-C1: Coolify deployment documentation (2026-08-05)
+
+`SaaS-C1` is real infrastructure provisioning against an actual Coolify
+account - no credentials/API access for that exist in this session, and
+even with them, creating billed cloud resources isn't something to do
+unilaterally. Operator confirmed: prepare the documentation and fix
+whatever's needed to make the eventual manual provisioning correct.
+Full decision/framing record is `casazium/license/PROJECT_STATUS.md`
+§50; this section is the build record for this repo specifically.
+
+### A real bug found before documenting around it
+
+`docker-compose-coolify.yml` was missing both `MULTI_TENANT` and
+`ACCOUNT_ENCRYPTION_KEY` from its `environment:` block entirely -
+Coolify's env-var UI only populates `${VAR}` interpolation in the
+compose file itself, so an operator setting these in Coolify's UI as
+instructed by any deployment guide would have them silently never reach
+the container. Both added
+(`MULTI_TENANT=${MULTI_TENANT}`, `ACCOUNT_ENCRYPTION_KEY=${ACCOUNT_ENCRYPTION_KEY}`),
+validated with `docker compose config` (exit 0).
+
+### What was written
+
+- **`DEPLOYMENT.md`** (new - this repo had none before this task,
+  unlike `casazium/license`, which already had one to extend). Leads
+  with "Which mode do I want?" before any setup steps, since self-hosted
+  and SaaS mode are genuinely separate deployments here, not one setup
+  with an optional flag - explains directly why pairing a self-hosted
+  console with a SaaS-mode server (or the reverse) doesn't work
+  (`casazium/license`'s own `SaaS-A0` admin-key boundary), a mismatch
+  `SaaS-B2`'s own testing already produced and diagnosed once. Covers
+  self-hosted first (steps 1-5, mirroring `casazium/license`'s own
+  `DEPLOYMENT.md` structure), then the SaaS-tier addendum: deploy that
+  server's own SaaS instance first, the two new env vars, and a
+  correction to persistent-storage guidance specific to this
+  console - self-hosted mode never actually touches this console's own
+  SQLite database in normal operation (every real call site is gated
+  behind `MULTI_TENANT` except the `SaaS-B1a` `/api/health/db`
+  verification route, which isn't linked from anywhere and isn't
+  Coolify's own healthcheck target - confirmed by checking every
+  `getDb()` call site directly, not assumed), so the volume only starts
+  mattering once SaaS mode is on.
+- **`README.md`** — added a pointer to `DEPLOYMENT.md`; there wasn't
+  one before.
+
