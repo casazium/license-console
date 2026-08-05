@@ -2295,3 +2295,37 @@ no email/verification concept reachable at all). `npm run lint` and
   etc.) is unauthorized, undecided, no task ID - same posture as
   `SaaS-C4`'s own note on real Stripe integration.
 
+## 42. Real Resend EmailProvider (2026-08-05)
+
+Operator had a Resend account and API key ready and asked to wire it
+up. `lib/email/resend-provider.ts` (new) implements `EmailProvider`
+against `POST https://api.resend.com/emails` directly via `fetch` - one
+endpoint, one call shape, not worth adding the `resend` npm package as
+a dependency for. `EMAIL_PROVIDER=resend` added to `lib/email/index.ts`'s
+valid values, alongside the existing `stub`. New env vars documented in
+`.env.example`: `RESEND_API_KEY` (required), `EMAIL_FROM` (optional,
+defaults to Resend's own `onboarding@resend.dev` - deliverable to the
+account's own verified address with no domain verification needed,
+useful for exactly the quick real-send test this task was for).
+
+**The real API key was never requested or seen by this session** - a
+real third-party account credential is a different category from every
+self-generated secret (`ADMIN_API_KEY`, `SESSION_SECRET`, etc.) used
+elsewhere this session for local verification, and pasting it into chat
+would put it at rest somewhere it doesn't need to be. Verified what's
+verifiable without it instead: booted real license + console servers
+with `EMAIL_PROVIDER=resend` and a deliberately fake key, signed up
+through a real browser, confirmed signup still succeeded (the
+best-effort try/catch around the send call, added in §41, held), and
+confirmed the actual outbound request was correctly constructed and
+reached the point of a real HTTPS call to `api.resend.com` - it failed
+with a 403 from *this remote session's own sandbox network policy*
+(outbound is allowlisted; that host isn't on it), not from Resend or
+from any bug in the integration - confirmed by checking
+`$HTTPS_PROXY/__agentproxy/status` directly rather than assumed. That
+sandbox restriction doesn't apply on the operator's own machine, where
+the actual real-send test happens next, with their own key in their own
+local `.env.local`, never in this conversation.
+
+`npm run lint` and `npm run build` both clean.
+
