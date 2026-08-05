@@ -2201,3 +2201,15 @@ validated with `docker compose config` (exit 0).
 - **`README.md`** — added a pointer to `DEPLOYMENT.md`; there wasn't
   one before.
 
+## 40. SaaS-C4: no console-side change (2026-08-05)
+
+`SaaS-C4` ("secrets management for Stripe keys only") is entirely
+server-side - `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET` are read and
+validated only by `casazium/license`'s own `src/lib/config.js`. This
+console never holds Stripe secrets in any config, mode, or env var; its
+own `ACCOUNT_ENCRYPTION_KEY` (`SaaS-C1`, §39) is unrelated - it encrypts
+tenant API keys for the license server, not billing credentials. No file
+in this repo changed for this task. Full build record, including a
+scope-creep risk found and corrected before implementing anything, is
+`casazium/license/PROJECT_STATUS.md` §52.
+
