@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { hashEmailVerificationToken } from '@/lib/email-verification-token';
+import { hashOneTimeToken } from '@/lib/one-time-token';
 
 /**
  * Signup confirmation link target - a GET route, not a form/fetch call,
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
   }
 
   const db = getDb();
-  const tokenHash = hashEmailVerificationToken(token);
+  const tokenHash = hashOneTimeToken(token);
 
   const row = db
     .prepare('SELECT account_id, expires_at FROM email_verification_tokens WHERE token_hash = ?')

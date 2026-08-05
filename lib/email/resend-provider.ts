@@ -21,26 +21,36 @@ export function createResendEmailProvider(): EmailProvider {
   // once a real domain is verified on the Resend account.
   const from = process.env.EMAIL_FROM || 'onboarding@resend.dev';
 
+  async function send(to: string, subject: string, html: string): Promise<void> {
+    const res = await fetch(RESEND_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({ from, to, subject, html }),
+    });
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`Resend API responded with ${res.status}: ${body}`);
+    }
+  }
+
   return {
     async sendSignupConfirmation(to, confirmUrl) {
-      const res = await fetch(RESEND_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          from,
-          to,
-          subject: 'Confirm your email',
-          html: `<p>Welcome! Click the link below to confirm your email address.</p><p><a href="${confirmUrl}">${confirmUrl}</a></p>`,
-        }),
-      });
-
-      if (!res.ok) {
-        const body = await res.text().catch(() => '');
-        throw new Error(`Resend API responded with ${res.status}: ${body}`);
-      }
+      await send(
+        to,
+        'Confirm your email',
+        `<p>Welcome! Click the link below to confirm your email address.</p><p><a href="${confirmUrl}">${confirmUrl}</a></p>`
+      );
+    },
+    async sendPasswordReset(to, resetUrl) {
+      await send(
+        to,
+        'Reset your password',
+        `<p>Click the link below to reset your password. If you didn't request this, you can safely ignore this email.</p><p><a href="${resetUrl}">${resetUrl}</a></p>`
+      );
     },
   };
 }

@@ -11,7 +11,7 @@ import {
   clearLoginRateLimit,
   getClientKey,
 } from '@/lib/login-rate-limit';
-import { generateEmailVerificationToken, hashEmailVerificationToken } from '@/lib/email-verification-token';
+import { generateOneTimeToken, hashOneTimeToken } from '@/lib/one-time-token';
 import { getEmailProvider } from '@/lib/email';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -148,11 +148,11 @@ export async function POST(request: NextRequest) {
   // back in, worse than just landing them signed-in with an unverified
   // account they can request a new link for later.
   try {
-    const verificationToken = generateEmailVerificationToken();
+    const verificationToken = generateOneTimeToken();
     const expiresAt = new Date(Date.now() + VERIFICATION_TOKEN_TTL_MS).toISOString();
     db.prepare(
       `INSERT INTO email_verification_tokens (token_hash, account_id, expires_at) VALUES (?, ?, ?)`
-    ).run(hashEmailVerificationToken(verificationToken), accountId, expiresAt);
+    ).run(hashOneTimeToken(verificationToken), accountId, expiresAt);
 
     const confirmUrl = new URL(`/api/verify-email?token=${verificationToken}`, request.nextUrl.origin).toString();
     await getEmailProvider().sendSignupConfirmation(email, confirmUrl);

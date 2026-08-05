@@ -14,5 +14,8 @@ export function createStubEmailProvider(): EmailProvider {
     async sendSignupConfirmation(to, confirmUrl) {
       console.log(`[stub-email] Signup confirmation for ${to}: ${confirmUrl}`);
     },
+    async sendPasswordReset(to, resetUrl) {
+      console.log(`[stub-email] Password reset for ${to}: ${resetUrl}`);
+    },
   };
 }

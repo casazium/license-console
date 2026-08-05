@@ -17,4 +17,11 @@ export interface EmailProvider {
    * about tokens or accounts, only how to deliver a message.
    */
   sendSignupConfirmation(to: string, confirmUrl: string): Promise<void>;
+
+  /**
+   * Sends the password-reset email. resetUrl is a complete,
+   * ready-to-click link carrying the one-time reset token - same
+   * "provider doesn't know about tokens" shape as sendSignupConfirmation.
+   */
+  sendPasswordReset(to: string, resetUrl: string): Promise<void>;
 }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { requireSession } from '@/lib/session';
-import { generateEmailVerificationToken, hashEmailVerificationToken } from '@/lib/email-verification-token';
+import { generateOneTimeToken, hashOneTimeToken } from '@/lib/one-time-token';
 import { getEmailProvider } from '@/lib/email';
 import {
   checkLoginRateLimit,
@@ -52,11 +52,11 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const verificationToken = generateEmailVerificationToken();
+    const verificationToken = generateOneTimeToken();
     const expiresAt = new Date(Date.now() + VERIFICATION_TOKEN_TTL_MS).toISOString();
     db.prepare(
       `INSERT INTO email_verification_tokens (token_hash, account_id, expires_at) VALUES (?, ?, ?)`
-    ).run(hashEmailVerificationToken(verificationToken), session.id, expiresAt);
+    ).run(hashOneTimeToken(verificationToken), session.id, expiresAt);
 
     const confirmUrl = new URL(`/api/verify-email?token=${verificationToken}`, request.nextUrl.origin).toString();
     await getEmailProvider().sendSignupConfirmation(account.email, confirmUrl);

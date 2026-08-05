@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { notFound } from 'next/navigation';
 import { Box, Group, Stack, Text } from '@mantine/core';
 import { isMultiTenant } from '@/lib/config';
 import { getBranding } from '@/lib/branding';
@@ -7,15 +7,32 @@ import { BrandLogo } from '@/components/BrandLogo';
 import { BrandTitle } from '@/components/BrandTitle';
 import { BrandCopyright } from '@/components/BrandCopyright';
 import { VersionStamp } from '@/components/VersionStamp';
-import { LoginForm } from './LoginForm';
+import { ResetPasswordForm } from './ResetPasswordForm';
 
-// Branding is env-configured and expected to change without a rebuild
-// (e.g. a remote BRANDING_LOGO_URL swapped by the operator) - without this,
-// Next prerenders the page statically at build time and bakes in whatever
-// branding was set then.
 export const dynamic = 'force-dynamic';
 
-export default function LoginPage() {
+/**
+ * Reached from the link app/api/forgot-password sends by email. Unlike
+ * app/api/verify-email (a GET the email client opens directly, which
+ * completes the action itself), this page just renders a form - the
+ * actual reset needs a new password value, which a GET link can't
+ * safely carry, so app/api/reset-password/route.ts is where the token
+ * actually gets validated and consumed.
+ */
+export default async function ResetPasswordPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ token?: string }>;
+}) {
+  if (!isMultiTenant()) {
+    notFound();
+  }
+
+  const { token } = await searchParams;
+  if (!token) {
+    notFound();
+  }
+
   const branding = getBranding();
   const appVersion = getAppVersion();
 
@@ -26,15 +43,6 @@ export default function LoginPage() {
           <BrandLogo logoUrl={branding.logoUrl} size={40} />
         </Box>
       )}
-      {/*
-        justify="flex-start" + a clamped top offset, not justify="center":
-        centering within the full remaining viewport height put a huge,
-        viewport-height-dependent gap above the title on tall screens (the
-        block centers in leftover space that can be 1000px+ tall). A capped
-        offset keeps the title a consistent, comfortable distance below the
-        header regardless of viewport height, and any excess space collects
-        below the card instead of splitting evenly above and below it.
-      */}
       <Stack
         align="center"
         justify="flex-start"
@@ -43,17 +51,7 @@ export default function LoginPage() {
         style={{ flex: 1, paddingTop: 'clamp(24px, 8vh, 96px)' }}
       >
         <BrandTitle titleHtml={branding.titleHtml} style={{ fontSize: '1.75rem', fontWeight: 600, textAlign: 'center' }} />
-        <LoginForm multiTenant={isMultiTenant()} />
-        {isMultiTenant() && (
-          <>
-            <Text size="sm" c="dimmed">
-              <Link href="/forgot-password">Forgot password?</Link>
-            </Text>
-            <Text size="sm" c="dimmed">
-              No account yet? <Link href="/signup">Sign up</Link>
-            </Text>
-          </>
-        )}
+        <ResetPasswordForm token={token} />
       </Stack>
       <Box component="footer" p="md">
         <Group justify="center" gap="xs">

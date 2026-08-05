@@ -2351,3 +2351,86 @@ check-ignore`, and a deliberately-created test `.env.production` file
 is now correctly caught by the new pattern (removed immediately after
 confirming). `npm run lint` and `npm run build` both clean.
 
+## 44. Password reset (2026-08-05)
+
+The originally-identified email blocker (`SaaS-B1b`, §31 - "blocked on
+an email-provider decision, deliberately deferred") is now fully
+closed, following signup confirmation (§41) and the real Resend
+provider (§42).
+
+### What was built
+
+- **`lib/one-time-token.ts`** (renamed from the now-deleted
+  `lib/email-verification-token.ts`) - the generate/hash pair was
+  already generic, only its name and doc comment claimed otherwise;
+  password reset is a second real caller, so generalizing was
+  justified now rather than duplicating identical crypto logic.
+- **`lib/db/schema.sql`** - new `password_reset_tokens` table,
+  deliberately separate from `email_verification_tokens` rather than a
+  shared table with a "purpose" column - a compromised reset token
+  means account takeover, a compromised confirmation token doesn't, and
+  they carry different expiry windows (1h vs 24h) for exactly that
+  reason. Real FK, hashed-at-rest, same reasoning as the existing table.
+- **`lib/email/provider.ts`** - `sendPasswordReset(to, resetUrl)` added
+  to the `EmailProvider` interface; implemented in both
+  `stub-provider.ts` (logs) and `resend-provider.ts` (real send,
+  refactored to share one internal `send()` helper with
+  `sendSignupConfirmation` rather than duplicating the fetch/error
+  boilerplate).
+- **`app/api/forgot-password/route.ts`** (new) - public, IP-rate-limited,
+  always returns the same generic success response regardless of
+  whether the email matches a real account - the one place this
+  deliberately differs from signup's own account-existence-leaking 409,
+  since password reset has no legitimate reason to ever confirm or deny
+  that to an unauthenticated caller.
+- **`app/api/reset-password/route.ts`** (new) - public (token is the
+  credential, not a session), validates + one-time-consumes the token,
+  updates the password hash, calls `lib/session.ts`'s existing
+  `revokeAccountSessions()` (built during `SaaS-B1c` for exactly this
+  trigger, per its own header comment, and unused until now), then
+  issues a fresh session so the browser completing the reset lands
+  signed in - any *other* still-open session for the account is now
+  invalidated.
+- **`app/forgot-password/`** and **`app/reset-password/`** (new pages +
+  client forms) - "Forgot password?" link added to the login page,
+  `MULTI_TENANT`-gated same as the existing "Sign up" link.
+
+### A real, previously-shipped bug found and fixed along the way
+
+While verifying the reset flow in a logged-out browser context (not
+just the same session used for signup, which is all prior testing this
+session ever exercised), `proxy.ts`'s `PUBLIC_PATHS` list turned out to
+be missing `/api/verify-email` entirely - meaning a person opening
+their real confirmation link from a different browser, a different
+device, or simply after their signup session had expired was silently
+bounced to `/login` before the route ever ran, and their account never
+got marked verified. This bug shipped with §41 and went undetected
+because every verification test that session happened to reuse the
+same signed-in browser context from signup. Reproduced directly with a
+fresh, cookie-less browser context before fixing, and re-verified after:
+the account is now correctly marked verified from a logged-out
+context too (confirmed by then logging in fresh and checking the
+verification banner is gone), even though landing on `/login` itself
+right after the link click is still expected (`/dashboard`, the
+route's own always-redirect target, correctly still requires its own
+session).
+
+`/forgot-password`, `/api/forgot-password`, `/reset-password`, and
+`/api/reset-password` were added to the same list from the start, not
+found missing after the fact.
+
+### Verified end-to-end, not just by reading the diff
+
+Full flow via Playwright against real running servers: sign up, sign
+out, "Forgot password?" link visible and works, submit email, pull the
+real reset link from server output, set a new password, land
+auto-signed-in on `/dashboard`. Then: old password confirmed rejected,
+new password confirmed working. Separately verified session
+revocation specifically: a still-open session (a second browser
+context, logged in before the reset) is correctly kicked to `/login`
+on its next request after a *different* session resets the same
+account's password. Self-hosted mode regression-checked: all three new
+routes 404, "Forgot password?" link absent from the rendered login
+page (`0` occurrences, checked directly, not just "presumably hidden by
+the same conditional"). `npm run lint` and `npm run build` both clean.
+

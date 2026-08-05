@@ -80,6 +80,25 @@ CREATE TABLE IF NOT EXISTS email_verification_tokens (
 CREATE INDEX IF NOT EXISTS idx_email_verification_tokens_account_id
   ON email_verification_tokens(account_id);
 
+-- One-time password-reset links. Same shape and hashed-at-rest
+-- reasoning as email_verification_tokens above, deliberately a
+-- separate table rather than a shared one with a "purpose" column - a
+-- compromised password-reset token means full account takeover, a
+-- compromised email-confirmation token doesn't, and they carry
+-- different expiry windows (1h vs 24h, set in application code) for
+-- exactly that reason. Keeping them structurally distinct means a bug
+-- in one flow's token handling can't accidentally cross-apply to the
+-- other's much higher-stakes one.
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+  token_hash TEXT PRIMARY KEY,
+  account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  expires_at DATETIME NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_account_id
+  ON password_reset_tokens(account_id);
+
 -- SaaS-B3: one row per tenant, only under MULTI_TENANT. tenant_id is not
 -- a foreign key here either, same reasoning as accounts.tenant_id above.
 -- Every column nullable and independently optional - lib/branding.ts
