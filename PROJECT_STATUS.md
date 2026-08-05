@@ -2213,3 +2213,85 @@ in this repo changed for this task. Full build record, including a
 scope-creep risk found and corrected before implementing anything, is
 `casazium/license/PROJECT_STATUS.md` §52.
 
+## 41. Signup confirmation email, EmailProvider stub (2026-08-05)
+
+Prompted by a production-readiness review the operator asked for
+directly - password-reset (`SaaS-B1b`, §31) was already on record as
+"blocked on an email-provider decision, deliberately deferred rather
+than guessed at." Operator chose to start with signup confirmation
+specifically, and to build the interface now against a stub sender
+rather than wait on real provider credentials - mirrors exactly how
+`casazium/license`'s own `BillingProvider`/stub-provider pattern
+(`SaaS-A5`) let checkout/webhook logic get built and tested before any
+real Stripe keys existed.
+
+### What was built
+
+- **`lib/email/provider.ts`** - `EmailProvider` interface,
+  `sendSignupConfirmation(to, confirmUrl)` only for now (a
+  `sendPasswordReset` method would be the natural next addition when
+  that task is authorized).
+- **`lib/email/stub-provider.ts`** - logs the confirmation link
+  server-side instead of sending. **`lib/email/index.ts`** - selection
+  by `EMAIL_PROVIDER` env var (default `stub`), mirroring
+  `BILLING_PROVIDER`'s own posture exactly: any other value is accepted
+  as a recognized config value but fails loudly at the point of use, not
+  silently falls back.
+- **`lib/db/schema.sql`** - `accounts.email_verified_at` (nullable
+  watermark, same shape as `sessions_revoked_at`) and a new
+  `email_verification_tokens` table. Unlike `accounts.tenant_id`
+  (`casazium/license`'s own database), `account_id` here is a real
+  foreign key with `ON DELETE CASCADE` - both rows live in this same
+  database, so the guarantee can be enforced at the DB level rather than
+  left to app-level discipline (mirrors `casazium/license`'s own A1
+  reasoning for its `activations` FK). Only the token's hash is stored,
+  mirroring that repo's `activations.token_hash` /
+  `lib/activation-token.js` pattern exactly.
+- **`app/api/signup/route.ts`** - after the account insert commits,
+  generates a token, inserts it (24h expiry), and sends the
+  confirmation email - wrapped in its own try/catch so a send failure
+  can't strand a person with a provisioned tenant and no way in; it's
+  logged and the signup still succeeds.
+- **`app/api/verify-email/route.ts`** (new) - the link target. No
+  session required or checked - the token itself is the credential,
+  same model as `casazium/license`'s own reissue-activation-token route.
+  One-time use (deleted on any outcome, valid or not) and always
+  redirects to `/dashboard` regardless of outcome - no separate
+  success/failure query-param state to keep in sync; the banner below
+  disappearing (or not) is the actual feedback.
+- **`app/api/verify-email/resend/route.ts`** (new) + a small
+  `EmailVerificationBanner` client component wired into
+  `AppShellClient.tsx`, shown whenever the signed-in account's own
+  `emailVerified` is `false` - piggybacks on `lib/session.ts`'s existing
+  per-request `accounts` lookup (already there for `tenantId` and
+  revocation) rather than a separate query, same reasoning as that
+  field. Self-hosted mode never sees this at all -
+  `emailVerified` is only ever populated under `MULTI_TENANT`.
+
+### Verified end-to-end, not just by reading the diff
+
+Real license server + real console standalone-equivalent dev server,
+Playwright driving a real browser: signed up, confirmed the banner
+shows, pulled the actual stub-logged confirmation link out of server
+output, clicked it in the same browser session, confirmed the banner
+disappeared. Separately verified resend generates a genuinely new,
+distinct token and a fresh log line, and that clicking the resent link
+also verifies correctly. Self-hosted mode regression-checked: logged in
+as the shared admin user, confirmed the banner never renders (no crash,
+no email/verification concept reachable at all). `npm run lint` and
+`npm run build` both clean.
+
+### What's still open
+
+- No `sendPasswordReset` method or flow yet - that's the next natural
+  increment once/if authorized, not built here.
+- A verified account's other still-outstanding, unused tokens (e.g.
+  from an earlier resend) aren't proactively invalidated once one
+  succeeds - harmless in practice (re-verifying an already-verified
+  account is an idempotent no-op, not a privilege escalation), noted
+  rather than silently left unmentioned.
+- `EMAIL_PROVIDER` has exactly one working value (`stub`) - no real
+  email is sent anywhere yet. A real provider (Resend, SES, Postmark,
+  etc.) is unauthorized, undecided, no task ID - same posture as
+  `SaaS-C4`'s own note on real Stripe integration.
+

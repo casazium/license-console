@@ -13,6 +13,11 @@ export type Identity = {
   // lookup is already required per request under SaaS mode to check
   // revocation (below), so this doesn't cost an extra query.
   tenantId?: string;
+  // Same reasoning as tenantId above - piggybacks on that same
+  // required-anyway lookup rather than a separate query. Only
+  // meaningful under MULTI_TENANT; self-hosted's single shared admin
+  // login has no email/verification concept at all.
+  emailVerified?: boolean;
 };
 
 export const SESSION_COOKIE_NAME = 'license_console_session';
@@ -76,8 +81,10 @@ export async function verifySessionToken(token: string): Promise<Identity | null
 
     if (isMultiTenant()) {
       const account = getDb()
-        .prepare('SELECT tenant_id, sessions_revoked_at FROM accounts WHERE id = ?')
-        .get(identity.id) as { tenant_id: string; sessions_revoked_at: string | null } | undefined;
+        .prepare('SELECT tenant_id, sessions_revoked_at, email_verified_at FROM accounts WHERE id = ?')
+        .get(identity.id) as
+        | { tenant_id: string; sessions_revoked_at: string | null; email_verified_at: string | null }
+        | undefined;
 
       // The account backing this token no longer exists (or was never a
       // SaaS account, e.g. a stale token from before MULTI_TENANT was
@@ -109,6 +116,7 @@ export async function verifySessionToken(token: string): Promise<Identity | null
       }
 
       identity.tenantId = account.tenant_id;
+      identity.emailVerified = account.email_verified_at !== null;
     }
 
     return identity;

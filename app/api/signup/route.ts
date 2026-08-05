@@ -11,9 +11,12 @@ import {
   clearLoginRateLimit,
   getClientKey,
 } from '@/lib/login-rate-limit';
+import { generateEmailVerificationToken, hashEmailVerificationToken } from '@/lib/email-verification-token';
+import { getEmailProvider } from '@/lib/email';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 8;
+const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
 /**
  * SaaS-B1b. Self-service signup: provisions a new tenant on
@@ -137,6 +140,26 @@ export async function POST(request: NextRequest) {
   }
 
   clearLoginRateLimit(clientKey);
+
+  // Signup confirmation email - best-effort, not on the request's
+  // success path. A tenant/account already exists at this point (the
+  // insert above committed); failing the whole signup because the email
+  // send failed would strand them with a provisioned tenant and no way
+  // back in, worse than just landing them signed-in with an unverified
+  // account they can request a new link for later.
+  try {
+    const verificationToken = generateEmailVerificationToken();
+    const expiresAt = new Date(Date.now() + VERIFICATION_TOKEN_TTL_MS).toISOString();
+    db.prepare(
+      `INSERT INTO email_verification_tokens (token_hash, account_id, expires_at) VALUES (?, ?, ?)`
+    ).run(hashEmailVerificationToken(verificationToken), accountId, expiresAt);
+
+    const confirmUrl = new URL(`/api/verify-email?token=${verificationToken}`, request.nextUrl.origin).toString();
+    await getEmailProvider().sendSignupConfirmation(email, confirmUrl);
+  } catch (err) {
+    console.error(`Failed to send signup confirmation email for account ${accountId}:`, err);
+  }
+
   const token = await createSessionToken({ id: accountId, role: 'admin' });
   const response = NextResponse.json({ ok: true });
   response.cookies.set(SESSION_COOKIE_NAME, token, sessionCookieOptions);

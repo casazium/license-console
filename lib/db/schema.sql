@@ -40,6 +40,11 @@
 -- a signed-up account (SaaS-B1b's flow always collects and would
 -- populate it), but so old rows from before this column existed don't
 -- need a backfill on an unmerged branch with no real data anyway (§5).
+-- email_verified_at (signup confirmation email): nullable watermark, same
+-- shape as sessions_revoked_at above - unset until the confirmation link
+-- is actually clicked. Added straight into this CREATE TABLE rather than
+-- a defensive ALTER for the same reason tenant_name was (§5's
+-- disposability rule: no real deployment yet to migrate).
 CREATE TABLE IF NOT EXISTS accounts (
   id TEXT PRIMARY KEY,
   email TEXT NOT NULL,
@@ -48,6 +53,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   tenant_name TEXT,
   tenant_api_key_encrypted TEXT NOT NULL,
   sessions_revoked_at DATETIME,
+  email_verified_at DATETIME,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -55,6 +61,24 @@ CREATE TABLE IF NOT EXISTS accounts (
 -- own convention (that repo's idx_tenants_api_key_hash comment) of
 -- adding uniqueness as a separate index rather than inline.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_email ON accounts(email);
+
+-- One-time signup-confirmation links. Only the hash is stored (mirrors
+-- casazium/license's own activations.token_hash / lib/activation-token.js
+-- pattern) - the plaintext token only ever exists in the confirmation
+-- URL itself, never at rest. A real foreign key here (unlike
+-- accounts.tenant_id above, which points at a row in a different repo's
+-- database entirely) - account_id is in this same database, so the
+-- guarantee can be enforced at the DB level rather than left to
+-- app-level discipline.
+CREATE TABLE IF NOT EXISTS email_verification_tokens (
+  token_hash TEXT PRIMARY KEY,
+  account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  expires_at DATETIME NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_email_verification_tokens_account_id
+  ON email_verification_tokens(account_id);
 
 -- SaaS-B3: one row per tenant, only under MULTI_TENANT. tenant_id is not
 -- a foreign key here either, same reasoning as accounts.tenant_id above.

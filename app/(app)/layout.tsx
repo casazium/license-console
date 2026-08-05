@@ -25,9 +25,18 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   // MULTI_TENANT (SaaS-B1c), so it doubles as that check here without a
   // separate isMultiTenant() import.
   const showBilling = Boolean(session.tenantId);
+  // Same MULTI_TENANT-only gating as showBilling above - self-hosted's
+  // single shared admin login has no email/verification concept, so
+  // emailVerified is always undefined there and the banner never shows.
+  const showEmailVerificationBanner = Boolean(session.tenantId) && session.emailVerified === false;
 
   return (
-    <AppShellClient branding={branding} appVersion={appVersion} showBilling={showBilling}>
+    <AppShellClient
+      branding={branding}
+      appVersion={appVersion}
+      showBilling={showBilling}
+      showEmailVerificationBanner={showEmailVerificationBanner}
+    >
       {children}
     </AppShellClient>
   );

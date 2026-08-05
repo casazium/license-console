@@ -10,6 +10,7 @@ import type { AppVersion } from '@/lib/version';
 import { BrandLogo } from '@/components/BrandLogo';
 import { BrandCopyright } from '@/components/BrandCopyright';
 import { VersionStamp } from '@/components/VersionStamp';
+import { EmailVerificationBanner } from '@/components/EmailVerificationBanner';
 import { brandTextButtonStyle } from '@/components/brandButtonStyle';
 
 const BASE_NAV_ITEMS = [
@@ -21,6 +22,7 @@ export function AppShellClient({
   branding,
   appVersion,
   showBilling,
+  showEmailVerificationBanner,
   children,
 }: {
   branding: Branding;
@@ -29,6 +31,10 @@ export function AppShellClient({
   // self-hosted has no billing concept, so no nav item and no route to
   // reach one.
   showBilling: boolean;
+  // Only true under MULTI_TENANT with an unverified account (see
+  // app/(app)/layout.tsx) - self-hosted has no email/verification
+  // concept at all.
+  showEmailVerificationBanner: boolean;
   children: ReactNode;
 }) {
   const navItems = showBilling
@@ -73,7 +79,10 @@ export function AppShellClient({
           />
         ))}
       </AppShell.Navbar>
-      <AppShell.Main>{children}</AppShell.Main>
+      <AppShell.Main>
+        {showEmailVerificationBanner && <EmailVerificationBanner />}
+        {children}
+      </AppShell.Main>
       <AppShell.Footer>
         <Group h="100%" px="md" justify="center" gap="xs">
           {branding.copyrightHolder && (
