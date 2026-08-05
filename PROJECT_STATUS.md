@@ -1766,3 +1766,26 @@ to check against) - the query that populates it is the identical query
 already proven correct for the revocation check above, so this is a low
 residual risk, not zero.
 
+## 33. SaaS-B1d: deferred, not built (2026-08-05)
+
+Full rationale in `casazium/license/PROJECT_STATUS.md` §39. Short
+version: `B1d`'s own justification (*"SaaS hosting is the deployment
+shape [`lib/login-rate-limit.ts`] doesn't support (needs a shared
+store)"*) directly contradicts `SaaS-B1a`'s own decision (§30) that
+single-replica is this console's actual target topology, made from the
+same evidence - today's `docker-compose-coolify.yml` sets no replica
+count, and `SaaS-C1` (the only task that could actually decide otherwise)
+hasn't run. `lib/login-rate-limit.ts`'s own header comment already says
+its in-memory design is *"adequate for a single-replica deployment"* -
+by B1a's own reasoning, that's still true today.
+
+Building distributed (Redis-backed) rate limiting now would mean
+picking new infrastructure unprompted for a requirement that isn't
+confirmed, and would silently reverse B1a's decision without revisiting
+it - B1a was explicit that "if `SaaS-C1` ever needs horizontal scaling
+... that reopens this question," not "B1d gets to reopen it on B1a's
+behalf." Operator confirmed: defer. `lib/login-rate-limit.ts` is
+untouched. Revisit together with B1a's own SQLite choice if/when
+`SaaS-C1` actually decides multi-replica hosting - not before, and not
+one without the other.
+
