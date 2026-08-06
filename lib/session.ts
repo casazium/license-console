@@ -3,9 +3,23 @@ import { cookies } from 'next/headers';
 import { isMultiTenant } from './config';
 import { getDb } from './db';
 
+// Which credential system authenticated this identity - 'saas' for a
+// real accounts-table row (MULTI_TENANT=true at issuance), 'selfhosted'
+// for the single shared ADMIN_UI_USERNAME/PASSWORD pair. Embedded in the
+// signed JWT at issuance (security review finding, third-party audit,
+// R3-CONSOLE-H1) specifically so verifySessionToken() can reject a
+// mode-mismatched token *without* needing a DB call - see that
+// function's own comment for why that independence from the DB matters.
+export type SessionMode = 'saas' | 'selfhosted';
+
 export type Identity = {
   id: string;
   role: 'admin';
+  // Which credential system authenticated this identity at issuance -
+  // see SessionMode's own comment above. Required (not optional) so
+  // every call site that builds an Identity is forced to state it
+  // explicitly, rather than a mode-check silently no-op'ing on `undefined`.
+  mode: SessionMode;
   // Only populated under MULTI_TENANT=true (SaaS-B1c), re-derived from
   // the accounts table on every verifySessionToken() call rather than
   // embedded in the signed JWT payload at issuance - the DB is the
@@ -74,10 +88,41 @@ export function revokeAccountSessions(accountId: string): void {
 export async function verifySessionToken(token: string): Promise<Identity | null> {
   try {
     const { payload } = await jwtVerify(token, getSecretKey());
-    if (typeof payload.id !== 'string' || payload.role !== 'admin') {
+    if (
+      typeof payload.id !== 'string' ||
+      payload.role !== 'admin' ||
+      (payload.mode !== 'saas' && payload.mode !== 'selfhosted')
+    ) {
       return null;
     }
-    const identity: Identity = { id: payload.id, role: payload.role };
+
+    // Security review finding, third-party audit (R3-CONSOLE-H1): the
+    // *only* place this file previously distinguished SaaS from
+    // self-hosted was the isMultiTenant() check a few lines below - and
+    // every caller that resolves tenant context (getBranding,
+    // requireSessionWithTenantKey, license-client's resolveApiKey) short-
+    // circuits on !isMultiTenant() *before ever calling getDb()*. If
+    // MULTI_TENANT was ever true when a session was issued and then
+    // becomes unset (a lost Coolify env var on redeploy - the exact
+    // failure mode DEPLOYMENT.md already documents), that still-valid,
+    // still-signed JWT kept verifying as a plain self-hosted admin
+    // identity, and every downstream license-server call silently fell
+    // back to the platform-wide LICENSE_ADMIN_API_KEY instead of the
+    // tenant's own key - confirmed live by a third-party audit, which
+    // also confirmed the DB-level guard in lib/db.ts never fires on this
+    // path, since nothing on it touches the DB at all.
+    //
+    // This check needs no DB access - the token's own `mode` claim
+    // (set at issuance in verifyCredentials()/signup/reset-password, see
+    // SessionMode's own comment) is proof enough of which credential
+    // system authenticated it, and a 'saas' token straightforwardly
+    // shouldn't be honored when this deployment isn't in SaaS mode right
+    // now, regardless of what it was when the token was issued.
+    if (payload.mode === 'saas' && !isMultiTenant()) {
+      return null;
+    }
+
+    const identity: Identity = { id: payload.id, role: payload.role, mode: payload.mode };
 
     if (isMultiTenant()) {
       const account = getDb()

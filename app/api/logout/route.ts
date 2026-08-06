@@ -1,8 +1,23 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getSession, revokeAccountSessions, SESSION_COOKIE_NAME } from '@/lib/session';
-import { isMultiTenant } from '@/lib/config';
+import { isMultiTenant, isSameOrigin } from '@/lib/config';
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  // Security review finding (third-party audit, R3-review-lows): this
+  // route (and verify-email/resend's own identical addition) previously
+  // relied solely on SameSite=Lax for CSRF protection, unlike login/
+  // signup which already check Origin explicitly. SameSite=Lax treats
+  // sibling subdomains as same-site, so if anything on a sibling of this
+  // console's registrable domain were ever attacker-influenced (a
+  // marketing subdomain, a takeoverable CNAME), this route becomes
+  // forgeable - a forced logout, which under MULTI_TENANT revokes *all*
+  // of the account's sessions via revokeAccountSessions() below, not
+  // just the one the attacker's page could see. Costs one line, same
+  // gate login/signup/forgot-password already use.
+  if (!isSameOrigin(request)) {
+    return NextResponse.json({ error: 'Invalid request origin' }, { status: 403 });
+  }
+
   // Security review finding (fresh pre-deployment audit): this used to
   // only clear the browser's cookie - sessions are stateless 8h JWTs
   // (lib/session.ts's own header comment), so a copy of the token made

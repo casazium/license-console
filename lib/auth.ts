@@ -2,18 +2,21 @@ import { timingSafeEqual } from 'node:crypto';
 import type { Identity } from './session';
 import { isMultiTenant } from './config';
 import { getDb } from './db';
-import { verifyPassword } from './password';
+import { verifyPassword, DUMMY_PASSWORD_HASH } from './password';
 
-// Fixed, non-secret salt:hashHex shape (security review finding M1) -
-// exists only so verifyCredentials() below can run a real scrypt
-// computation against *something* when no account matches, rather than
-// returning immediately. Measured ~8x faster for a nonexistent email
-// than an existing one before this, since scrypt was skipped entirely -
-// a remotely-measurable way to enumerate registered accounts. The
-// actual bytes don't matter (this is never a real password's hash,
-// just a fixed-cost decoy), only that verifyPassword's own `!salt ||
-// !hashHex` guard doesn't short-circuit it too.
-const DUMMY_PASSWORD_HASH = `${'0'.repeat(32)}:${'0'.repeat(128)}`;
+// Fixed, non-secret decoy hash (security review finding M1) - exists
+// only so verifyCredentials() below can run a real scrypt computation
+// against *something* when no account matches, rather than returning
+// immediately. Measured ~8x faster for a nonexistent email than an
+// existing one before this, since scrypt was skipped entirely - a
+// remotely-measurable way to enumerate registered accounts. Imported
+// from lib/password.ts, not redefined here (security review finding,
+// third-party audit, R3-CONSOLE-M2) - password.ts's own stored format
+// changed to embed cost parameters, and a hand-duplicated literal here
+// would have silently stopped matching that format, making this decoy
+// fail decodeHash()'s parse and return false *before* ever running
+// scrypt - reintroducing the exact timing side-channel this constant
+// exists to close.
 
 /**
  * Security review finding (fresh pre-deployment audit): email lookups
@@ -72,7 +75,7 @@ export async function verifyCredentials(username: string, password: string): Pro
     if (!account || !passwordMatches) {
       return null;
     }
-    return { id: account.id, role: 'admin' };
+    return { id: account.id, role: 'admin', mode: 'saas' };
   }
 
   const adminUsername = process.env.ADMIN_UI_USERNAME;
@@ -87,5 +90,5 @@ export async function verifyCredentials(username: string, password: string): Pro
     return null;
   }
 
-  return { id: adminUsername, role: 'admin' };
+  return { id: adminUsername, role: 'admin', mode: 'selfhosted' };
 }

@@ -3204,3 +3204,226 @@ so every fix above was verified against a real running
 `.next/standalone/server.js` instance or a real compiled-module script,
 matching this whole security-review pass's own established discipline.
 
+## 53. Third, independent Opus security review - all findings fixed (2026-08-06)
+
+Operator: "let's have opus do one more complete independent security check
+for these repos before we continue," directly following §52's own
+second round. Companion to `casazium/license`'s own PROJECT_STATUS.md
+§64. Two fresh Opus agents, each given zero context on the other or on
+any prior round, one per repo, run in parallel. This one found a real
+structural hole in §52's own `MULTI_TENANT` fail-open fix - the guard
+existed and was documented as closing the gap, but never actually ran
+on the vulnerable path.
+
+### H-1 (fixed): the `MULTI_TENANT` boot guard from §52 never ran on the actual vulnerable path
+
+`lib/db.ts`'s guard (added in §52/FRESH-M-MTFAILOPEN, refusing to boot
+if `MULTI_TENANT` is off but the `accounts` table has real rows) only
+fires the first time something calls `getDb()`. On the exact path that
+matters - a still-unexpired SaaS session JWT being verified after
+`MULTI_TENANT` gets dropped - *nothing* calls `getDb()` at all:
+`verifySessionToken()`'s entire DB-touching branch is itself gated
+behind `isMultiTenant()`, so it's skipped, not run-then-guarded.
+Confirmed live: replayed an existing SaaS session cookie against a
+restart with `MULTI_TENANT` unset - it verified successfully, and the
+console sent the platform-wide `LICENSE_ADMIN_API_KEY` to the license
+server on that tenant's behalf, not their own key. Separately
+confirmed: forcing the guard to fire via a *different* route
+(`/api/verify-email`, one of the few paths that does call `getDb()`)
+just 500'd that one request - `openDatabase()` throwing doesn't stop
+the Next.js process, it just leaves the DB handle unset for next time.
+Every other route kept serving normally with the escalated key.
+
+**Fix**: two independent layers, matching the audit's own two suggested
+directions - implemented both, not either/or.
+
+1. **A `mode: 'saas' | 'selfhosted'` claim embedded in the session JWT
+   at issuance** (`lib/session.ts`'s new `SessionMode` type,
+   `Identity.mode`), set in `verifyCredentials()` (both branches),
+   `signup/route.ts`, and `reset-password/route.ts`. `verifySessionToken()`
+   now rejects a `saas`-mode token outright when `!isMultiTenant()`, as
+   its very first check - before ever touching `isMultiTenant()`'s own
+   DB-gated branch, so this needs no database access at all and can't be
+   silently skipped the way the DB-based guard was. A token with a
+   missing or invalid `mode` claim is also rejected (tightens tampered/
+   pre-this-fix token handling as a side effect). Verified with a
+   database-call-counting stub in place of `lib/db.ts` (no real DB
+   connection at all): replaying a `saas`-mode token after `MULTI_TENANT`
+   drops now returns `null` with the stubbed `getDb()` never invoked -
+   confirmed 0 calls, proving the rejection happens before any DB
+   dependency, not just that it eventually returns null. Self-hosted
+   tokens and normal `MULTI_TENANT=true` operation both confirmed
+   unaffected (DB still consulted exactly once, as before).
+2. **The DB guard now actually halts boot.** New `instrumentation.ts`
+   calls `getDb()` eagerly in `register()` (Node.js runtime only - Edge,
+   which `proxy.ts`'s middleware also runs under, doesn't have
+   `better-sqlite3`), and `process.exit(1)`s on failure instead of
+   relying on an uncaught rejection during Next's own startup sequence
+   to have the intended effect. Verified against the real standalone
+   server three ways: `MULTI_TENANT` unset against a DB seeded with one
+   real account now exits with code 1 and a logged fatal error *before
+   the process ever starts listening* (confirmed via `timeout` - no port
+   ever opens); `MULTI_TENANT=true` against that same DB boots and stays
+   up; `MULTI_TENANT` unset against a genuinely empty DB (real
+   self-hosted case) also boots and stays up.
+
+Both layers matter independently: layer 1 closes the hole even if a
+future code path opens its own DB connection differently and bypasses
+the boot guard; layer 2 means the vulnerable *state* (server running
+with `MULTI_TENANT` off against real SaaS data) can no longer be reached
+via a normal restart/redeploy at all, which is the actual real-world
+trigger (`DEPLOYMENT.md` already documents Coolify silently dropping an
+env var on redeploy as a known failure mode).
+
+### Medium findings fixed
+
+### M-1 (fixed): `/api/login` buffered and parsed the full request body before any rate limiting
+
+Confirmed live: an 8MB body containing valid credentials returned a
+real `200` with a session cookie, proving the entire oversized body was
+buffered and JSON-parsed at zero rate-limit cost to the caller - every
+other auth route reserves its rate-limit bucket before parsing;
+`login` was the one outlier.
+
+**Fix**: reordered so the per-IP bucket (`checkAndReserveAttempt`,
+keyed purely on IP, no body needed) runs first, before `request.json()`
+- only requests that already clear it ever pay the parse cost. The
+per-account bucket still runs after parsing (it's keyed on the
+submitted username, which doesn't exist yet), unavoidable and
+unchanged. Refund semantics were re-derived, not just carried over: a
+per-account rejection no longer refunds the per-IP reservation (the
+reverse of the old ordering's own refund direction) - that request
+genuinely was real traffic from that IP targeting a real, rate-limited
+account, and refunding it would let an attacker dodge the per-IP spray
+guard by deliberately hammering an already-locked account. Verified
+against a real server: exactly 30 sprayed attempts (distinct usernames,
+one IP) allowed before `429`, unchanged from before; a 31st request
+carrying a 5MB body while already IP-rate-limited returns `429` in 21ms,
+confirming the body is never parsed once the cheap check rejects first.
+
+### M-2 (fixed): scrypt's stored hash format had no versioning - last chance to fix before real signups exist
+
+`lib/password.ts`'s cost parameters were already bumped to OWASP's
+current `N=2^17` minimum in §52's own Low-findings pass, but the stored
+format (`salt:hashHex`) never recorded which cost parameters produced a
+given hash. Changing `SCRYPT_N` again in the future would silently break
+every already-issued hash, since `verifyPassword()` always re-derived
+using *today's* constants, not the ones that made the original hash.
+
+**Fix**: new format embeds `N`/`r`/`p` directly (`scrypt$N$r$p$salt$hash`,
+PHC-shaped though not that literal spec), decoded and used per-hash by
+`verifyPassword()` - a future cost increase only changes new hashes;
+every previously-issued one keeps verifying under its own original
+parameters forever, no forced migration. Safe to land now specifically
+*because* no real account exists yet in any deployment - this was
+called out as the one moment to do this for free. `lib/auth.ts`'s
+`DUMMY_PASSWORD_HASH` (the fixed-cost decoy that closes a real,
+previously-measured timing side-channel for account enumeration) is now
+imported from `lib/password.ts` instead of hand-duplicated - a
+hand-written literal in the old format would have failed the new
+parser's shape check and returned `false` *before* running scrypt at
+all, silently reopening the exact timing gap this constant exists to
+close. Verified directly: hash/verify round-trip correct; a legacy
+`salt:hash` string safely rejected (no throw); a hash produced under
+different (lower) cost parameters still verifies correctly against its
+own embedded values; `DUMMY_PASSWORD_HASH` still measured at ~394ms
+(real scrypt cost, not a fast-path bypass).
+
+### M-3 (fixed): no ceiling on total attempts against one account distributed across many IPs
+
+The per-account bucket is keyed by identifier+IP together (a deliberate
+H1 fix earlier this session, closing cross-tenant lockout) - but as a
+direct consequence, an attacker rotating source IPs gets a fresh
+5-attempt allowance against the *same* account from every new IP, with
+no limit anywhere on the total.
+
+**Fix**: new third bucket, `getAccountOnlyKey()` (IP-independent,
+hashed identifier only), 50 attempts/15min - deliberately generous,
+sized to never fire on a real user occasionally mistyping their
+password from a few different networks/devices, while still bounding a
+genuinely distributed attacker. Verified against a real server: 50
+wrong-password attempts against one account, each from a distinct
+spoofed source IP (`X-Forwarded-For`, `TRUSTED_PROXY_COUNT=1`), all
+allowed (`401`s, not `429`s, since each individual IP's own bucket
+stays under its own threshold); the 51st, yet another new IP, correctly
+returns `429`; a subsequent *correct*-password attempt is also blocked
+(the account-global bucket doesn't distinguish right from wrong
+passwords, by design - the same tradeoff the per-account+IP bucket
+already accepted); an unrelated account from a fresh IP is unaffected.
+
+### M-4 (documented, no code change): rate-limiter state resets to empty on every redeploy
+
+Confirmed, accepted tradeoff, not an oversight - the audit's own
+finding explicitly offers "document explicitly" as sufficient for a
+single-replica, low-traffic deployment where redeploys are operator-
+triggered, not something an external attacker can invoke on demand.
+Considered and deliberately not moved to SQLite-backed persistence:
+this file sits on the hot path of every auth request, and durably
+persisting `checkAndReserveAttempt()`'s synchronous-atomicity guarantee
+(the exact property that closed the concurrency race in an earlier
+round) is real structural surgery to a security-critical path, not a
+targeted fix - not something to take on hastily right before a
+production launch. §116/M-3's new account-global bucket also narrows
+the practical impact of a reset somewhat, since it's the one bucket an
+attacker needs the most requests to rebuild. Documented directly in
+`lib/login-rate-limit.ts`'s own header comment.
+
+### Low findings fixed
+
+- **`/api/forgot-password` had no `Origin` check (fixed)**: confirmed
+  live - a cross-origin POST with a spoofed `Origin` still returned the
+  real `200` success response and sent the real reset email. Unlike
+  login/signup there's no session to steal here, but a malicious page
+  could still burn a victim's own IP rate-limit bucket and mail-bomb
+  arbitrary addresses through visitors' browsers. Added the same
+  `isSameOrigin()` gate login/signup already use, in the same first-line
+  position. Verified: cross-origin now `403`, same-origin unaffected.
+- **`/api/logout` and `/api/verify-email/resend` relied solely on
+  `SameSite=Lax` (fixed)**: `SameSite=Lax` treats sibling subdomains as
+  same-site, so either route becomes forgeable if anything on a sibling
+  of this console's domain is ever attacker-influenced - a forced logout
+  is the more consequential of the two (revokes *every* session for the
+  account under `MULTI_TENANT`, not just the one device). Same
+  `isSameOrigin()` gate added to both, one line each. Verified: both
+  routes now `403` cross-origin; `verify-email/resend`'s rejection fires
+  *before* its own session check, confirmed by testing with no session
+  cookie at all and still getting the origin-check's `403`, not the
+  auth check's `401`.
+
+### Remaining Low/Informational findings triaged (documented, no code change)
+
+- **Server Actions accept unvalidated, untyped input**: TypeScript types
+  are erased at runtime, so an authenticated client technically controls
+  every field passed to e.g. `issueLicenseAction`. The audit's own
+  framing already calls this "probably fine given the backend is out of
+  scope" - the license server validates its own schema independently -
+  and a `zod`-style parse at the boundary is real defense-in-depth, not
+  a closure of a confirmed exploit. Not implemented this round; a real
+  candidate for a dedicated pass, not a one-line addition alongside
+  everything else here.
+- **`X-Forwarded-For` trust is deployment-topology-dependent**: already
+  correctly configured for the documented topology (`expose:` not
+  `ports:`, Traefik as the sole path in, `TRUSTED_PROXY_COUNT=1`) -
+  confirmed safe today, fragile only if that topology ever changes.
+  Nothing to fix; the audit itself frames this as "flagging because the
+  safety depends on a deployment property, not this code."
+- **Healthcheck (`/login`) passes on a deploy missing `SESSION_SECRET`/
+  `PUBLIC_BASE_URL`/`EMAIL_PROVIDER`**: partially addressed as a side
+  effect of H-1's new `instrumentation.ts` boot hook (a deploy missing
+  `MULTI_TENANT` correctly against real data now fails to boot at all,
+  healthcheck moot), but that hook only calls `getDb()` - it does not
+  validate `SESSION_SECRET` or the other secrets this finding is
+  actually about, since those are checked lazily, only when a session
+  token is first created/verified. Genuine residual gap, not silently
+  closed by H-1: a real comprehensive boot-time env-validation pass
+  (checking every required secret, not just the `MULTI_TENANT` case) is
+  the real fix, and is a distinct, larger piece of work from everything
+  else in this round - recorded here so it isn't mistaken for done.
+- **`/api/health/db` has no `Cache-Control`**: hygiene only per the
+  audit's own framing - non-sensitive content, and the route is already
+  session-gated (confirmed: unauthenticated request 307s to `/login`
+  before this route ever runs). Not fixed this round.
+
+`npx tsc --noEmit`, `npx eslint .`, and `npm run build` all clean after
+every fix in this section.
+

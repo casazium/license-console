@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isMultiTenant, publicBaseUrl } from '@/lib/config';
+import { isMultiTenant, publicBaseUrl, isSameOrigin } from '@/lib/config';
 import { getDb } from '@/lib/db';
 import { getEmailProvider } from '@/lib/email';
 import { generateOneTimeToken, hashOneTimeToken } from '@/lib/one-time-token';
@@ -29,6 +29,21 @@ const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
  * unauthenticated caller, so it doesn't.
  */
 export async function POST(request: NextRequest) {
+  // Security review finding (third-party audit, R3-review-lows): unlike
+  // login/signup, this route had no Origin check at all - confirmed
+  // live, a cross-origin POST with Origin: https://evil.example still
+  // returned the real 200 success response and sent the real reset
+  // email. Impact is bounded (an attacker could just POST directly from
+  // their own server instead of routing through a victim's browser -
+  // there's no session/ambient credential here to steal), but a
+  // cross-origin page could still burn the *victim's own* IP rate-limit
+  // bucket and mail-bomb arbitrary addresses through visitors' browsers
+  // without their knowledge. Same isSameOrigin() gate login/signup
+  // already use, in the same first-line position.
+  if (!isSameOrigin(request)) {
+    return NextResponse.json({ error: 'Invalid request origin' }, { status: 403 });
+  }
+
   // checkAndReserveAttempt checks and counts in one atomic call - this
   // route already had no await between the old check and record calls,
   // so this is a like-for-like swap (consistency with the other routes

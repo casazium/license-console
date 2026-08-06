@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { publicBaseUrl } from '@/lib/config';
+import { publicBaseUrl, isSameOrigin } from '@/lib/config';
 import { requireSession } from '@/lib/session';
 import { generateOneTimeToken, hashOneTimeToken } from '@/lib/one-time-token';
 import { getEmailProvider } from '@/lib/email';
@@ -16,6 +16,16 @@ const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
  * way page navigation does).
  */
 export async function POST(request: NextRequest) {
+  // Security review finding (third-party audit, R3-review-lows): see
+  // logout/route.ts's identical comment - this route relied solely on
+  // SameSite=Lax before, which doesn't cover attacker-influenced sibling
+  // subdomains. A forged resend here just spams the account's own inbox
+  // (annoyance-tier, not a real credential/data exposure), but the fix
+  // is one line, same as everywhere else this session added it.
+  if (!isSameOrigin(request)) {
+    return NextResponse.json({ error: 'Invalid request origin' }, { status: 403 });
+  }
+
   const session = await requireSession().catch(() => null);
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

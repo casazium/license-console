@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyCredentials } from '@/lib/auth';
 import { createSessionToken, sessionCookieOptions, SESSION_COOKIE_NAME } from '@/lib/session';
-import { checkAndReserveAttempt, refundAttempt, getClientKey } from '@/lib/login-rate-limit';
+import { checkAndReserveAttempt, refundAttempt, getClientKey, getAccountOnlyKey } from '@/lib/login-rate-limit';
 import { isMultiTenant, isSameOrigin } from '@/lib/config';
 import { getTenantApiKey, getAccountTenantId, markTenantRevoked, clearTenantRevoked } from '@/lib/tenant-context';
 import { getBillingStatus } from '@/lib/license-client';
@@ -24,6 +24,35 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid request origin' }, { status: 403 });
   }
 
+  // Security review finding (third-party audit, R3-CONSOLE-M1): this
+  // used to buffer and JSON-parse the full request body BEFORE any rate
+  // limiting ran at all - confirmed live, an 8MB body containing valid
+  // credentials returned a real 200 with a session cookie, proving the
+  // full oversized body was buffered and parsed at zero rate-limit cost
+  // to the caller. The per-IP bucket below needs no request body at all
+  // (it's keyed purely on IP), so it now runs first, before
+  // request.json() - only requests that already clear it ever pay the
+  // parse cost. The per-account bucket further down still has to run
+  // after parsing (it's keyed on the submitted username, which doesn't
+  // exist yet), which is unavoidable and unchanged from before.
+  //
+  // Second, looser bucket keyed by IP alone (security review finding,
+  // fresh pre-deployment audit): closes unbounded password-spraying
+  // across many *different* accounts from one IP - confirmed: 8
+  // sequential logins with 8 distinct usernames from one IP, never a
+  // 429. A much higher threshold than the per-account one below, so it
+  // only ever fires on genuine spraying, not a real user mistyping
+  // their own password a few times.
+  const perIpKey = `login-ip:${getClientKey(request)}`;
+  const IP_MAX_ATTEMPTS = 30;
+  const perIpLimit = checkAndReserveAttempt(perIpKey, IP_MAX_ATTEMPTS);
+  if (!perIpLimit.allowed) {
+    return NextResponse.json(
+      { error: 'Too many login attempts. Try again later.' },
+      { status: 429, headers: { 'Retry-After': String(perIpLimit.retryAfterSeconds) } },
+    );
+  }
+
   const body = await request.json().catch(() => null);
   const username = body?.username;
   const password = body?.password;
@@ -32,10 +61,7 @@ export async function POST(request: NextRequest) {
   // an IP-only bucket meant an attacker could reset it at will by
   // logging into any account they control (trivial under MULTI_TENANT
   // self-service signup), and separately let one attacker's failures
-  // lock out every legitimate user sharing that IP/proxy. Computed
-  // before validating the body shape so a malformed/missing-username
-  // request still gets *some* rate limiting (IP alone, via
-  // getClientKey's undefined-identifier fallback) rather than none.
+  // lock out every legitimate user sharing that IP/proxy.
   const perAccountKey = getClientKey(request, typeof username === 'string' ? username : undefined);
 
   // Security review finding, fresh pre-deployment audit: checkAndReserveAttempt
@@ -47,6 +73,13 @@ export async function POST(request: NextRequest) {
   // refunded below, matching this route's own existing "logins that
   // resolve to failure count, successes don't" design (see the
   // refundAttempt() call's own comment).
+  //
+  // A rejection here does NOT refund the per-IP reservation made above
+  // (unlike the reverse direction this route used to have, back when
+  // per-account was checked first) - this genuinely was a real request
+  // from this IP targeting a real, currently-rate-limited account.
+  // Refunding it would let an attacker who deliberately keeps hitting
+  // one already-locked account dodge the per-IP spray guard indefinitely.
   const perAccountLimit = checkAndReserveAttempt(perAccountKey);
   if (!perAccountLimit.allowed) {
     return NextResponse.json(
@@ -55,27 +88,28 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Second, looser bucket keyed by IP alone (security review finding,
-  // fresh pre-deployment audit): the per-account bucket above closed
-  // H1's own cross-tenant-lockout problem, but as a side effect also
-  // removed any ceiling on trying one guessed password against many
-  // *different* accounts from the same IP - confirmed: 8 sequential
-  // logins with 8 distinct usernames from one IP, never a 429. A much
-  // higher threshold than the per-account one, so it only ever fires on
-  // genuine spraying across many accounts, not on a real user simply
-  // mistyping their own password a few times. Refunded below on the
-  // same "failures count, successes don't" schedule as the per-account
-  // bucket - if this rejects, the per-account reservation above is
-  // refunded too, since the request never got far enough to be a real
-  // attempt against that specific account.
-  const perIpKey = `login-ip:${getClientKey(request)}`;
-  const IP_MAX_ATTEMPTS = 30;
-  const perIpLimit = checkAndReserveAttempt(perIpKey, IP_MAX_ATTEMPTS);
-  if (!perIpLimit.allowed) {
-    refundAttempt(perAccountKey);
+  // Third bucket, keyed by account alone - no IP at all (security review
+  // finding, third-party audit, R3-CONSOLE-M3): the per-account bucket
+  // above is keyed by identifier+IP together, so it resets for an
+  // attacker every time they rotate source IP - there was no ceiling
+  // anywhere on total attempts against one account distributed across
+  // many IPs. 50/15min is deliberately generous - real users, even
+  // switching networks/devices a few times while getting their password
+  // wrong, will never approach it; a real distributed attacker (the
+  // threat this closes) needs many times that to make credential
+  // stuffing worthwhile. Only computed here (not alongside the other two
+  // buckets above) since, like the per-account bucket, it needs the
+  // now-parsed username.
+  const ACCOUNT_GLOBAL_MAX_ATTEMPTS = 50;
+  const accountGlobalKey =
+    typeof username === 'string' ? `login-account:${getAccountOnlyKey(username)}` : null;
+  const accountGlobalLimit = accountGlobalKey
+    ? checkAndReserveAttempt(accountGlobalKey, ACCOUNT_GLOBAL_MAX_ATTEMPTS)
+    : { allowed: true as const };
+  if (!accountGlobalLimit.allowed) {
     return NextResponse.json(
       { error: 'Too many login attempts. Try again later.' },
-      { status: 429, headers: { 'Retry-After': String(perIpLimit.retryAfterSeconds) } },
+      { status: 429, headers: { 'Retry-After': String(accountGlobalLimit.retryAfterSeconds) } },
     );
   }
 
@@ -151,6 +185,9 @@ export async function POST(request: NextRequest) {
   // age out of the fixed window as normal.
   refundAttempt(perAccountKey);
   refundAttempt(perIpKey);
+  if (accountGlobalKey) {
+    refundAttempt(accountGlobalKey);
+  }
   const token = await createSessionToken(identity);
   const response = NextResponse.json({ ok: true });
   response.cookies.set(SESSION_COOKIE_NAME, token, sessionCookieOptions);

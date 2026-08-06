@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
 
   revokeAccountSessions(row.account_id);
 
-  const sessionToken = await createSessionToken({ id: row.account_id, role: 'admin' });
+  const sessionToken = await createSessionToken({ id: row.account_id, role: 'admin', mode: 'saas' });
   const response = NextResponse.json({ ok: true });
   response.cookies.set(SESSION_COOKIE_NAME, sessionToken, sessionCookieOptions);
   return response;

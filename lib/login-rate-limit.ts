@@ -9,6 +9,31 @@ import { trustedProxyCount } from './config';
  * docker-compose-coolify.yml) - a multi-replica deployment would need a
  * shared store (Redis) instead, since each replica would otherwise keep
  * its own independent counter.
+ *
+ * Confirmed, accepted tradeoff, not an oversight (security review
+ * finding, third-party audit, R3-CONSOLE-M4): being in-memory also means
+ * every bucket resets to empty on process restart - a Coolify redeploy
+ * or crash gives every in-flight attacker a clean slate. Considered and
+ * deliberately not moved to SQLite-backed persistence here: this file
+ * sits on the hot path of every single auth request, and a durable
+ * migration (schema, WAL write contention with the accounts table,
+ * reworking checkAndReserveAttempt's synchronous atomicity guarantee -
+ * see that function's own comment on exactly why synchronous-in-one-call
+ * matters - into something that survives a restart) is real structural
+ * surgery to a security-critical path, not a targeted fix, and doing it
+ * hastily right before a production launch risks introducing a new bug
+ * into the thing meant to prevent brute-forcing rather than closing one.
+ * The audit's own finding explicitly offers "document explicitly" as a
+ * sufficient resolution for a single-replica, low-traffic deployment
+ * where redeploys are operator-triggered (not something an external
+ * attacker can invoke on demand) - this comment is that documentation.
+ * R3-CONSOLE-M3's new account-global bucket (getAccountOnlyKey below)
+ * also narrows the practical impact of a reset somewhat, since it's the
+ * one bucket keyed widely enough that a determined attacker would need
+ * many requests to rebuild after a restart, not just one. Revisit if
+ * this ever moves to a multi-replica or higher-traffic deployment, where
+ * a shared store becomes necessary for correctness anyway, not just
+ * durability.
  */
 
 const WINDOW_MS = 15 * 60 * 1000;
@@ -181,4 +206,23 @@ export function getClientKey(request: Request, identifier?: string): string {
   }
   const identifierHash = createHash('sha256').update(normalizedIdentifier).digest('hex');
   return `${identifierHash}|${ip}`;
+}
+
+/**
+ * IP-independent bucket key for one account (security review finding,
+ * third-party audit, R3-CONSOLE-M3): getClientKey()'s own identifier+IP
+ * bucket closed H1's cross-tenant-lockout problem, but as a direct
+ * consequence there is *no* ceiling at all on attempts against one
+ * account once an attacker rotates source IPs - each new IP gets that
+ * account its own fresh 5-attempt allowance. 100 source IPs against one
+ * account is ~500 attempts/15min with today's MIN_PASSWORD_LENGTH=8 and
+ * no complexity requirement. This is a deliberately generous backstop,
+ * not the primary defense (see login/route.ts's own ACCOUNT_GLOBAL_MAX_ATTEMPTS
+ * comment for the threshold reasoning) - a real distributed attacker is
+ * what this exists to catch, not a real user occasionally mistyping
+ * their password from a handful of devices/networks.
+ */
+export function getAccountOnlyKey(identifier: string): string {
+  const normalizedIdentifier = identifier.trim().toLowerCase();
+  return createHash('sha256').update(normalizedIdentifier).digest('hex');
 }

@@ -212,7 +212,7 @@ export async function POST(request: NextRequest) {
     console.error(`Failed to send signup confirmation email for account ${accountId}:`, err);
   }
 
-  const token = await createSessionToken({ id: accountId, role: 'admin' });
+  const token = await createSessionToken({ id: accountId, role: 'admin', mode: 'saas' });
   const response = NextResponse.json({ ok: true });
   response.cookies.set(SESSION_COOKIE_NAME, token, sessionCookieOptions);
   return response;
