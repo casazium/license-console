@@ -1,4 +1,4 @@
-import { Badge, Code, Group, SimpleGrid, Stack, Text, Title } from '@mantine/core';
+import { Anchor, Badge, Code, Group, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import { getLicense, listActivations } from '@/lib/license-client';
 import { formatDateTime } from '@/lib/format';
 import { isRateLimited } from '@/lib/errors';
@@ -18,6 +18,16 @@ export default async function LicenseDetailPage({
 
   // SaaS-B2: see dashboard/page.tsx's matching comment.
   const { identity, tenantApiKey } = await requireSessionWithTenantKey();
+
+  // Beta-readiness finding: this used to be a literal, un-fillable
+  // "<your-license-server>" placeholder for every tenant, hosted or
+  // self-hosted. Self-hosted operators know their own deployment's URL;
+  // hosted tenants have no other way to learn it - LICENSE_API_URL is
+  // this console's own already-public Coolify Domain for the backend
+  // (see app/(app)/settings/page.tsx), so it's safe to show directly.
+  const apiBaseUrl = tenantApiKey
+    ? (process.env.LICENSE_API_URL ?? '').replace(/\/+$/, '')
+    : '<your-license-server>/v1';
 
   // See dashboard/page.tsx's matching comment - only a rate-limited
   // admin bucket gets a friendly inline message; any other error still
@@ -124,13 +134,20 @@ export default async function LicenseDetailPage({
       <Text size="sm" c="dimmed">
         From the licensed application, call the license server with this key:
       </Text>
-      <Code block>{`POST https://<your-license-server>/v1/activate-license
+      <Code block>{`POST ${apiBaseUrl}/activate-license
 Content-Type: application/json
 
 {
   "key": "${license.key}",
   "instance_id": "<unique per install/device>"
 }`}</Code>
+      {tenantApiKey && (
+        <Text size="xs" c="dimmed">
+          This call is unauthenticated (public endpoint) - only the license key above is needed.
+          See <Anchor href="/settings">API access</Anchor> for your account&apos;s own API key,
+          used for admin operations.
+        </Text>
+      )}
 
       <MockDataNotice />
     </Stack>

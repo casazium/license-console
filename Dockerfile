@@ -34,13 +34,20 @@ ENV HOSTNAME=0.0.0.0
 COPY --from=builder --chown=node:node /app/public ./public
 COPY --from=builder --chown=node:node /app/.next/standalone ./
 COPY --from=builder --chown=node:node /app/.next/static ./.next/static
+# scripts/backup-db.mjs (beta-readiness finding): not part of the Next
+# standalone trace (it's not imported by the app itself) so needs an
+# explicit copy, same gap as casazium/license's own Dockerfile had.
+# better-sqlite3 itself is already present in the standalone node_modules
+# subset above - lib/db.ts imports it at runtime, so Next's tracer already
+# includes it.
+COPY --from=builder --chown=node:node /app/scripts/backup-db.mjs ./scripts/backup-db.mjs
 
 # Run as the non-root `node` user this base image already provides, rather
-# than root. /app/data must be chowned ahead of time so the named volume
-# Coolify mounts there (docker-compose-coolify.yml, SaaS-B1a's SQLite file)
-# inherits writable ownership on first creation - same reasoning and same
-# pattern as casazium/license's own Dockerfile.
-RUN mkdir -p /app/data && chown -R node:node /app
+# than root. /app/data and /app/backups must be chowned ahead of time so
+# the named volumes Coolify mounts there (docker-compose-coolify.yml,
+# SaaS-B1a's SQLite file) inherit writable ownership on first creation -
+# same reasoning and same pattern as casazium/license's own Dockerfile.
+RUN mkdir -p /app/data /app/backups && chown -R node:node /app
 USER node
 
 EXPOSE 3000

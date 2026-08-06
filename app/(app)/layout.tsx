@@ -25,6 +25,10 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   // MULTI_TENANT (SaaS-B1c), so it doubles as that check here without a
   // separate isMultiTenant() import.
   const showBilling = Boolean(session.tenantId);
+  // Same MULTI_TENANT-only gating as showBilling above - self-hosted
+  // operators already hold their own ADMIN_API_KEY directly, with no
+  // per-tenant key to view (app/(app)/settings/page.tsx).
+  const showApiSettings = Boolean(session.tenantId);
   // Same MULTI_TENANT-only gating as showBilling above - self-hosted's
   // single shared admin login has no email/verification concept, so
   // emailVerified is always undefined there and the banner never shows.
@@ -35,6 +39,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       branding={branding}
       appVersion={appVersion}
       showBilling={showBilling}
+      showApiSettings={showApiSettings}
       showEmailVerificationBanner={showEmailVerificationBanner}
     >
       {children}

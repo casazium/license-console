@@ -56,6 +56,22 @@ The compose file defines a healthcheck (a plain `GET /login`, expecting `200`) �
 
 Once it's up, confirm it's actually serving: visit the Domain in a browser and confirm the login page renders with your configured branding (if any), then sign in with `ADMIN_UI_USERNAME`/`ADMIN_UI_PASSWORD` and confirm the dashboard loads. If connected to a real backend, issue a test license through the UI and confirm it appears in the licenses list.
 
+## 6. Backups (beta-readiness finding)
+
+This console's own SQLite database matters more than it might look: under `MULTI_TENANT`, it's the *only* copy of every hosted tenant's encrypted `casazium/license` API key (`accounts.tenant_api_key_encrypted`). Lose it and every one of those tenants' licenses are stranded on that server with no way back in, even though the licenses themselves are untouched — there was previously no backup mechanism for it at all.
+
+**What's set up:** `scripts/backup-db.mjs` (present in the runtime image) takes a WAL-safe, integrity-checked snapshot of `DB_FILE` into `BACKUP_DIR` (`/app/backups` — a separate named volume, `console-backups`, from `console-data`, same reasoning as `casazium/license`'s own backup setup). Prunes snapshots older than `BACKUP_RETENTION_DAYS` (default 14).
+
+**What you still need to do:**
+
+1. Add a Coolify **Scheduled Task** for this service running `node scripts/backup-db.mjs` daily (env vars are already set in the compose file).
+2. Confirm `console-backups` is recognized as persistent storage.
+3. Push `/app/backups` off-box for real disaster protection — same caveat as `casazium/license`'s own Backups section; not set up here, real infrastructure to provision separately.
+
+This matters for self-hosted deployments too, just less acutely — self-hosted mode barely touches this database at all (every real write is gated behind `MULTI_TENANT`, see the persistent-storage note in step 4 above), so back it up if you've turned SaaS mode on, skip it otherwise.
+
+**Restore procedure** — same shape as `casazium/license`'s own (see that repo's `DEPLOYMENT.md` for the full walkthrough): stop the service, copy the chosen `console-<timestamp>.db` from `/app/backups` over `/app/data/console.db`, remove any stale `-wal`/`-shm` siblings, restart, and verify by signing in and confirming a tenant's licenses still load through their API key. Rehearsed against a scratch database during this work (backup → integrity-checked → restore → verified round-trips real data correctly) — not yet rehearsed against this specific deployment's real container/volume names.
+
 ## Deploying the SaaS-tier instance (SaaS-C1)
 
 Everything above still applies, plus:
@@ -65,7 +81,8 @@ Everything above still applies, plus:
 3. **Set `MULTI_TENANT=true`.**
 4. **Set `ACCOUNT_ENCRYPTION_KEY`** — 32 bytes, hex-encoded (64 hex characters). Generate: `openssl rand -hex 32`. This is a **different value** from `casazium/license`'s own `ENCRYPTION_KEY` — do not reuse it; these are two independently deployable services and sharing a key would be an unintended cross-service credential coupling, not a simplification (see `.env.example`'s own note on this).
 5. **Now confirm persistent storage matters**: revisit step 4 above. Once `MULTI_TENANT=true`, this console's own SQLite database (accounts, sessions) is real and load-bearing — after the first deploy, check Coolify's storage tab and confirm the `console-data` volume is recognized as persistent for this service, not discarded on redeploy.
-6. **Set `EMAIL_PROVIDER=resend` plus `RESEND_API_KEY`** (fresh pre-deployment audit finding — this step was previously undocumented here, only mentioned in the README's local-testing section). Signup confirmation and password reset are real, load-bearing flows in SaaS mode, not cosmetic ones — leaving `EMAIL_PROVIDER` unset doesn't just look wrong, it fails loud now (`getEmailProvider()` throws in production multi-tenant mode if this is unset, mirroring `LICENSE_STANDALONE_MODE`'s own explicit-opt-in pattern), specifically because the alternative used to be worse: the stub provider silently "succeeding" while logging the real reset/confirmation link in plaintext to this container's own logs. Optional: `EMAIL_FROM` (defaults to Resend's own sandbox address).
+6. **Set `EMAIL_PROVIDER=resend` plus `RESEND_API_KEY`** (fresh pre-deployment audit finding — this step was previously undocumented here, only mentioned in the README's local-testing section). Signup confirmation and password reset are real, load-bearing flows in SaaS mode, not cosmetic ones — leaving `EMAIL_PROVIDER` unset doesn't just look wrong, it fails loud now (`getEmailProvider()` throws in production multi-tenant mode if this is unset, mirroring `LICENSE_STANDALONE_MODE`'s own explicit-opt-in pattern), specifically because the alternative used to be worse: the stub provider silently "succeeding" while logging the real reset/confirmation link in plaintext to this container's own logs.
+7. **Verify a real sending domain on the Resend account, then set `EMAIL_FROM`** to an address on it (e.g. `noreply@casazium.com`) — **required**, not optional, despite what an earlier version of this doc said (beta-readiness finding). Resend's sandbox default (`onboarding@resend.dev`, used when `EMAIL_FROM` is unset) only delivers to *your own* Resend account address, never to a real signup — every confirmation and password-reset email to an actual customer would be silently rejected. `createResendEmailProvider()` now fails loud at request time if this is unset in production, same posture as `EMAIL_PROVIDER` itself.
 
 ### Verify SaaS mode is actually on
 

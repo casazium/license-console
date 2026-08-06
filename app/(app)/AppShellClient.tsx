@@ -22,6 +22,7 @@ export function AppShellClient({
   branding,
   appVersion,
   showBilling,
+  showApiSettings,
   showEmailVerificationBanner,
   children,
 }: {
@@ -31,15 +32,21 @@ export function AppShellClient({
   // self-hosted has no billing concept, so no nav item and no route to
   // reach one.
   showBilling: boolean;
+  // Beta-readiness finding: only true under MULTI_TENANT - self-hosted
+  // operators already hold their own ADMIN_API_KEY and have no per-tenant
+  // key to view (see app/(app)/settings/page.tsx).
+  showApiSettings: boolean;
   // Only true under MULTI_TENANT with an unverified account (see
   // app/(app)/layout.tsx) - self-hosted has no email/verification
   // concept at all.
   showEmailVerificationBanner: boolean;
   children: ReactNode;
 }) {
-  const navItems = showBilling
-    ? [...BASE_NAV_ITEMS, { href: '/billing', label: 'Billing' }]
-    : BASE_NAV_ITEMS;
+  const navItems = [
+    ...BASE_NAV_ITEMS,
+    ...(showApiSettings ? [{ href: '/settings', label: 'API access' }] : []),
+    ...(showBilling ? [{ href: '/billing', label: 'Billing' }] : []),
+  ];
   const [opened, { toggle }] = useDisclosure();
   const pathname = usePathname();
   const router = useRouter();

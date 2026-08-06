@@ -69,3 +69,21 @@ export function isPaymentFailed(error: unknown): boolean {
 export function isTenantRejected(error: unknown): boolean {
   return error instanceof LicenseApiError && error.status === 403 && error.message === 'Unauthorized';
 }
+
+// The exact 403 message casazium/license's issue-license.js returns when
+// the submitted product_id is already claimed by a different tenant
+// (per-tenant product_id ownership binding). Unlike isTenantRejected
+// above, this isn't a credential problem - the caller's own key is fine,
+// but the specific product_id in this one request is not usable. Retrying
+// the same input can never succeed; the console needs to tell the user to
+// pick a different product_id rather than show a generic "try again"
+// error (beta-readiness finding: this is the first thing a new signup's
+// onboarding form can hit, since a handful of concurrent beta users are
+// likely to type the same obvious product_id, e.g. "demo" or "test").
+export function isProductIdTaken(error: unknown): boolean {
+  return (
+    error instanceof LicenseApiError &&
+    error.status === 403 &&
+    error.message === 'product_id is owned by a different tenant'
+  );
+}

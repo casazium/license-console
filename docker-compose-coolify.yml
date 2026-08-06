@@ -61,6 +61,20 @@
 # MULTI_TENANT=true casazium/license resource (not the self-hosted one) -
 # LICENSE_API_URL/LICENSE_ADMIN_API_KEY above must match that SaaS
 # server resource specifically. See DEPLOYMENT.md.
+#
+# Backups (beta-readiness finding): scripts/backup-db.mjs takes a
+# WAL-safe, integrity-checked snapshot of DB_FILE (this console's own
+# accounts/sessions DB - the *only* copy of every hosted tenant's
+# encrypted casazium/license API key) into BACKUP_DIR, a SEPARATE volume
+# from console-data below - same reasoning as casazium/license's own
+# docker-compose-coolify.yml, and just as load-bearing here, since losing
+# this DB strands every tenant's licenses on that server with no way back
+# in. Schedule it via Coolify's own Scheduled Task feature for this
+# service (confirm the exact UI path/name for your Coolify version): a
+# daily `node scripts/backup-db.mjs` run inside this container. See that
+# other file's own comment for why an off-box push is still a separate,
+# manual step this compose file doesn't set up. See DEPLOYMENT.md's
+# Backups section for the restore procedure.
 services:
   console:
     build:
@@ -97,8 +111,12 @@ services:
       - BRANDING_COLOR=${BRANDING_COLOR}
       - BRANDING_COPYRIGHT_HOLDER=${BRANDING_COPYRIGHT_HOLDER}
       - BRANDING_FAVICON_URL=${BRANDING_FAVICON_URL}
+      - BACKUP_DIR=/app/backups
     volumes:
       - console-data:/app/data
+      # Backup destination - a separate volume from console-data above on
+      # purpose, see this file's own header comment on Backups.
+      - console-backups:/app/backups
     labels:
       - traefik.enable=true
 
@@ -122,3 +140,4 @@ services:
 
 volumes:
   console-data:
+  console-backups:

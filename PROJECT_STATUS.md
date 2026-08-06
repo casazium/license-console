@@ -3427,3 +3427,120 @@ attacker needs the most requests to rebuild. Documented directly in
 `npx tsc --noEmit`, `npx eslint .`, and `npm run build` all clean after
 every fix in this section.
 
+## 54. Beta-readiness product gap analysis - top 5 fixed (2026-08-06)
+
+Operator: "one last thing before we deploy this beta... excluding actual
+payments, what functionality are we missing that is of high or critical
+importance... put your product management hat on and be critical," with
+explicit permission to engage Opus if useful. Two Opus agents ran in
+parallel - one reading this repo's actual code for console self-service
+completeness, one reading `casazium/license`'s API completeness and
+operational readiness (see that repo's PROJECT_STATUS.md §65) -
+synthesized into a single prioritized CRITICAL/HIGH list, payments
+excluded per the operator's own standing scope decision. Operator then
+authorized fixing the top five findings before opening the beta.
+
+### C1/C2 (fixed): a hosted tenant had no way to ever see their own API key or the real API base URL
+
+Confirmed the finding directly: `app/api/signup/route.ts` encrypts
+`tenant.apiKey` into `accounts.tenant_api_key_encrypted` and never
+returns it to the browser; no page, action, or route in the whole repo
+ever decrypted it for display (grep confirmed). The one integration
+snippet the console showed (`licenses/[key]/page.tsx`) was a literal,
+un-fillable `https://<your-license-server>` placeholder - unusable for
+the exact audience the SaaS tier targets, since a hosted tenant has no
+"your license server" to substitute. Meanwhile `saas-tier.md` and
+`Pricing.tsx` both promise "sign up and get an API key."
+
+Added a new `/settings` page (`app/(app)/settings/page.tsx` +
+`ApiKeyReveal.tsx`), reachable via a new "API access" nav item shown only
+under `MULTI_TENANT` (same gating pattern as the existing Billing nav
+item). Shows the tenant's own key (masked by default, `PasswordInput`
+reveal toggle, Mantine `CopyButton`) and `LICENSE_API_URL` (already this
+console's own public Coolify Domain for the backend - safe to display
+directly). Fixed the license-detail page's placeholder snippet to use the
+real base URL for hosted tenants (self-hosted keeps the placeholder,
+since self-hosted operators already know their own server's URL and this
+console has no way to know it for them).
+
+### C3 (fixed): no error boundary anywhere - a license-server hiccup showed Next's raw, unbranded crash page
+
+Confirmed: `find app -name "error*"` returned nothing anywhere in the
+repo, and `liveFetch` had no timeout, so a hung backend hung the whole
+request indefinitely. Added `app/error.tsx` (catches
+`app/(app)/layout.tsx`'s own errors, e.g. `requireSession()` failing -
+Next never routes a segment's own layout errors to that segment's own
+`error.tsx`, so this needs to live at the root) and
+`app/(app)/error.tsx` (catches everything nested under the app shell -
+pages, Server Actions). Both offer "Try again" (`reset()`) plus a link
+back to `/dashboard` or `/login`. Added a 15s `AbortSignal.timeout()` to
+`liveFetch` in `lib/license-client.live.ts` so a dead backend now throws
+promptly into one of these boundaries instead of hanging.
+
+### C4 (fixed): the `product_id` ownership 403 - the first error a new signup's onboarding form can hit - showed a generic, un-actionable "try again"
+
+`casazium/license`'s `issue-license.js` already returns a specific 403
+(`product_id is owned by a different tenant`) for this case (that repo's
+own §64 H-1) - the gap was entirely here: nothing classified it, so it
+fell through to the same generic catch-all as a real transient failure,
+telling a user to retry a request that can never succeed by retrying.
+Added `isProductIdTaken()` (`lib/errors.ts`), a `'product-id-taken'`
+reason on `issueLicenseAction`'s result type, and `notifyProductIdTaken()`
+(`lib/notify.ts`) - `IssueLicenseForm.tsx` now shows a specific message
+and sets a field-level error on `product_id` pointing at the actual fix
+(pick a different one).
+
+### C1 (fixed, cross-repo): no backup mechanism for this console's own SQLite database
+
+This console's DB is the *only* copy of every hosted tenant's encrypted
+`casazium/license` API key - losing it strands every tenant's licenses
+with no way back in, distinct from (and just as severe as) that repo's
+own DB-loss risk (see its PROJECT_STATUS.md §65 for the full backup
+writeup - same mechanism, mirrored here). Added
+`scripts/backup-db.mjs` (better-sqlite3's WAL-safe online backup API,
+already a runtime dependency), wired into `Dockerfile` (explicit `COPY`
+- not part of the Next standalone trace since nothing in the app imports
+it) and `docker-compose-coolify.yml` (new `console-backups` volume,
+separate from `console-data`; `BACKUP_DIR` env var; a Coolify Scheduled
+Task the operator still needs to create). `DEPLOYMENT.md` gained a
+Backups section with a restore procedure.
+
+**Rehearsed, not just written**: seeded a scratch `console.db` with a
+real `accounts` row matching the actual schema, ran the backup script
+against it, verified the resulting file's own `PRAGMA integrity_check`,
+then re-opened it directly and confirmed the row round-tripped correctly.
+
+### C4 (fixed, cross-repo): no Terms/Privacy acceptance anywhere in the signup flow
+
+`SignupForm.tsx` had no terms link and no acceptance checkbox at all
+(grep confirmed). Added a required `Checkbox` linking to
+`casazium.com/terms` and `casazium.com/privacy` (both updated this round
+- see `casazium/casazium`'s own changes) and a matching server-side check
+in `app/api/signup/route.ts` (`agreedToTerms !== true` → 400) - enforced
+server-side, not just client-side, since a direct POST to this route
+would otherwise skip it entirely, same reasoning as every other field
+this route already validates.
+
+### C3 (fixed, cross-repo): `EMAIL_FROM` was documented as optional for a real SaaS deploy
+
+It wasn't safe to leave unset: Resend's sandbox default only delivers to
+the account owner, so every signup confirmation and password reset to an
+actual customer would be silently rejected, and - since that send
+failure is intentionally swallowed so signup itself doesn't hard-fail -
+nobody would notice until a locked-out user (email verification gates
+nothing, but password reset is the *only* account-recovery path) had no
+way back in. `createResendEmailProvider()` (`lib/email/resend-provider.ts`)
+now fails loud in production if `EMAIL_FROM` is unset, mirroring
+`EMAIL_PROVIDER`'s own existing fail-loud posture (`lib/email/index.ts`).
+`DEPLOYMENT.md` and `.env.example` corrected from "optional" to
+"required."
+
+### Verification
+
+`npx tsc --noEmit`, `npx eslint .`, `npm run build`: all clean.
+`docker compose -f docker-compose-coolify.yml config`: exit 0.
+Backup/restore rehearsed directly (above). No `docker build` performed -
+no Docker daemon available in this session; `Dockerfile`'s new `COPY`
+source was confirmed to exist and `.dockerignore` confirmed not to
+exclude `scripts/`.
+

@@ -29,3 +29,16 @@ export function notifyPaymentFailed() {
     message: 'Your subscription is not active. Update your billing to issue new licenses.',
   });
 }
+
+// Beta-readiness finding: product_id is bound to whichever tenant claims
+// it first (casazium/license's per-tenant ownership check) - a collision
+// here can never be fixed by retrying the same input, so this needs its
+// own message pointing at the actual fix (pick a different product_id)
+// rather than issueLicenseAction's generic catch-all.
+export function notifyProductIdTaken() {
+  notifications.show({
+    color: 'red',
+    title: 'Product ID already in use',
+    message: 'That product ID is already registered to a different account. Pick a different one for this license.',
+  });
+}

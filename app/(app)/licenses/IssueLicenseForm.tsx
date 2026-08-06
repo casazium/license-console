@@ -10,7 +10,7 @@ import { notifications } from '@mantine/notifications';
 import { issueLicenseAction } from './actions';
 import { brandButtonStyle } from '@/components/brandButtonStyle';
 import { US_TIMEZONE_OPTIONS, zonedDateTimeToIso } from '@/lib/timezone';
-import { notifyRateLimited, notifyOverQuota, notifyPaymentFailed } from '@/lib/notify';
+import { notifyRateLimited, notifyOverQuota, notifyPaymentFailed, notifyProductIdTaken } from '@/lib/notify';
 
 type IssueLicenseValues = {
   product_id: string;
@@ -98,6 +98,9 @@ export function IssueLicenseForm({
           notifyOverQuota();
         } else if (result.reason === 'payment-failed') {
           notifyPaymentFailed();
+        } else if (result.reason === 'product-id-taken') {
+          notifyProductIdTaken();
+          form.setFieldError('product_id', 'Already in use - pick a different product ID');
         } else {
           notifyRateLimited();
         }

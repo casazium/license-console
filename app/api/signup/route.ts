@@ -88,6 +88,19 @@ export async function POST(request: NextRequest) {
   const password = body?.password;
   const tenantName = body?.tenantName;
 
+  // Beta-readiness finding: the console had no Terms/Privacy acceptance
+  // anywhere in the signup flow (the marketing site's Terms/Privacy pages
+  // predate the hosted product and weren't linked from here at all).
+  // Enforced server-side, not just as a disabled-until-checked client
+  // button, since a direct POST to this route would otherwise skip it
+  // entirely - same reasoning as every other field validated below.
+  if (body?.agreedToTerms !== true) {
+    return NextResponse.json(
+      { error: 'You must agree to the Terms of Service and Privacy Policy' },
+      { status: 400 }
+    );
+  }
+
   if (typeof rawEmail !== 'string' || rawEmail.length > MAX_EMAIL_LENGTH || !EMAIL_RE.test(rawEmail)) {
     return NextResponse.json({ error: 'A valid email is required' }, { status: 400 });
   }

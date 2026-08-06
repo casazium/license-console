@@ -9,7 +9,7 @@ import {
   updateLicenseNotes,
   type IssueLicenseInput,
 } from '@/lib/license-client';
-import { isRateLimited, isOverQuota, isPaymentFailed } from '@/lib/errors';
+import { isRateLimited, isOverQuota, isPaymentFailed, isProductIdTaken } from '@/lib/errors';
 import { requireSessionWithTenantKey, markIfTenantRejected } from '@/lib/tenant-context';
 
 // Next.js redacts thrown-error details (message, name, any custom
@@ -22,13 +22,14 @@ import { requireSessionWithTenantKey, markIfTenantRejected } from '@/lib/tenant-
 // returned as a plain value instead. Any other error still throws
 // unchanged (same scoping as the read-only pages' matching try/catch).
 //
-// 'over-quota'/'payment-failed' can only actually come from
-// issueLicenseAction (quota.js's check is on POST /issue-license alone) -
-// the shared type still includes them so all 5 actions return the same
-// shape, not because the other 4 can produce them.
+// 'over-quota'/'payment-failed'/'product-id-taken' can only actually come
+// from issueLicenseAction (quota.js's check and the product_id ownership
+// check are both on POST /issue-license alone) - the shared type still
+// includes them so all 5 actions return the same shape, not because the
+// other 4 can produce them.
 type ActionResult<T> =
   | { ok: true; data: T }
-  | { ok: false; reason: 'rate-limited' | 'over-quota' | 'payment-failed' };
+  | { ok: false; reason: 'rate-limited' | 'over-quota' | 'payment-failed' | 'product-id-taken' };
 
 export async function issueLicenseAction(
   input: IssueLicenseInput,
@@ -43,6 +44,7 @@ export async function issueLicenseAction(
     if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
     if (isOverQuota(err)) return { ok: false, reason: 'over-quota' };
     if (isPaymentFailed(err)) return { ok: false, reason: 'payment-failed' };
+    if (isProductIdTaken(err)) return { ok: false, reason: 'product-id-taken' };
     markIfTenantRejected(err, identity.tenantId);
     throw err;
   }

@@ -84,6 +84,14 @@ function resolveApiKey(tenantApiKey?: string): string {
   return key;
 }
 
+// Beta-readiness finding: with no timeout, a hung or slow license-server
+// response left the console request hanging indefinitely with no
+// feedback - the page just spun forever. 15s is generous for any of this
+// client's calls (all single-record reads/writes, none paginated beyond
+// the backend's own 1000-row cap) while still turning a genuinely dead
+// backend into a prompt, catchable error instead of an open-ended hang.
+const REQUEST_TIMEOUT_MS = 15_000;
+
 async function liveFetch(path: string, init: RequestInit = {}, tenantApiKey?: string): Promise<Response> {
   return fetch(`${baseUrl()}${path}`, {
     ...init,
@@ -93,6 +101,7 @@ async function liveFetch(path: string, init: RequestInit = {}, tenantApiKey?: st
       ...init.headers,
     },
     cache: 'no-store',
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
 }
 
