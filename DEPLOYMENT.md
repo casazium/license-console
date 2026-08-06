@@ -93,3 +93,29 @@ curl https://<this-service's-domain>/signup
 Should return the signup page (`200`), not a `404` — a `404` here means `MULTI_TENANT` didn't actually reach the container. Check it was saved in Coolify's UI and the service was redeployed (not just restarted) after adding it, since Coolify's compose interpolation happens at build/deploy time. (Confirm the compose file's `environment:` block includes both `MULTI_TENANT=${MULTI_TENANT}` and `ACCOUNT_ENCRYPTION_KEY=${ACCOUNT_ENCRYPTION_KEY}` if you're troubleshooting an older checkout — both were added while preparing this doc, alongside the equivalent `MULTI_TENANT` fix in `casazium/license`'s own compose file.)
 
 For a fuller check, sign up a real test tenant through the UI (this calls the real `casazium/license` server and provisions a real tenant there — see that repo's own smoke-test section for how to revoke it afterward) and confirm you land on the onboarding flow, then issue a test license and confirm it appears. Restart the service once from Coolify afterward and confirm the account is still there (log in again) — this confirms the persistent volume from the SaaS section's step 5 is actually wired up, not just present.
+
+## Troubleshooting
+
+### Self-hosted login: "Invalid username or password" with correct credentials
+
+`verifyCredentials()` (`lib/auth.ts`) branches entirely on `isMultiTenant()`. Under self-hosted mode (`MULTI_TENANT` unset), it compares the submitted credentials against `ADMIN_UI_USERNAME`/`ADMIN_UI_PASSWORD` directly — but that's not the only way to land on this exact error message.
+
+**Confirmed root cause once, worth checking first:** `isSameOrigin()` (`lib/config.ts`), called unconditionally at the very top of `/api/login` before any credential check runs, calls `publicBaseUrl()` internally — which throws if `PUBLIC_BASE_URL` is unset in production. That throw isn't caught in the route handler, so it becomes an unhandled 500, and the login form's client-side fallback text reads as "Invalid username or password" when it can't parse a real error body from the response. So this exact symptom can mean either a genuine credential mismatch *or* an unrelated crash earlier in the request — the UI can't tell you which. Check `PUBLIC_BASE_URL` is actually set (see step 2 above) before assuming the username/password themselves are wrong.
+
+**Under `MULTI_TENANT=true`, `ADMIN_UI_USERNAME`/`ADMIN_UI_PASSWORD` are not read at all** — `verifyCredentials()`'s self-hosted branch (where those two vars are checked) is never reached once `isMultiTenant()` is true; that mode checks the `accounts` table instead. Don't set them on a SaaS-mode resource expecting them to do anything; they're simply inert there.
+
+### General: "the site loads but a specific action fails" — verify what the container actually sees, not what Coolify's UI shows
+
+Coolify's environment-variables UI reflects what you *configured*, not necessarily what the *running container* has — a value can be correct in the UI but not yet applied if the container wasn't actually restarted after saving it. Two ways to check, in order of ease:
+
+1. **Coolify's Logs tab** (real-time/streaming container stdout+stderr) on the resource page. Reproduce the failing action while watching it. An unhandled throw (like the `PUBLIC_BASE_URL` one above) prints a full stack trace here even when the browser only shows a generic error.
+2. **Exec into the running container** (Coolify's Terminal/Execute Command option, or `docker exec` if you have host SSH access) and read the actual process environment directly:
+
+   ```sh
+   echo "MULTI_TENANT=[$MULTI_TENANT]"
+   echo "PUBLIC_BASE_URL=[$PUBLIC_BASE_URL]"
+   echo "ADMIN_UI_USERNAME=[$ADMIN_UI_USERNAME]"
+   echo "ADMIN_UI_PASSWORD length: ${#ADMIN_UI_PASSWORD}"
+   ```
+
+   The brackets make stray leading/trailing whitespace visible (e.g. `[admin ]` vs `[admin]`) — Coolify's env-var UI takes values literally with no shell-style trimming, so a pasted trailing space or an accidentally-included quote character breaks an exact-match comparison silently. Password length is checked rather than the value itself printed, to avoid it landing in shell scrollback/history.
