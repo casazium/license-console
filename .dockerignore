@@ -1,0 +1,41 @@
+# Security review finding (fresh pre-deployment audit): with no
+# .dockerignore, `COPY . .` in the Dockerfile's builder stage sent the
+# entire build context - including any local .env.local, .env, etc. -
+# into the image, and scripts/copy-standalone-assets.mjs's own
+# postbuild step (needed for the non-Docker `npm run build && npm run
+# start` path, see its own header comment) then copied whichever of
+# those existed straight into `.next/standalone/`, which the runner
+# stage copies to `/app`. Confirmed directly: building with a real
+# .env.local present left SESSION_SECRET, ACCOUNT_ENCRYPTION_KEY, and
+# LICENSE_ADMIN_API_KEY sitting in `.next/standalone/.env.local` inside
+# the built image. Real process env still wins over the baked file at
+# runtime (verified), so this was disclosure via image layers, not an
+# override risk - but a var the deployment itself doesn't set would
+# silently come from whatever a dev machine's .env.local happened to
+# contain.
+#
+# Same blanket pattern as .gitignore's own env-file exclusion, for the
+# same reason: narrower forms (.env*.local + .env) would silently miss
+# a stray .env.production or similar.
+.env*
+!.env.example
+
+# Never needed in the build context - reinstalled fresh via
+# `npm ci` in the deps stage, and re-derived by `next build` respectively.
+node_modules
+.next
+
+# Git metadata and this session's own dev/CI cruft - no reason for any
+# of it to reach the build context or the image.
+.git
+.github
+*.md
+!README.md
+
+# Local dev database (SaaS-B1a, lib/db.ts - DB_FILE) - never relevant
+# inside the image, which gets its own path via the Coolify volume mount.
+/data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm

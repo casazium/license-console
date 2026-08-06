@@ -1,16 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'node:crypto';
-import { isMultiTenant, publicBaseUrl } from '@/lib/config';
+import { isMultiTenant, publicBaseUrl, isSameOrigin } from '@/lib/config';
 import { getDb } from '@/lib/db';
 import { hashPassword } from '@/lib/password';
 import { encrypt } from '@/lib/crypto';
 import { createSessionToken, sessionCookieOptions, SESSION_COOKIE_NAME } from '@/lib/session';
-import { checkLoginRateLimit, recordFailedLoginAttempt, getClientKey } from '@/lib/login-rate-limit';
+import { checkAndReserveAttempt, getClientKey } from '@/lib/login-rate-limit';
+import { normalizeEmail } from '@/lib/auth';
 import { generateOneTimeToken, hashOneTimeToken } from '@/lib/one-time-token';
 import { getEmailProvider } from '@/lib/email';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 8;
+// Security review finding (fresh pre-deployment audit): none of this
+// route's three string inputs had an upper bound - an attacker could
+// submit an arbitrarily large email/password/tenantName. Only 3
+// attempts get through per window (SIGNUP_MAX_ATTEMPTS above), so this
+// isn't an open-ended DoS, but each successful reservation still runs
+// the full cost regex validation, hashPassword()'s scrypt pass (whose
+// cost scales with input size, not just the fixed N/r/p above), a real
+// outbound tenant-provisioning call, and a DB insert - no reason to let
+// any of them run against megabytes of input. MAX_EMAIL_LENGTH matches
+// RFC 5321's own mailbox length limit; the other two are generous, not
+// tight, caps.
+const MAX_EMAIL_LENGTH = 254;
+const MAX_PASSWORD_LENGTH = 256;
+const MAX_TENANT_NAME_LENGTH = 200;
 const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
 // Lower than login's default 5/window (security review finding H3): a
@@ -31,12 +46,29 @@ const SIGNUP_MAX_ATTEMPTS = 3;
  * not built here - out of this task's scope.
  */
 export async function POST(request: NextRequest) {
+  // Security review finding, fresh pre-deployment audit: rejected
+  // before touching the rate limiter or parsing the body - see
+  // lib/config.ts's isSameOrigin() and login/route.ts's identical check
+  // for the full exploit and reasoning.
+  if (!isSameOrigin(request)) {
+    return NextResponse.json({ error: 'Invalid request origin' }, { status: 403 });
+  }
+
   // Reuses the login rate-limiter's generic bucket machinery under a
   // distinct key prefix, not a separate limiter - same in-memory,
   // single-replica caveat as login (see lib/login-rate-limit.ts's own
   // header comment; SaaS-B1d is the follow-up for SaaS hosting).
+  // Security review finding, fresh pre-deployment audit: reserved
+  // atomically up front, not checked-then-later-recorded - the old
+  // two-step API left a window between this check and the awaited
+  // tenant-provisioning fetch below for concurrent requests to all pass
+  // at the same count (confirmed: 25 concurrent signups let 14 through
+  // against a limit of 3, each provisioning a real tenant). Every
+  // outcome below - validation failure, duplicate email, provisioning
+  // failure, or success - counts once, already reserved here; none of
+  // them call anything further to record it.
   const clientKey = `signup:${getClientKey(request)}`;
-  const rateLimit = checkLoginRateLimit(clientKey, SIGNUP_MAX_ATTEMPTS);
+  const rateLimit = checkAndReserveAttempt(clientKey, SIGNUP_MAX_ATTEMPTS);
   if (!rateLimit.allowed) {
     return NextResponse.json(
       { error: 'Too many signup attempts. Try again later.' },
@@ -52,23 +84,34 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json().catch(() => null);
-  const email = body?.email;
+  const rawEmail = body?.email;
   const password = body?.password;
   const tenantName = body?.tenantName;
 
-  if (typeof email !== 'string' || !EMAIL_RE.test(email)) {
-    recordFailedLoginAttempt(clientKey);
+  if (typeof rawEmail !== 'string' || rawEmail.length > MAX_EMAIL_LENGTH || !EMAIL_RE.test(rawEmail)) {
     return NextResponse.json({ error: 'A valid email is required' }, { status: 400 });
   }
-  if (typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH) {
-    recordFailedLoginAttempt(clientKey);
+  // Security review finding (fresh pre-deployment audit): normalized
+  // once here and used for every lookup/insert/email-send below - see
+  // lib/auth.ts's normalizeEmail() for the full reasoning (case-
+  // sensitive lookups meant 'Alice@x.com' and 'alice@x.com' were two
+  // different accounts on the same real mailbox).
+  const email = normalizeEmail(rawEmail);
+  if (
+    typeof password !== 'string' ||
+    password.length < MIN_PASSWORD_LENGTH ||
+    password.length > MAX_PASSWORD_LENGTH
+  ) {
     return NextResponse.json(
-      { error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` },
+      { error: `Password must be between ${MIN_PASSWORD_LENGTH} and ${MAX_PASSWORD_LENGTH} characters` },
       { status: 400 }
     );
   }
-  if (typeof tenantName !== 'string' || tenantName.trim().length === 0) {
-    recordFailedLoginAttempt(clientKey);
+  if (
+    typeof tenantName !== 'string' ||
+    tenantName.trim().length === 0 ||
+    tenantName.length > MAX_TENANT_NAME_LENGTH
+  ) {
     return NextResponse.json({ error: 'Company/organization name is required' }, { status: 400 });
   }
 
@@ -82,7 +125,6 @@ export async function POST(request: NextRequest) {
   // common case.
   const existing = db.prepare('SELECT id FROM accounts WHERE email = ?').get(email);
   if (existing) {
-    recordFailedLoginAttempt(clientKey);
     // Security review finding M3: the message is generic, but the 409
     // status code itself still confirms the email is registered to an
     // unauthenticated caller - a real, but accepted, tradeoff. Unlike
@@ -150,14 +192,6 @@ export async function POST(request: NextRequest) {
     );
     return NextResponse.json({ error: 'Unable to create account' }, { status: 409 });
   }
-
-  // Security review finding H3: a successful signup must count toward
-  // this bucket too, not just failures - without this, an attacker
-  // sending only valid, distinct signups was never rate-limited at all
-  // (recordFailedLoginAttempt was previously called on validation/
-  // duplicate-email failures only, and this line used to *clear* the
-  // bucket on success instead of counting it, undoing even those).
-  recordFailedLoginAttempt(clientKey);
 
   // Signup confirmation email - best-effort, not on the request's
   // success path. A tenant/account already exists at this point (the

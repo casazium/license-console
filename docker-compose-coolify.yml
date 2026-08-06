@@ -14,6 +14,21 @@
 # HOSTNAME:PORT, unreachable from outside - set it to this service's own
 # real Coolify Domain, e.g. https://console.example.com).
 #
+# EMAIL_PROVIDER (fresh pre-deployment audit finding): required for a
+# real MULTI_TENANT=true deployment - lib/email/index.ts's
+# getEmailProvider() now fails loud at request time if this is unset in
+# production multi-tenant mode, for the same reason as PUBLIC_BASE_URL
+# above. This var was previously missing from this file entirely, which
+# meant a real deploy silently ran the stub email provider: password
+# reset and signup confirmation never sent real mail, and the real
+# reset/confirm link was instead logged in plaintext to this container's
+# own logs - a real account-takeover risk for anyone with log access,
+# not just a UX bug. Set EMAIL_PROVIDER=resend plus RESEND_API_KEY (and
+# optionally EMAIL_FROM) for real delivery. TRUSTED_PROXY_COUNT
+# (security review finding H1) is optional - defaults to 1, correct for
+# this file's own single-Traefik-hop topology; only needed if that ever
+# changes.
+#
 # For a *live* deployment (connected to a real backend,
 # not standalone/mock mode), also set LICENSE_API_URL (the license
 # backend's own Coolify Domain, including /v1, e.g.
@@ -73,6 +88,10 @@ services:
       - LICENSE_API_URL=${LICENSE_API_URL}
       - LICENSE_ADMIN_API_KEY=${LICENSE_ADMIN_API_KEY}
       - LICENSE_STANDALONE_MODE=${LICENSE_STANDALONE_MODE}
+      - EMAIL_PROVIDER=${EMAIL_PROVIDER}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - EMAIL_FROM=${EMAIL_FROM}
+      - TRUSTED_PROXY_COUNT=${TRUSTED_PROXY_COUNT}
       - BRANDING_LOGO_URL=${BRANDING_LOGO_URL}
       - BRANDING_TITLE_HTML=${BRANDING_TITLE_HTML}
       - BRANDING_COLOR=${BRANDING_COLOR}

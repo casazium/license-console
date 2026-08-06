@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import { mkdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { isMultiTenant } from './config';
 
 /**
  * Persistence layer (SaaS-B1a). SQLite via better-sqlite3, the same
@@ -73,6 +74,40 @@ function openDatabase(): Database.Database {
   const schemaSql = readFileSync(schemaPath, 'utf-8');
   database.exec(schemaSql);
 
+  // Fail loud, not fail open (security review finding, fresh
+  // pre-deployment audit, mirrors casazium/license's own equivalent
+  // guard in that repo's src/app.js): if MULTI_TENANT is off but the
+  // `accounts` table already holds rows, this is a SaaS deployment
+  // whose flag was dropped (env var lost on redeploy, config drift, an
+  // operator mistake), not a genuine self-hosted install. Without this
+  // check, verifyCredentials() falls back to the single shared
+  // ADMIN_UI_USERNAME/PASSWORD pair (still blocking new logins for real
+  // accounts), but the deeper hole is verifySessionToken(): its
+  // isMultiTenant() branch - the only place that looks up tenant_id,
+  // checks tenant_revoked_at, and checks sessions_revoked_at - is
+  // skipped entirely, so any still-unexpired JWT issued while
+  // MULTI_TENANT was on (including one for a since-revoked tenant)
+  // keeps verifying as a valid, tenant-less 'admin' identity. Every
+  // license-server call that identity makes then falls through
+  // license-client.live.ts's own resolveApiKey() to the single shared
+  // LICENSE_ADMIN_API_KEY, since isMultiTenant() is false there too -
+  // an existing SaaS session silently gets platform-wide admin access
+  // instead of just its own tenant's. A genuinely fresh self-hosted
+  // install has an empty accounts table and boots normally; this only
+  // fires once real SaaS account data exists.
+  if (!isMultiTenant()) {
+    const accountCount = (
+      database.prepare('SELECT COUNT(*) AS n FROM accounts').get() as { n: number }
+    ).n;
+    if (accountCount > 0) {
+      throw new Error(
+        `Refusing to start: MULTI_TENANT is not set to 'true' but the accounts table has ${accountCount} row(s). ` +
+          "Starting anyway would let any still-valid session silently fall back to the platform-wide admin key. " +
+          'Set MULTI_TENANT=true, or point DB_FILE at a genuinely self-hosted database.'
+      );
+    }
+  }
+
   // Expired-token pruning (security review finding L4): both token
   // tables accumulate a row per signup/resend/forgot-password request
   // and were never cleaned up - each row deletes itself individually on
@@ -84,9 +119,25 @@ function openDatabase(): Database.Database {
   // so it can't hold the process open. Deletes by expires_at, not a
   // fixed age, since these tokens already carry their own real
   // (short, 1h/24h) TTL - no separate retention window to invent.
+  //
+  // datetime(expires_at), not the raw column (security review finding,
+  // fresh pre-deployment audit): expires_at is stored as a
+  // JS-generated ISO 8601 string ("2026-08-06T13:00:00.000Z"), but
+  // SQLite has no native DATETIME type - it compares TEXT lexically,
+  // and datetime('now') produces its own space-separated, no-millisecond,
+  // no-'Z' format ("2026-08-06 13:00:00"). 'T' (0x54) sorts after ' '
+  // (0x20), so any same-date comparison against the raw column read as
+  // "not yet expired" regardless of the actual time - confirmed: a
+  // token that expired 1 minute ago still compared as not-expired.
+  // Redemption itself was never affected (reset-password.ts and
+  // verify-email/route.ts both use a real `new Date(...) < new Date()`
+  // comparison in JS, not this query) - this was retention hygiene
+  // only, not a security hole, but a real bug in code written this
+  // session regardless. Wrapping both sides in datetime() normalizes
+  // them to the same comparable representation.
   const pruneExpiredTokens = () => {
-    database.prepare(`DELETE FROM email_verification_tokens WHERE expires_at < datetime('now')`).run();
-    database.prepare(`DELETE FROM password_reset_tokens WHERE expires_at < datetime('now')`).run();
+    database.prepare(`DELETE FROM email_verification_tokens WHERE datetime(expires_at) < datetime('now')`).run();
+    database.prepare(`DELETE FROM password_reset_tokens WHERE datetime(expires_at) < datetime('now')`).run();
   };
   pruneExpiredTokens();
   const pruneInterval = setInterval(pruneExpiredTokens, 24 * 60 * 60 * 1000);

@@ -76,7 +76,16 @@
 -- valid again, not just a one-way lockout requiring manual DB surgery.
 CREATE TABLE IF NOT EXISTS accounts (
   id TEXT PRIMARY KEY,
-  email TEXT NOT NULL,
+  -- COLLATE NOCASE (security review finding, fresh pre-deployment
+  -- audit): defense-in-depth, not the primary fix - lib/auth.ts's own
+  -- normalizeEmail() (called at every read/write site: login, signup,
+  -- forgot-password) is what actually stores and looks up a canonical
+  -- lowercase+trimmed value. This is the backstop for any query that
+  -- forgets to call it - without it, plain SQLite TEXT `=` is
+  -- case-sensitive, and 'Alice@x.com'/'alice@x.com' were confirmed live
+  -- as two different accounts on the same real mailbox. Only handles
+  -- case, not whitespace, which normalizeEmail()'s own trim() covers.
+  email TEXT NOT NULL COLLATE NOCASE,
   password_hash TEXT NOT NULL,
   tenant_id TEXT NOT NULL,
   tenant_name TEXT,

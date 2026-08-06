@@ -65,3 +65,42 @@ export function publicBaseUrl(request: { nextUrl: { origin: string } }): string 
   }
   return request.nextUrl.origin;
 }
+
+/**
+ * Origin check for the two Route Handlers a CSRF-style cross-site
+ * request can actually do real damage through (security review
+ * finding, fresh pre-deployment audit): Next's own built-in CSRF
+ * protection for Server Actions does not extend to plain Route
+ * Handlers, and `Request.json()` parses the body as JSON regardless of
+ * the request's declared `Content-Type` - so a cross-site
+ * `<form enctype="text/plain">` reaches these routes without a CORS
+ * preflight ever running (`text/plain` is one of fetch's "simple"
+ * content types). Confirmed live: `POST /api/login` with
+ * `Content-Type: text/plain` and a cross-site `Origin` succeeded and
+ * set the session cookie - a victim's browser could be silently logged
+ * into an attacker-controlled tenant, with anything they then typed
+ * (customer names, license notes) landing in the attacker's own
+ * account. Every *other* cookie-bearing route (`/api/logout`,
+ * `/api/verify-email/resend`) is already protected by this app's own
+ * `SameSite=lax` session cookie - a cross-site request simply doesn't
+ * carry it, so there's no existing session for a forged request to
+ * ride on. Login and signup are different precisely because they don't
+ * require a cookie to begin with - they're what *creates* one.
+ *
+ * Compares the real `Origin` header (a browser-controlled header no
+ * client-side JS can override) against this deployment's own
+ * `publicBaseUrl()` - not `request.headers.get('host')`, which an
+ * attacker's own request can set to anything. Fails closed: a missing
+ * or mismatched `Origin` is rejected, matching how Next's own Server
+ * Action protection behaves.
+ */
+export function isSameOrigin(request: {
+  headers: { get(name: string): string | null };
+  nextUrl: { origin: string };
+}): boolean {
+  const origin = request.headers.get('origin');
+  if (!origin) {
+    return false;
+  }
+  return origin === publicBaseUrl(request);
+}

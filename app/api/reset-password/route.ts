@@ -9,9 +9,16 @@ import {
   sessionCookieOptions,
   SESSION_COOKIE_NAME,
 } from '@/lib/session';
-import { checkLoginRateLimit, recordFailedLoginAttempt, getClientKey } from '@/lib/login-rate-limit';
+import { checkAndReserveAttempt, getClientKey } from '@/lib/login-rate-limit';
 
 const MIN_PASSWORD_LENGTH = 8;
+// Security review finding (fresh pre-deployment audit): matches
+// signup/route.ts's identical caps and reasoning - neither `token` nor
+// `password` had an upper bound. generateOneTimeToken() (lib/one-time-token.ts)
+// always produces exactly 32 hex characters; 128 is a generous margin,
+// not a tight fit.
+const MAX_TOKEN_LENGTH = 128;
+const MAX_PASSWORD_LENGTH = 256;
 
 /**
  * Password-reset confirmation - no session required or checked, the
@@ -32,8 +39,12 @@ export async function POST(request: NextRequest) {
   // IP-keyed, not account-keyed - the token's own 128 bits of entropy
   // already makes brute-forcing infeasible; this is defense-in-depth
   // against a caller hammering the endpoint, not the real protection.
+  // Security review finding, fresh pre-deployment audit: reserved
+  // atomically up front, not checked-then-later-recorded - see
+  // signup/route.ts's identical comment for the full reasoning. Every
+  // outcome below counts once, already reserved here.
   const clientKey = `reset-password:${getClientKey(request)}`;
-  const rateLimit = checkLoginRateLimit(clientKey);
+  const rateLimit = checkAndReserveAttempt(clientKey);
   if (!rateLimit.allowed) {
     return NextResponse.json(
       { error: 'Too many requests. Try again later.' },
@@ -56,14 +67,16 @@ export async function POST(request: NextRequest) {
   const token = body?.token;
   const password = body?.password;
 
-  if (typeof token !== 'string' || token.length === 0) {
-    recordFailedLoginAttempt(clientKey);
+  if (typeof token !== 'string' || token.length === 0 || token.length > MAX_TOKEN_LENGTH) {
     return NextResponse.json({ error: 'Invalid or expired reset link' }, { status: 400 });
   }
-  if (typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH) {
-    recordFailedLoginAttempt(clientKey);
+  if (
+    typeof password !== 'string' ||
+    password.length < MIN_PASSWORD_LENGTH ||
+    password.length > MAX_PASSWORD_LENGTH
+  ) {
     return NextResponse.json(
-      { error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` },
+      { error: `Password must be between ${MIN_PASSWORD_LENGTH} and ${MAX_PASSWORD_LENGTH} characters` },
       { status: 400 }
     );
   }
@@ -83,7 +96,6 @@ export async function POST(request: NextRequest) {
   }
 
   if (!row || new Date(row.expires_at) < new Date()) {
-    recordFailedLoginAttempt(clientKey);
     return NextResponse.json({ error: 'Invalid or expired reset link' }, { status: 400 });
   }
 

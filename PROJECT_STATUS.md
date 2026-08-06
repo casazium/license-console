@@ -2936,3 +2936,271 @@ specifies. No further action needed.
 `npm run lint` and `npm run build` both clean after every fix, not just
 at the end.
 
+## 52. Second, deliberately unbiased Opus security review - all findings fixed (2026-08-06)
+
+Operator: "i plan on doing a coolify deployment today. first, opus
+should do another independent security audit of both repos. opus
+should not have any previous knowledge of the repos." - a second review
+round, run with fresh agents given none of §49-51's own context, ahead
+of a real production deployment. Companion to `casazium/license`'s own
+PROJECT_STATUS.md §63. The operator asked to continue straight through
+every severity in one pass ("let's continue now with vulnerabilities
+found by audits"), not tier-by-tier this time.
+
+### FRESH-L-EMAIL (fixed): `docker-compose-coolify.yml` never wired `EMAIL_PROVIDER`/`RESEND_API_KEY`/`EMAIL_FROM`
+
+`lib/email/index.ts`'s `getEmailProvider()` throws in production+multi-tenant
+if `EMAIL_PROVIDER` is unset (mirrors `license-client.ts`'s
+`getBackendMode()` fail-loud convention), but the Coolify compose file's
+`environment:` block never listed any of the three env vars a real
+`resend` deployment needs - a real Coolify deployment following only
+this file would have booted straight into that throw. Added all three,
+plus `TRUSTED_PROXY_COUNT`, with header comments. `DEPLOYMENT.md`
+gained a step documenting the requirement.
+
+### FRESH-L-DOCKERIGNORE (fixed): no `.dockerignore`, `.env*` baked into the image
+
+No `.dockerignore` existed at all - `COPY . .` in the Dockerfile plus
+`scripts/copy-standalone-assets.mjs`'s own env-file-copying step meant
+any local `.env`/`.env.local` sitting in the build context landed
+inside the image layers. New `.dockerignore`: blanket `.env*` exclusion
+(with `!.env.example`), `node_modules`, `.next`, `.git`, `.github`,
+`*.md` (except README), `/data/`, `*.db*` - mirrors `.gitignore`'s own
+exclusion shape.
+
+### FRESH-L-DOS (fixed): unbounded username enabled memory-exhaustion DoS via the login rate limiter
+
+`getClientKey()` combined the raw, attacker-controlled `username` string
+directly into the rate-limit Map's key - a request with a multi-megabyte
+username retained that entire string in memory per distinct value, with
+no cap. **Fix**: `getClientKey()` now SHA-256 hashes the identifier
+before combining with IP - a constant 71-character retained key
+(64-hex-char hash + separator + IP) regardless of input length.
+Verified directly: copied `lib/login-rate-limit.ts` to a scratch module
+with `.ts`-suffixed import paths, ran it under
+`node --experimental-strip-types`, called `getClientKey()` with an 8MB
+input, confirmed the retained key is exactly 71 characters - the actual
+fix, isolated from transient HTTP-layer/V8-allocator memory noise that
+initially confounded a naive RSS-based test.
+
+### FRESH-S-QUOTA (confirmed accepted, documented only): `BILLING_PROVIDER=stub` lets any fresh tenant self-upgrade to `pro` for free
+
+Not a gap - the operator's own explicit, already-stated decision this
+session: "we are not setting up payments... i just want to get a
+version out there for people to play with." `stub-provider.js`'s own
+documented default (no `billing_subscriptions` row = `'active'`) is
+what makes a brand-new tenant's first checkout land on `pro` with
+nothing to pay - real for as long as `BILLING_PROVIDER=stub` is the
+live config, which it is. The console's own `PlanSelector` UI already
+labels this "Demo checkout." `casazium/license`'s
+`billing-complete-stub-checkout.js` docblock extended (comment-only) to
+record this explicitly rather than leave it implicit; revisit the
+moment real payments are wired up, not before.
+
+### FRESH-M-CONCURRENCY (fixed): the rate limiter's check-then-increment was a real, exploitable race
+
+The old two-step API (`checkLoginRateLimit()` then, after `await
+verifyCredentials()`'s scrypt call, `recordFailedLoginAttempt()`) left a
+window where concurrent requests could all pass the check at the same
+count before any of them recorded. Confirmed live: 60 concurrent
+wrong-password logins let 19 through against a limit of 5.
+
+**Fix**: `lib/login-rate-limit.ts` rewritten around one atomic primitive,
+`checkAndReserveAttempt()` (checks and increments in one synchronous
+call - no `await` in between) plus `refundAttempt()` (undoes exactly
+one reservation, for login's existing "successes don't count" design).
+Applied to all four routes with a check-then-record shape: login,
+signup, reset-password, forgot-password. Reverified the same 60-concurrent
+scenario post-fix: exactly 5 allowed through, matching the configured
+limit precisely.
+
+### FRESH-M-PERIP (fixed): no per-IP cap meant password-spraying across many accounts was unbounded
+
+The per-account+IP bucket (this session's own earlier H1 fix) closed
+cross-tenant lockout but, as a side effect, removed any ceiling on
+trying one guessed password against many *different* accounts from one
+IP. Confirmed live: 35 sequential logins with 35 distinct usernames from
+one IP, never a `429`.
+
+**Fix**: added a second, looser `perIpKey` bucket (`login-ip:` prefix,
+`IP_MAX_ATTEMPTS = 30`) alongside the per-account one in
+`app/api/login/route.ts` - high enough to never fire on a real user
+mistyping their own password, low enough to bound genuine spraying. On
+a per-IP rejection, the per-account reservation is explicitly refunded
+first (the request never became a real attempt against that specific
+account). Reverified: exactly 30 distinct-username attempts allowed
+from one IP before `429`.
+
+### FRESH-M-EMAILCASE (fixed): case-sensitive email caused duplicate accounts and silent lockout
+
+SQLite `=` on `TEXT` is case-sensitive; `accounts.email` lookups/inserts
+used the raw string. Confirmed live: signing up `alice@example.com`
+then `Alice@example.com` both succeeded as two distinct accounts backed
+by the same real mailbox - and a user who signs up as `Bob@corp.com`
+then later types `bob@corp.com` gets silently locked out (generic
+"invalid username or password," and forgot-password's own lookup missed
+too, so no recovery email ever went out either).
+
+**Fix**: new `normalizeEmail()` (trim+lowercase) in `lib/auth.ts`,
+applied at every read/write site - login (`verifyCredentials`), signup,
+forgot-password. `lib/db/schema.sql`'s `accounts.email` column also
+gained `COLLATE NOCASE` as a defense-in-depth backstop (handles case,
+not the whitespace `normalizeEmail()`'s own `trim()` covers). Verified
+directly with `better-sqlite3`: confirmed both lookups and the unique
+index inherit case-insensitivity from the column-level collation
+without needing to repeat it on the index.
+
+### FRESH-M-CSRF (fixed): no CSRF/Origin check on Route Handlers - login CSRF was live
+
+Route Handlers (unlike Server Actions, which Next protects
+automatically) had no Origin verification at all. Login and signup are
+the two routes that don't require an existing session cookie
+(everything else is already protected by `SameSite=lax`), so they were
+reachable from a foreign origin. Confirmed live: a cross-origin
+`text/plain` POST (bypassing the browser's own preflight, since
+`text/plain` is a CORS-simple content type) to `/api/login` succeeded
+and set a real session cookie in the victim's browser for an
+attacker-chosen account - a classic login-CSRF, able to log a victim
+into an attacker-controlled tenant.
+
+**Fix**: new `isSameOrigin()` in `lib/config.ts` - compares the real,
+browser-controlled `Origin` header against `publicBaseUrl()`, fails
+closed (rejects) if `Origin` is missing or mismatched. Added as the
+first line of both `login` and `signup` route handlers, before the rate
+limiter or body parsing even run. Reverified the same cross-origin
+`text/plain` POST: now a real `403 Invalid request origin`, no cookie
+set.
+
+### FRESH-M-MTFAILOPEN (fixed): `MULTI_TENANT` unset while real SaaS accounts exist let a still-valid session silently fall back to platform-wide admin access
+
+If `MULTI_TENANT` was ever dropped while the `accounts` table still
+held real rows, `verifyCredentials()` falling back to the single shared
+`ADMIN_UI_USERNAME`/`PASSWORD` pair blocks *new* logins for real
+accounts - but the deeper hole was `verifySessionToken()`: its
+`isMultiTenant()` branch is the *only* place that looks up `tenant_id`,
+checks `tenant_revoked_at`, and checks `sessions_revoked_at`. Skip that
+whole branch and any still-unexpired JWT issued while `MULTI_TENANT` was
+on - including one for a since-revoked tenant - keeps verifying as a
+valid, tenant-less `'admin'` identity. Every license-server call that
+identity then makes falls through `license-client.live.ts`'s own
+`resolveApiKey()` to the single shared `LICENSE_ADMIN_API_KEY`, since
+`isMultiTenant()` is false there too - an existing SaaS session
+silently gets platform-wide admin access instead of just its own
+tenant's.
+
+**Fix**: `lib/db.ts`'s `openDatabase()` now refuses to start
+(`throw`) when `!isMultiTenant()` but `SELECT COUNT(*) FROM accounts`
+is nonzero - mirrors `casazium/license`'s own equivalent guard
+(that repo's PROJECT_STATUS.md §63) added in the same pass. A
+genuinely fresh self-hosted install has an empty `accounts` table and
+boots normally. Verified with a real `.ts`-native script (Node's
+`--experimental-strip-types`, patched relative imports, run from a
+scratch directory under this repo so `better-sqlite3` resolves): seeded
+one real account row directly, confirmed `getDb()` throws with
+`MULTI_TENANT` unset against that seeded DB, boots normally with
+`MULTI_TENANT=true` against the same DB, and boots normally with
+`MULTI_TENANT` unset against a genuinely empty DB - all three confirmed
+against the real compiled `lib/db.ts` logic, not a mock.
+
+### FRESH-L-PRUNEBUG (fixed): token-pruning date comparison had a real bug (found in code written this session)
+
+`email_verification_tokens`/`password_reset_tokens` accumulate a row per
+signup/resend/forgot-password request; each deletes itself on
+successful redemption, but an unredeemed token (an abandoned signup, an
+unclicked reset link) sat past its own expiry forever. The prune
+queries compared the raw `expires_at` column (a JS-generated ISO-8601
+string, e.g. `"2026-08-06T13:00:00.000Z"`) directly against SQLite's
+`datetime('now')`, whose own output is space-separated with no
+milliseconds or `'Z'` (`"2026-08-06 13:00:00"`) - SQLite has no native
+`DATETIME` type, so this compares as `TEXT`, lexically, and `'T'`
+(`0x54`) sorts after `' '` (`0x20`). Confirmed: a token that expired one
+minute ago still compared as not-expired. Redemption itself was never
+affected (`reset-password.ts`/`verify-email/route.ts` both use a real
+`new Date(...) < new Date()` JS comparison, not this query) - retention
+hygiene only, not a security hole, but a real bug regardless.
+
+**Fix**: wrapped both sides in `datetime()` so they compare in the same
+normalized representation. Verified against a real database (and after
+remembering to `npm run build` first - the standalone server runs
+compiled `.next/standalone/server.js`, so a source-only edit tested
+against a stale build silently didn't reproduce the fix on the first
+attempt): inserted a token that expired one minute ago, confirmed the
+old query missed it and the fixed one prunes it correctly.
+
+### FRESH-cleanup (done): stray real-secret-shaped `.env` files removed
+
+Prompted by the fresh audit's own note to check for stray env files.
+`/workspace/license/.env` and `/workspace/license-console/.env.local`
+both found, both containing test-shaped (dummy) secrets left over from
+this session's own extensive real-server verification work, both
+confirmed gitignored and never committed. Deleted.
+
+### Low/Informational findings triaged
+
+- **scrypt cost parameter below current guidance (fixed)**: Node's
+  `crypto.scrypt()` defaults to `N=16384` (2^14); OWASP's current
+  Password Storage Cheat Sheet's own minimum is `N=2^17` (131072),
+  `r=8`, `p=1`. `lib/password.ts`'s `hashPassword()`/`verifyPassword()`
+  now pass those explicitly (plus `maxmem: 256MiB`, since scrypt needs
+  roughly `128 * N * r` bytes - about 128MiB here - well past Node's own
+  32MiB default ceiling). Safe to change now, not after the fact: the
+  stored format has no versioning (`salt:hashHex`, no embedded cost
+  parameters), so bumping `N` after any real account exists would
+  silently break every existing user's login - this repo has no real
+  deployed accounts yet (this is still the first real Coolify
+  deployment), so this was the one moment to land it for free. Verified
+  timing (~390ms per hash/verify, acceptable for an interactive
+  login/signup path) and correctness (`hashPassword`/`verifyPassword`
+  round-trip, wrong password still rejected) via a real scratch script.
+- **No max-length on signup/login/reset/forgot-password inputs
+  (fixed)**: none of `email`/`password`/`tenantName`/`username`/`token`
+  across `signup`, `login`, `reset-password`, and `forgot-password` had
+  an upper bound. Each successful reservation runs real cost regardless
+  (regex validation, `hashPassword()`'s scrypt pass - whose cost scales
+  with input size, not just the fixed `N`/`r`/`p` above - a real
+  outbound tenant-provisioning call on signup, a DB write) - bounded
+  today by each route's own tight rate limit, but no reason to let any
+  of it run against megabytes of input regardless. Added
+  `MAX_EMAIL_LENGTH` (254, RFC 5321's own mailbox limit),
+  `MAX_PASSWORD_LENGTH` (256), `MAX_TENANT_NAME_LENGTH` (200),
+  `MAX_USERNAME_LENGTH` (254), and `MAX_TOKEN_LENGTH` (128, generous
+  margin over `generateOneTimeToken()`'s real 32-character output) to
+  the relevant route files, matching this repo's own existing
+  convention of small per-file constants (`MIN_PASSWORD_LENGTH` is
+  already duplicated the same way across four files) rather than
+  introducing a new shared module. Verified against a real running
+  server, built and booted fresh: an oversized password/email on
+  signup and an oversized password on login both now return a real
+  `400` before doing any real work; a normal-length login still reaches
+  `verifyCredentials()` (a real `401`, not a `400`) - the length gate
+  doesn't block legitimate input.
+- **Logout not invalidating the JWT (fixed)**: `/api/logout` only ever
+  cleared the browser's cookie - sessions are stateless 8h JWTs
+  (`lib/session.ts`'s own header comment), so a copy of the token made
+  before logout (XSS, a shared/compromised machine, a proxy log) kept
+  verifying as valid for up to 8 more hours regardless. Fixed by reusing
+  `revokeAccountSessions()` - the same `sessions_revoked_at` watermark
+  password-reset already bumps - rather than inventing a second
+  mechanism; deliberately coarse (revokes every session for the
+  account, not just the one device logging out), the same accepted
+  tradeoff that function's own comment already documents. Self-hosted
+  has no accounts row to revoke (gated behind `isMultiTenant()`, same as
+  every other SaaS-only behavior in this repo). Verified against a real
+  running server end-to-end: seeded a real account with a real scrypt
+  password hash, logged in for a real session cookie, confirmed a
+  protected route (`/api/verify-email/resend`) accepts it (`200`),
+  called `/api/logout`, then replayed the *pre-logout* cookie snapshot
+  against that same protected route - now a real `401`, and the DB
+  confirms `sessions_revoked_at` was actually set. (First attempt showed
+  the old token still verifying post-logout - not the documented
+  same-second `iat` edge case, but a stale standalone build tested
+  before the required `npm run build`; rebuilding and rerunning
+  confirmed the real fix.)
+
+`npx tsc --noEmit` and `npx eslint .` both clean across the whole repo
+after every fix in this section, not just at the end. No automated test
+suite exists in this repo (per this repo's own README/CLAUDE.md note),
+so every fix above was verified against a real running
+`.next/standalone/server.js` instance or a real compiled-module script,
+matching this whole security-review pass's own established discipline.
+

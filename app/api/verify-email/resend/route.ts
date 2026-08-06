@@ -4,11 +4,7 @@ import { publicBaseUrl } from '@/lib/config';
 import { requireSession } from '@/lib/session';
 import { generateOneTimeToken, hashOneTimeToken } from '@/lib/one-time-token';
 import { getEmailProvider } from '@/lib/email';
-import {
-  checkLoginRateLimit,
-  recordFailedLoginAttempt,
-  getClientKey,
-} from '@/lib/login-rate-limit';
+import { checkAndReserveAttempt, getClientKey } from '@/lib/login-rate-limit';
 
 const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -30,15 +26,17 @@ export async function POST(request: NextRequest) {
   // an anonymous one, so the account itself is the right key (an
   // attacker who wanted to spam someone's inbox would need that
   // person's own active session to hit this at all).
+  // checkAndReserveAttempt checks and counts in one atomic call - see
+  // signup/route.ts's comment; this route already had no await between
+  // the old check and record calls, so this is a like-for-like swap.
   const clientKey = `verify-email-resend:${session.id}`;
-  const rateLimit = checkLoginRateLimit(clientKey);
+  const rateLimit = checkAndReserveAttempt(clientKey);
   if (!rateLimit.allowed) {
     return NextResponse.json(
       { error: 'Too many requests. Try again later.' },
       { status: 429, headers: { 'Retry-After': String(rateLimit.retryAfterSeconds) } }
     );
   }
-  recordFailedLoginAttempt(clientKey);
 
   const db = getDb();
   const account = db.prepare('SELECT email, email_verified_at FROM accounts WHERE id = ?').get(session.id) as

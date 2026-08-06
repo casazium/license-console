@@ -15,6 +15,28 @@ import { verifyPassword } from './password';
 // !hashHex` guard doesn't short-circuit it too.
 const DUMMY_PASSWORD_HASH = `${'0'.repeat(32)}:${'0'.repeat(128)}`;
 
+/**
+ * Security review finding (fresh pre-deployment audit): email lookups
+ * and inserts used the raw, case-sensitive string - SQLite's `=` on
+ * TEXT is case-sensitive, so 'Alice@x.com' and 'alice@x.com' were two
+ * different accounts backed by the same real mailbox, each provisioning
+ * a separate real tenant on the license server. Confirmed live: signing
+ * up 'alice@example.com' then 'Alice@example.com' both succeeded as
+ * distinct accounts. Worse, it caused silent permanent lockout - a user
+ * who signs up as 'Bob@corp.com' and later types 'bob@corp.com' gets
+ * "Invalid username or password", and forgot-password's own SELECT
+ * misses too (generic success shown, but no email ever sent).
+ *
+ * Applied at every read and write site (this function, signup,
+ * forgot-password) - not left to `lib/db/schema.sql`'s own
+ * `COLLATE NOCASE` alone, which only handles case, not stray
+ * whitespace, and is meant as the defense-in-depth backstop, not the
+ * sole mechanism.
+ */
+export function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
 function constantTimeEquals(a: string, b: string): boolean {
   const bufA = Buffer.from(a);
   const bufB = Buffer.from(b);
@@ -40,7 +62,7 @@ export async function verifyCredentials(username: string, password: string): Pro
   if (isMultiTenant()) {
     const account = getDb()
       .prepare('SELECT id, password_hash FROM accounts WHERE email = ?')
-      .get(username) as { id: string; password_hash: string } | undefined;
+      .get(normalizeEmail(username)) as { id: string; password_hash: string } | undefined;
 
     // Always pay the same scrypt cost, account or not (see
     // DUMMY_PASSWORD_HASH above) - checking `!account` first and

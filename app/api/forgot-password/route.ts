@@ -3,9 +3,14 @@ import { isMultiTenant, publicBaseUrl } from '@/lib/config';
 import { getDb } from '@/lib/db';
 import { getEmailProvider } from '@/lib/email';
 import { generateOneTimeToken, hashOneTimeToken } from '@/lib/one-time-token';
-import { checkLoginRateLimit, recordFailedLoginAttempt, getClientKey } from '@/lib/login-rate-limit';
+import { checkAndReserveAttempt, getClientKey } from '@/lib/login-rate-limit';
+import { normalizeEmail } from '@/lib/auth';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Security review finding (fresh pre-deployment audit): matches
+// signup/route.ts's identical cap and reasoning (RFC 5321's own mailbox
+// length limit).
+const MAX_EMAIL_LENGTH = 254;
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
 
 /**
@@ -24,29 +29,39 @@ const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
  * unauthenticated caller, so it doesn't.
  */
 export async function POST(request: NextRequest) {
+  // checkAndReserveAttempt checks and counts in one atomic call - this
+  // route already had no await between the old check and record calls,
+  // so this is a like-for-like swap (consistency with the other routes
+  // that did have a real race - see signup/route.ts's comment), not a
+  // behavior change here.
   const clientKey = `forgot-password:${getClientKey(request)}`;
-  const rateLimit = checkLoginRateLimit(clientKey);
+  const rateLimit = checkAndReserveAttempt(clientKey);
   if (!rateLimit.allowed) {
     return NextResponse.json(
       { error: 'Too many requests. Try again later.' },
       { status: 429, headers: { 'Retry-After': String(rateLimit.retryAfterSeconds) } }
     );
   }
-  recordFailedLoginAttempt(clientKey);
 
   if (!isMultiTenant()) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
   const body = await request.json().catch(() => null);
-  const email = body?.email;
+  const rawEmail = body?.email;
 
   const genericResponse = () =>
     NextResponse.json({ ok: true, message: 'If that email is registered, a reset link has been sent.' });
 
-  if (typeof email !== 'string' || !EMAIL_RE.test(email)) {
+  if (typeof rawEmail !== 'string' || rawEmail.length > MAX_EMAIL_LENGTH || !EMAIL_RE.test(rawEmail)) {
     return genericResponse();
   }
+  // Security review finding (fresh pre-deployment audit): see
+  // signup/route.ts's identical comment - without this, a real account
+  // registered as e.g. 'Bob@corp.com' got the generic "success" message
+  // here for 'bob@corp.com' too, but silently never received an email,
+  // since this SELECT missed it.
+  const email = normalizeEmail(rawEmail);
 
   const db = getDb();
   const account = db.prepare('SELECT id FROM accounts WHERE email = ?').get(email) as { id: string } | undefined;
