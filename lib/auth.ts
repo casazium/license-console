@@ -4,6 +4,17 @@ import { isMultiTenant } from './config';
 import { getDb } from './db';
 import { verifyPassword } from './password';
 
+// Fixed, non-secret salt:hashHex shape (security review finding M1) -
+// exists only so verifyCredentials() below can run a real scrypt
+// computation against *something* when no account matches, rather than
+// returning immediately. Measured ~8x faster for a nonexistent email
+// than an existing one before this, since scrypt was skipped entirely -
+// a remotely-measurable way to enumerate registered accounts. The
+// actual bytes don't matter (this is never a real password's hash,
+// just a fixed-cost decoy), only that verifyPassword's own `!salt ||
+// !hashHex` guard doesn't short-circuit it too.
+const DUMMY_PASSWORD_HASH = `${'0'.repeat(32)}:${'0'.repeat(128)}`;
+
 function constantTimeEquals(a: string, b: string): boolean {
   const bufA = Buffer.from(a);
   const bufB = Buffer.from(b);
@@ -31,11 +42,12 @@ export async function verifyCredentials(username: string, password: string): Pro
       .prepare('SELECT id, password_hash FROM accounts WHERE email = ?')
       .get(username) as { id: string; password_hash: string } | undefined;
 
-    if (!account) {
-      return null;
-    }
-    const passwordMatches = await verifyPassword(password, account.password_hash);
-    if (!passwordMatches) {
+    // Always pay the same scrypt cost, account or not (see
+    // DUMMY_PASSWORD_HASH above) - checking `!account` first and
+    // returning immediately, as this used to, is a real, remotely
+    // measurable timing side-channel.
+    const passwordMatches = await verifyPassword(password, account?.password_hash ?? DUMMY_PASSWORD_HASH);
+    if (!account || !passwordMatches) {
       return null;
     }
     return { id: account.id, role: 'admin' };

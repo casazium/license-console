@@ -2719,3 +2719,129 @@ are Medium severity and were explicitly not part of this pass
 (operator: "start with critical and high"). Not fixed yet; tracked for
 the next authorized pass, not silently dropped.
 
+## 50. All six Medium findings fixed (2026-08-06)
+
+Operator: "continue into the medium findings too," directly following
+§49's own closing punch list. Companion to `casazium/license`'s own
+PROJECT_STATUS.md §61.
+
+### M1 (fixed): login timing-based user enumeration
+
+`lib/auth.ts`'s `verifyCredentials()` returned immediately on
+`!account`, skipping `verifyPassword()`'s scrypt computation entirely -
+measurably faster for a nonexistent email than a real one. Fixed with a
+fixed, non-secret `DUMMY_PASSWORD_HASH` (`salt:hashHex` shape, not a
+real password's hash) - `verifyPassword()` now always runs against
+*something*, account or not, before the existence check is applied to
+the result. Verified against a real running standalone build: after
+warmup, both an existing and a nonexistent account respond in ~4-6ms,
+statistically indistinguishable (the timing gap the review measured no
+longer exists).
+
+### M2 (fixed): forgot-password latency enumeration
+
+`app/api/forgot-password/route.ts` awaited the real email send only
+when an account exists - under `EMAIL_PROVIDER=resend` (production)
+that's a real network round trip, only paid for real accounts, despite
+the response body being identical either way. Fixed by no longer
+awaiting the send (fire-and-forget, still `.catch()`-logged). Verified
+by temporarily adding a 300ms artificial delay to the *stub* provider's
+own `sendPasswordReset` (reverted immediately after, `git diff` confirms
+clean) - responses for both an existing and a nonexistent account stayed
+at ~10ms despite the delay, and the stub's own log line still confirmed
+the email genuinely gets sent afterward, not silently dropped.
+
+### M3 (accepted tradeoff, documented not fixed): signup enumeration via status code
+
+`app/api/signup/route.ts` returns `409` for an already-registered email
+vs `200`/`400`/`500` otherwise - the status code confirms registration
+even though the message is generic. Reviewed both options the finding
+offered (fix to full anonymity, matching forgot-password; or accept and
+document) and chose the latter: unlike password reset, which has no
+legitimate reason to ever confirm registration to an unauthenticated
+caller, telling someone at signup time "this email is already
+registered, try logging in instead" is the ordinary UX almost every
+product uses - hiding it would trade a minor enumeration signal for a
+confusing signup flow in the common, legitimate case of someone
+re-signing-up with their own account. The comment claiming full
+anonymity (which the status code never actually delivered) is replaced
+with one stating the real, accepted tradeoff.
+
+### M4 (fixed): password reset didn't invalidate sibling tokens
+
+`reset-password/route.ts` deleted only the one token just redeemed,
+leaving any *other* outstanding reset token for the same account still
+valid for the rest of its TTL - a real account-retake scenario
+(attacker with brief mailbox access requests a reset and saves the
+token; the victim notices, resets via their own separate link; the
+attacker's saved token was still redeemable and could re-take the
+account, undoing the victim's own remediation). Fixed: on a successful
+reset, every other outstanding `password_reset_tokens` row for that
+account is now deleted too. Applied the same pattern to
+`verify-email/route.ts`'s `email_verification_tokens` for consistency.
+Verified against a real running server with two real tokens for one
+account (an "attacker's captured" one and the "victim's own" one):
+redeeming the victim's token succeeded, and the attacker's previously-
+valid token immediately started returning "Invalid or expired reset
+link."
+
+### M5 (fixed, real design work): `tenant_revoked_at` had no recovery path
+
+The hardest of the six - genuinely needed a design decision, not a
+one-line fix. Investigated the review's own named trigger
+(`ACCOUNT_ENCRYPTION_KEY` rotation) before designing around it: traced
+`lib/crypto.ts`'s `decrypt()` and confirmed a wrong key makes AES-GCM's
+auth-tag check throw a raw crypto exception, not a `LicenseApiError`
+with `status: 403` - `isTenantRejected()` wouldn't match it, so that
+*specific* trigger likely 500s rather than setting the gate. The
+finding's core concern stood regardless under a more realistic trigger
+that does go through the real 403 path: a tenant's API key rotated via
+`casazium/license`'s own admin-only `rotate-tenant-key.js` without this
+console being updated, or any other reason the server-side lookup stops
+matching a credential this console still holds - genuinely
+indistinguishable from real revocation at the console's own API
+surface, and previously permanent.
+
+Design: the only place in the whole app a *successful* license-server
+call can ever run while this gate is set is the login-time probe
+(`app/api/login/route.ts`) - `lib/session.ts`'s persistent-gate check
+rejects the session before any page/action body (where every other
+license-server call happens) is ever reached, so a revoked account has
+no other code path available to prove itself un-revoked. New
+`clearTenantRevoked()` (`lib/tenant-context.ts`) is called from exactly
+that one place, on a successful probe response - real, current proof
+the credential is valid right now, the same authority `markTenantRevoked()`
+itself already relies on for the opposite outcome. Self-healing, not a
+weakening: the gate still blocks unconditionally the instant a real
+rejection is seen, and only clears on a subsequent *proven* success, not
+an assumption.
+
+Verified end-to-end against two real running servers, not simulated:
+signed up a real tenant, revoked it via a real `POST /admin/tenants/:id/revoke`
+call, confirmed login was blocked and `tenant_revoked_at` was set in the
+console's own database, reactivated the tenant on the license server
+(direct DB write - no un-revoke endpoint exists on that server, a
+separate, pre-existing gap out of this pass's scope), then confirmed a
+fresh login attempt succeeded *and* `tenant_revoked_at` read back as
+`NULL` - no manual database intervention needed anywhere in the cycle.
+
+### M6 (fixed): unbounded rate-limit `Map`
+
+`lib/login-rate-limit.ts`'s `buckets` Map only evicts an entry when
+*that same key* is next checked after its window expires - a caller
+that never revisits a key (many distinct real users over time, or one
+rotating identifier/IP combinations) leaves entries sitting forever
+with nothing to remove them. Fixed with a `MAX_BUCKETS = 50_000` cap,
+enforced opportunistically (only when actually about to grow past it,
+not on a timer): sweep anything already expired first, then fall back
+to evicting the single oldest entry if still at the cap. Verified via a
+temporary standalone harness (Node's `--experimental-strip-types`
+against a `/tmp` copy of the real module, not a reimplementation - the
+copy was deleted immediately after, nothing shipped): inserted 60,000
+distinct keys, confirmed the earliest one was evicted (came back
+"fresh," no longer rate-limited) while a recent one was still correctly
+tracked.
+
+`npm run lint` and `npm run build` both clean after every fix, not just
+at the end.
+

@@ -58,6 +58,34 @@ export function markTenantRevoked(tenantId: string): void {
 }
 
 /**
+ * Security review finding M5: this gate previously had no way back once
+ * set - `isTenantRejected()`'s own comment already concedes the license
+ * server's 403 `{"error":"Unauthorized"}` can't distinguish "tenant
+ * genuinely revoked" from any other reason the stored credential no
+ * longer matches (a key rotated via that server's own
+ * rotate-tenant-key.js without this console being updated, a restored/
+ * rebuilt tenants table, ...) - every one of those got permanently,
+ * indistinguishably conflated with real revocation, recoverable only by
+ * hand-editing this console's own database.
+ *
+ * Called only from the one place a *successful* license-server call can
+ * ever run while this gate is set: app/api/login/route.ts's own login-
+ * time probe. Nowhere else is reachable - lib/session.ts's persistent-
+ * gate check rejects the session before any page/action body (where
+ * every other license-server call happens) is ever reached, so a
+ * revoked account can't organically prove itself un-revoked anywhere
+ * but login. A successful probe response is real, current proof the
+ * now-decrypted credential the console holds is valid against the
+ * server right now - the same authority markTenantRevoked() itself
+ * relies on, just the opposite outcome - so clearing here doesn't
+ * weaken the gate; it makes it self-healing without ever trusting an
+ * unproven claim.
+ */
+export function clearTenantRevoked(tenantId: string): void {
+  getDb().prepare('UPDATE accounts SET tenant_revoked_at = NULL WHERE tenant_id = ?').run(tenantId);
+}
+
+/**
  * The shared call-site helper for the reactive half of trigger 2 -
  * every read page and Server Action that calls the license server (the
  * same set requireSessionWithTenantKey() below already unifies) calls

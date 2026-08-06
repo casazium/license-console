@@ -77,6 +77,19 @@ export async function POST(request: NextRequest) {
 
   const passwordHash = await hashPassword(password);
   db.prepare('UPDATE accounts SET password_hash = ? WHERE id = ?').run(passwordHash, row.account_id);
+
+  // Security review finding M4: the per-hash delete above only removes
+  // the one token just used, leaving any *other* outstanding reset
+  // token for this account still redeemable for the rest of its TTL -
+  // a real account-retake scenario (attacker with brief mailbox access
+  // requests a reset and saves the token; the victim notices, requests
+  // their own reset, and changes the password; the attacker's saved
+  // token is still valid and could re-take the account, undoing the
+  // victim's own remediation). Invalidate every other outstanding
+  // token for this account too, now that the password has actually
+  // changed.
+  db.prepare('DELETE FROM password_reset_tokens WHERE account_id = ?').run(row.account_id);
+
   revokeAccountSessions(row.account_id);
 
   const sessionToken = await createSessionToken({ id: row.account_id, role: 'admin' });

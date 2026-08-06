@@ -63,12 +63,23 @@ export async function POST(request: NextRequest) {
     ).run(hashOneTimeToken(resetToken), account.id, expiresAt);
 
     const resetUrl = new URL(`/reset-password?token=${resetToken}`, publicBaseUrl(request)).toString();
-    await getEmailProvider().sendPasswordReset(email, resetUrl);
+    // Deliberately not awaited (security review finding M2): this
+    // route's own docblock claims the response is identical regardless
+    // of whether the email is registered, but awaiting a real outbound
+    // send here - only reachable when an account actually exists -
+    // made the response *latency* a reliable account-existence oracle
+    // instead. Under EMAIL_PROVIDER=stub the delta was small; under
+    // EMAIL_PROVIDER=resend (production) it's a real network round trip
+    // to api.resend.com, hundreds of ms, paid only for real accounts.
+    // Firing without awaiting removes that gap - genericResponse()
+    // below returns before this settles either way.
+    getEmailProvider()
+      .sendPasswordReset(email, resetUrl)
+      .catch((err) => {
+        console.error(`Failed to send password reset email for account ${account.id}:`, err);
+      });
   } catch (err) {
-    // Logged, not surfaced - genericResponse() below still returns the
-    // same success shape either way, same reasoning as signup's own
-    // best-effort email send.
-    console.error(`Failed to send password reset email for account ${account.id}:`, err);
+    console.error(`Failed to prepare password reset for account ${account.id}:`, err);
   }
 
   return genericResponse();

@@ -13,6 +13,15 @@ import { trustedProxyCount } from './config';
 const WINDOW_MS = 15 * 60 * 1000;
 const MAX_ATTEMPTS = 5;
 
+// Unbounded growth guard (security review finding M6): a bucket is only
+// ever evicted when *that same key* is next checked after its window
+// expires (checkLoginRateLimit's own self-cleaning delete below) - a
+// caller that never revisits a key (many distinct real users over
+// time, or a caller rotating identifier/IP combinations) leaves it
+// sitting in the map forever, with nothing to remove it. Capped rather
+// than left truly unbounded.
+const MAX_BUCKETS = 50_000;
+
 type Bucket = {
   count: number;
   windowStart: number;
@@ -53,6 +62,35 @@ export function recordFailedLoginAttempt(key: string): void {
   const now = Date.now();
 
   if (!bucket || now - bucket.windowStart >= WINDOW_MS) {
+    // Opportunistic, not on a timer - only pays the sweep/evict cost
+    // when actually about to grow the map past the cap, so the common
+    // case (well under it) never runs this at all.
+    if (buckets.size >= MAX_BUCKETS) {
+      for (const [k, b] of buckets) {
+        if (now - b.windowStart >= WINDOW_MS) {
+          buckets.delete(k);
+        }
+      }
+      // Still at the cap after sweeping expired entries means a
+      // sustained flood of distinct keys, all still within their own
+      // window - fall back to evicting the single oldest one. Bounded
+      // memory wins over keeping every attacker-chosen key alive
+      // forever; the evicted key just starts a fresh window if it's
+      // ever seen again, same as it would after a real expiry.
+      if (buckets.size >= MAX_BUCKETS) {
+        let oldestKey: string | undefined;
+        let oldestStart = Infinity;
+        for (const [k, b] of buckets) {
+          if (b.windowStart < oldestStart) {
+            oldestStart = b.windowStart;
+            oldestKey = k;
+          }
+        }
+        if (oldestKey !== undefined) {
+          buckets.delete(oldestKey);
+        }
+      }
+    }
     buckets.set(key, { count: 1, windowStart: now });
     return;
   }

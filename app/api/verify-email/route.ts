@@ -54,5 +54,12 @@ export async function GET(request: NextRequest) {
 
   db.prepare('UPDATE accounts SET email_verified_at = CURRENT_TIMESTAMP WHERE id = ?').run(row.account_id);
 
+  // Security review finding M4 (same pattern as reset-password's own
+  // fix): invalidate any other outstanding verification token for this
+  // account too, not just the one just used - e.g. a stale token from
+  // before a "resend" request, still sitting in the table with time
+  // left on its TTL.
+  db.prepare('DELETE FROM email_verification_tokens WHERE account_id = ?').run(row.account_id);
+
   return NextResponse.redirect(dashboardUrl);
 }

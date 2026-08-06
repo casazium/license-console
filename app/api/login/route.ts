@@ -3,7 +3,7 @@ import { verifyCredentials } from '@/lib/auth';
 import { createSessionToken, sessionCookieOptions, SESSION_COOKIE_NAME } from '@/lib/session';
 import { checkLoginRateLimit, recordFailedLoginAttempt, getClientKey } from '@/lib/login-rate-limit';
 import { isMultiTenant } from '@/lib/config';
-import { getTenantApiKey, getAccountTenantId, markTenantRevoked } from '@/lib/tenant-context';
+import { getTenantApiKey, getAccountTenantId, markTenantRevoked, clearTenantRevoked } from '@/lib/tenant-context';
 import { getBillingStatus } from '@/lib/license-client';
 import { isTenantRejected } from '@/lib/errors';
 
@@ -62,6 +62,19 @@ export async function POST(request: NextRequest) {
     try {
       const tenantApiKey = getTenantApiKey(identity.id);
       await getBillingStatus(tenantApiKey);
+      // Security review finding M5: a successful call here is real,
+      // current proof this account's credential is valid against the
+      // license server right now - the same authority a rejection
+      // relies on to set the gate below, just the opposite outcome.
+      // This is the only place in the app a successful probe can ever
+      // run while accounts.tenant_revoked_at is set (see
+      // clearTenantRevoked()'s own comment for why), so it's also the
+      // only place that can safely clear it - making the gate
+      // self-healing instead of a one-way, permanent lockout.
+      const tenantId = getAccountTenantId(identity.id);
+      if (tenantId) {
+        clearTenantRevoked(tenantId);
+      }
     } catch (err) {
       if (isTenantRejected(err)) {
         const tenantId = getAccountTenantId(identity.id);

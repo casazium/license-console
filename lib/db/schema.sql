@@ -65,6 +65,15 @@
 -- at all today and isn't being given one; see PROJECT_STATUS.md for the
 -- full design record and why that gap is accepted, not a bug to fix
 -- later.
+--
+-- Self-healing (security review finding M5, PROJECT_STATUS.md): that
+-- same login-time probe also clears this gate on a successful response
+-- (lib/tenant-context.ts's clearTenantRevoked()) - a real 403 can't
+-- distinguish genuine revocation from any other reason the stored
+-- credential stopped matching (a key rotated on the server without this
+-- console being updated, a rebuilt tenants table, ...), so a later
+-- successful check is treated as real, current proof the account is
+-- valid again, not just a one-way lockout requiring manual DB surgery.
 CREATE TABLE IF NOT EXISTS accounts (
   id TEXT PRIMARY KEY,
   email TEXT NOT NULL,

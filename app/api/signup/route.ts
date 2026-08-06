@@ -83,8 +83,17 @@ export async function POST(request: NextRequest) {
   const existing = db.prepare('SELECT id FROM accounts WHERE email = ?').get(email);
   if (existing) {
     recordFailedLoginAttempt(clientKey);
-    // Generic message deliberately - don't confirm an email is already
-    // registered to an unauthenticated caller.
+    // Security review finding M3: the message is generic, but the 409
+    // status code itself still confirms the email is registered to an
+    // unauthenticated caller - a real, but accepted, tradeoff. Unlike
+    // forgot-password (which has no legitimate reason to ever confirm
+    // or deny registration), telling someone at signup time "this email
+    // is already registered, try logging in instead" is the ordinary,
+    // expected UX almost every product uses - hiding it here would
+    // trade a minor enumeration signal for a confusing signup flow for
+    // the common, legitimate case of someone re-signing-up with their
+    // own account. Recorded explicitly rather than left as a comment
+    // claiming full anonymity that the status code doesn't back up.
     return NextResponse.json({ error: 'Unable to create account' }, { status: 409 });
   }
 
