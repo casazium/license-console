@@ -3,7 +3,10 @@
 # deployable Coolify resources, not one combined stack). Routing/TLS via
 # Coolify's own per-service Domain configuration, not hand-authored Traefik
 # routers here - same convention as casazium/casazium's
-# docker-compose-coolify.yml.
+# docker-compose-coolify.yml. No custom Traefik service/router label is
+# needed here - Coolify resolves the port from `expose:` alone (confirmed
+# 2026-08-06; see the labels: block below for why a hardcoded label was
+# tried here and removed).
 #
 # Required env vars (set via Coolify's environment variables UI for this
 # service, not committed anywhere): SESSION_SECRET, ADMIN_UI_USERNAME,
@@ -120,10 +123,29 @@ services:
     labels:
       - traefik.enable=true
 
-      # Routing/TLS via Coolify's service Domain, not a router here.
-      - traefik.http.services.license-console-svc.loadbalancer.server.port=3000
-
-      - traefik.http.middlewares.license-console-headers.headers.customResponseHeaders.X-App=license-console
+      # No custom traefik.http.services/middlewares labels here,
+      # deliberately (confirmed 2026-08-06, same finding as
+      # casazium/license's own docker-compose-coolify.yml - see that file's
+      # labels: block and its PROJECT_STATUS.md §67 for the full writeup).
+      # This file is built verbatim by every Coolify resource that runs
+      # this console - both the standalone instance and SaaS-C1 - so a
+      # hardcoded label name here would be shared by both. Coolify doesn't
+      # interpolate ${VAR} inside labels: (confirmed, see
+      # casazium/casazium's CLAUDE.md), so that name can't be made unique
+      # per resource. A previous version of this file declared
+      # traefik.http.services.license-console-svc.loadbalancer.server.port=3000
+      # and a matching middleware label; since both resources registered
+      # the same service name, deploying either one silently redirected
+      # the OTHER resource's domain to whichever container had registered
+      # most recently - confirmed live between license.casazium.com and
+      # license-cloud.casazium.com (both login pages intermittently
+      # serving the wrong instance, tracking deploy order rather than
+      # domain). Removing the label entirely fixed it: Coolify's
+      # Domain-based routing resolves the port from `expose:` alone just
+      # fine, giving each resource its own uniquely-scoped backend instead
+      # of a shared literal name. Do not reintroduce a hardcoded
+      # traefik.http.services.<name> label here without giving it a value
+      # that's actually unique per resource.
 
     healthcheck:
       # node, not wget/curl - guaranteed present (it's the runtime) rather
