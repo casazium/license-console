@@ -3544,3 +3544,51 @@ no Docker daemon available in this session; `Dockerfile`'s new `COPY`
 source was confirmed to exist and `.dockerignore` confirmed not to
 exclude `scripts/`.
 
+## 55. Fix cross-resource Traefik routing collision during SaaS-C1 provisioning (2026-08-06)
+
+Same root cause as `casazium/license`'s own `PROJECT_STATUS.md` §67,
+found immediately after fixing that one and asked to check for the same
+pattern here. Operator report: the standalone (`license.casazium.com`)
+and SaaS-C1 (`license-cloud.casazium.com`) console login pages were
+intermittently serving the wrong instance - not randomly, but tracking
+which resource had deployed most recently, regardless of which domain
+was actually requested.
+
+`docker-compose-coolify.yml` is built verbatim by both console resources
+(this file's own header comment: "a SaaS-tier deployment is a SEPARATE
+Coolify resource from this same repo/compose file"). Its `labels:` block
+declared a hardcoded, literal Traefik service name -
+`traefik.http.services.license-console-svc.loadbalancer.server.port=3000`
+- plus a matching `license-console-headers` middleware name. Both
+resources' containers registered the identical service name; Traefik's
+Docker provider keys its dynamic config by that label-derived name, not
+by Coolify resource ID, so only one `license-console-svc` object could
+exist at a time, and whichever container registered most recently
+silently owned it for both domains at once.
+
+Couldn't fix by parameterizing the label per-resource with `${VAR}` -
+same constraint as the license-repo fix: Coolify doesn't interpolate
+`${VAR}` inside Compose `labels:` (confirmed, see
+`casazium/casazium`'s own `CLAUDE.md`), unlike `environment:` on this
+exact file, where it works fine.
+
+**Fix**: removed both labels entirely, mirroring the already-validated
+fix on `casazium/license`'s own `docker-compose-coolify.yml` (commits
+1226129, 08e4f66, 3f729a4) - Coolify's Domain-based routing resolves the
+backend port from `expose: 3000` alone with no custom label needed.
+`docker-compose-coolify.yml`'s own `labels:` block now documents this
+inline so a future edit doesn't reintroduce a shared literal name.
+
+**Verification**: unlike the license API (which has a per-resource
+RSA public key to compare), this console has no equivalent
+single-request signal of which backend answered. Verification is
+therefore procedural, not yet a hard confirmation: the fix mirrors the
+license-repo one exactly (same label mechanism, same root cause, same
+Coolify Domain-based routing underneath), and `docker compose -f
+docker-compose-coolify.yml config` returns exit 0. Operator still needs
+to redeploy both console resources once each and confirm the flip-flop
+is gone in practice (e.g. repeated refreshes of both login pages across
+a couple of redeploys, watching for either page changing based on the
+other's deploy order) before this can be marked fully confirmed the same
+way §67 was.
+
