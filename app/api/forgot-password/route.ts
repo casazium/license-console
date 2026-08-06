@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isMultiTenant } from '@/lib/config';
+import { isMultiTenant, publicBaseUrl } from '@/lib/config';
 import { getDb } from '@/lib/db';
 import { getEmailProvider } from '@/lib/email';
 import { generateOneTimeToken, hashOneTimeToken } from '@/lib/one-time-token';
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
       `INSERT INTO password_reset_tokens (token_hash, account_id, expires_at) VALUES (?, ?, ?)`
     ).run(hashOneTimeToken(resetToken), account.id, expiresAt);
 
-    const resetUrl = new URL(`/reset-password?token=${resetToken}`, request.nextUrl.origin).toString();
+    const resetUrl = new URL(`/reset-password?token=${resetToken}`, publicBaseUrl(request)).toString();
     await getEmailProvider().sendPasswordReset(email, resetUrl);
   } catch (err) {
     // Logged, not surfaced - genericResponse() below still returns the

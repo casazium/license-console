@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { publicBaseUrl } from '@/lib/config';
 import { requireSession } from '@/lib/session';
 import { generateOneTimeToken, hashOneTimeToken } from '@/lib/one-time-token';
 import { getEmailProvider } from '@/lib/email';
@@ -58,7 +59,7 @@ export async function POST(request: NextRequest) {
       `INSERT INTO email_verification_tokens (token_hash, account_id, expires_at) VALUES (?, ?, ?)`
     ).run(hashOneTimeToken(verificationToken), session.id, expiresAt);
 
-    const confirmUrl = new URL(`/api/verify-email?token=${verificationToken}`, request.nextUrl.origin).toString();
+    const confirmUrl = new URL(`/api/verify-email?token=${verificationToken}`, publicBaseUrl(request)).toString();
     await getEmailProvider().sendSignupConfirmation(account.email, confirmUrl);
   } catch (err) {
     console.error(`Failed to resend signup confirmation email for account ${session.id}:`, err);

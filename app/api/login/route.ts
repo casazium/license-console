@@ -1,14 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyCredentials } from '@/lib/auth';
 import { createSessionToken, sessionCookieOptions, SESSION_COOKIE_NAME } from '@/lib/session';
-import { checkLoginRateLimit, recordFailedLoginAttempt, clearLoginRateLimit, getClientKey } from '@/lib/login-rate-limit';
+import { checkLoginRateLimit, recordFailedLoginAttempt, getClientKey } from '@/lib/login-rate-limit';
 import { isMultiTenant } from '@/lib/config';
 import { getTenantApiKey, getAccountTenantId, markTenantRevoked } from '@/lib/tenant-context';
 import { getBillingStatus } from '@/lib/license-client';
 import { isTenantRejected } from '@/lib/errors';
 
 export async function POST(request: NextRequest) {
-  const clientKey = getClientKey(request);
+  const body = await request.json().catch(() => null);
+  const username = body?.username;
+  const password = body?.password;
+
+  // Keyed by identifier+IP, not IP alone (security review finding H1):
+  // an IP-only bucket meant an attacker could reset it at will by
+  // logging into any account they control (trivial under MULTI_TENANT
+  // self-service signup), and separately let one attacker's failures
+  // lock out every legitimate user sharing that IP/proxy. Computed
+  // before validating the body shape so a malformed/missing-username
+  // request still gets *some* rate limiting (IP alone, via
+  // getClientKey's undefined-identifier fallback) rather than none.
+  const clientKey = getClientKey(request, typeof username === 'string' ? username : undefined);
 
   const rateLimit = checkLoginRateLimit(clientKey);
   if (!rateLimit.allowed) {
@@ -17,10 +29,6 @@ export async function POST(request: NextRequest) {
       { status: 429, headers: { 'Retry-After': String(rateLimit.retryAfterSeconds) } },
     );
   }
-
-  const body = await request.json().catch(() => null);
-  const username = body?.username;
-  const password = body?.password;
 
   if (typeof username !== 'string' || typeof password !== 'string') {
     return NextResponse.json({ error: 'Username and password are required' }, { status: 400 });
@@ -68,7 +76,12 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  clearLoginRateLimit(clientKey);
+  // Deliberately NOT clearing clientKey's bucket here (security review
+  // finding H1-A): doing so let an attacker reset their own failed-
+  // attempt count at will by logging into any account they control -
+  // trivial under self-service signup - turning the 5-attempt limit
+  // into an unbounded guessing loop in cycles of 4. Leftover failed
+  // attempts simply age out of the fixed window as normal.
   const token = await createSessionToken(identity);
   const response = NextResponse.json({ ok: true });
   response.cookies.set(SESSION_COOKIE_NAME, token, sessionCookieOptions);

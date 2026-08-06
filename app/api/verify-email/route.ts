@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { publicBaseUrl } from '@/lib/config';
 import { hashOneTimeToken } from '@/lib/one-time-token';
 
 /**
@@ -18,7 +19,12 @@ import { hashOneTimeToken } from '@/lib/one-time-token';
  */
 export async function GET(request: NextRequest) {
   const token = request.nextUrl.searchParams.get('token');
-  const dashboardUrl = new URL('/dashboard', request.nextUrl.origin);
+  // Same publicBaseUrl() fix as the emailed links this route is the
+  // target of (security review finding H2) - request.nextUrl.origin is
+  // wrong here too, even though the browser reached this GET at the
+  // real public host: the redirect Location header this handler emits
+  // would otherwise still point at the server's own resolved origin.
+  const dashboardUrl = new URL('/dashboard', publicBaseUrl(request));
 
   if (!token) {
     return NextResponse.redirect(dashboardUrl);

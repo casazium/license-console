@@ -7,7 +7,14 @@
 #
 # Required env vars (set via Coolify's environment variables UI for this
 # service, not committed anywhere): SESSION_SECRET, ADMIN_UI_USERNAME,
-# ADMIN_UI_PASSWORD. For a *live* deployment (connected to a real backend,
+# ADMIN_UI_PASSWORD, PUBLIC_BASE_URL (security review finding H2 -
+# lib/config.ts's publicBaseUrl() fails loud at request time if this is
+# unset in production; every emailed link and email-triggered redirect
+# would otherwise silently point at this container's own internal
+# HOSTNAME:PORT, unreachable from outside - set it to this service's own
+# real Coolify Domain, e.g. https://console.example.com).
+#
+# For a *live* deployment (connected to a real backend,
 # not standalone/mock mode), also set LICENSE_API_URL (the license
 # backend's own Coolify Domain, including /v1, e.g.
 # https://license-api.example.com/v1) and LICENSE_ADMIN_API_KEY (must
@@ -57,6 +64,7 @@ services:
       # takes precedence over the image-baked value).
       - HOSTNAME=0.0.0.0
       - DB_FILE=/app/data/console.db
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL}
       - MULTI_TENANT=${MULTI_TENANT}
       - ACCOUNT_ENCRYPTION_KEY=${ACCOUNT_ENCRYPTION_KEY}
       - SESSION_SECRET=${SESSION_SECRET}

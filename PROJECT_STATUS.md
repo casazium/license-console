@@ -2596,3 +2596,126 @@ mode regression-checked separately: login still works normally, the
 whole mechanism never engages (gated on `isMultiTenant()`).
 `npm run lint` and `npm run build` both clean.
 
+## 49. Independent Opus security review, three High findings fixed (2026-08-06)
+
+Companion to `casazium/license`'s own `PROJECT_STATUS.md` §60 - same
+operator request (an Opus review before any merge-to-main decision,
+raised after a "what's left before the hosted tier can go live"
+discussion), same method (an independent Opus subagent per repo, full
+real-code access, adversarial testing against the real running app via
+probe scripts, not a design read). This repo's half found three High
+findings, no Critical; all three fixed and verified in this same
+session, per operator's "start with critical and high" instruction.
+
+### H1 (High, fixed): login brute-force protection was fully bypassable, two independent ways
+
+`lib/login-rate-limit.ts`'s bucket was keyed by IP alone, and
+`app/api/login/route.ts` cleared it entirely on any successful login.
+Bypass A: 4 wrong guesses against a target account, then 1 correct
+login against *any* account the attacker controls - trivial under
+`MULTI_TENANT=true` self-service signup - reset the bucket, giving
+unbounded guessing in cycles of 4. Bypass B, independent of A: the key
+was derived from `X-Forwarded-For`'s *leftmost* entry with no trusted-
+proxy boundary, so a client could set its own bucket to anything by
+sending its own header.
+
+**Fix**: `getClientKey()` now keys on `` `${identifier}|${ip}` ``, not
+IP alone (`lib/login-rate-limit.ts`) - closes Bypass A's underlying
+cause (an attacker's own accounts no longer share a bucket with the
+account they're guessing) and the login route no longer clears the
+bucket on success at all (leftover failures simply age out of the
+fixed window). For Bypass B, IP resolution now reads
+`trustedProxyCount()` (new, `lib/config.ts`, defaults to 1 - Coolify's
+Traefik is the sole hop in every deployment this repo documents) hops
+from the *right* of `X-Forwarded-For`, the ones actually appended by
+the trusted proxy chain, not the client-suppliable left side.
+
+Verified against a real running standalone build, not unit tests (this
+repo has no test runner - see `package.json`): 4 wrong passwords, 1
+correct login (200), 1 more wrong password, then a 6th attempt with
+the *correct* password still got `429` - the old code would have let
+it through, since the correct login at step 2 would have cleared the
+bucket. Separately: 5 failed logins with a rotating spoofed leftmost
+`X-Forwarded-For` hop but the same real (rightmost) hop all landed in
+one bucket, and a 6th was blocked (`429`); a genuinely different real
+IP got a fresh bucket, confirmed not blocked. `npm run lint` and
+`npm run build` both clean.
+
+### H2 (High, fixed): every emailed link resolved to an address no client can reach in the real deployment
+
+`app/api/forgot-password/route.ts`, `signup/route.ts`,
+`verify-email/resend/route.ts` (all three emailed links) and
+`verify-email/route.ts` (the confirmation link's own redirect target)
+all built URLs from `request.nextUrl.origin`. Next 16 pins a route
+handler's resolved origin to the server's *configured* hostname/port,
+not any request header - `Dockerfile`/`docker-compose-coolify.yml` set
+`HOSTNAME=0.0.0.0` with `PORT` unset (⇒ 3000), so in the real shipped
+deployment every password-reset and signup-confirmation email
+contained `https://0.0.0.0:3000/...` - unusable, not exploitable. This
+directly contradicts §46's own "real password-reset email delivery
+works" note, which was almost certainly verified under `next dev`,
+where the resolved origin happens to be `localhost` instead.
+
+**Fix**: new `publicBaseUrl(request)` (`lib/config.ts`) - reads a new
+required `PUBLIC_BASE_URL` env var, throwing in production if it's
+unset (same fail-loud convention as `lib/license-client.ts`'s
+`LICENSE_STANDALONE_MODE` check) rather than silently emailing broken
+links; falls back to the request's own origin in development, where
+it happens to be correct, so `npm run dev` keeps working with no
+`.env` at all. All four call sites switched to it.
+`docker-compose-coolify.yml`, `.env.example`, and `DEPLOYMENT.md`
+updated to document the new required var.
+
+Verified against a real standalone build in both directions: with
+`PUBLIC_BASE_URL` unset and `NODE_ENV=production`, `GET
+/api/verify-email?token=...` returned `500` (fails loud, doesn't
+redirect to a broken origin); with it set to
+`https://console.example.com` and a real account inserted directly
+into the console's own SQLite file, `POST /forgot-password` produced a
+stub-logged link of exactly `https://console.example.com/reset-password?token=...`
+- confirmed by reading the actual server log line, not assumed.
+`npm run lint` and `npm run build` both clean.
+
+### H3 (High, fixed): signup itself had no effective rate limit
+
+`app/api/signup/route.ts` called `recordFailedLoginAttempt()` only on
+validation failures and the duplicate-email `409` - never on a
+*successful* signup - and `clearLoginRateLimit()` on success actively
+wiped out any prior failures too. A loop of valid signups (each one a
+real `POST /admin/tenants` call to `casazium/license` using this
+console's own privileged `LICENSE_ADMIN_API_KEY`, a real scrypt hash,
+and - under `EMAIL_PROVIDER=resend` - a real outbound email) was never
+rate-limited at all.
+
+**Fix**: `checkLoginRateLimit()` (`lib/login-rate-limit.ts`) gained an
+optional `maxAttempts` override; signup now passes a distinct
+`SIGNUP_MAX_ATTEMPTS = 3` (lower than login's default 5 - each attempt
+here is a real network call plus a real email send, much costlier per
+attempt than a password check), counts a successful signup toward the
+bucket via `recordFailedLoginAttempt()`, and no longer clears it on
+success.
+
+Verified end-to-end against two real running servers (a real
+`casazium/license` instance, `MULTI_TENANT=true`, plus this console
+pointed at it) - not mocked: 4 consecutive valid signups from the same
+IP, each with a distinct email/tenant name. The first 3 succeeded
+(`200`), each provisioning a real tenant on the license server (read
+back directly from both the console's own `accounts` table and
+confirmed exactly 3 rows, not simulated); the 4th was rejected with
+`429 Too many signup attempts`. `npm run lint` and `npm run build`
+both clean.
+
+### What's still open (Medium/Low, not in this pass's scope)
+
+The review's own remaining findings for this repo - timing-based user
+enumeration on both login and password-reset, signup enumeration via
+HTTP status code, a completed password reset not invalidating that
+account's *other* outstanding reset tokens, an unbounded rate-limit
+`Map` (memory growth via header rotation), and - notably -
+`tenant_revoked_at` (this session's own "Trigger 2" work) having no
+path to clear itself once set, which the review flagged as worth
+revisiting now that it's a known gap rather than a theoretical one -
+are Medium severity and were explicitly not part of this pass
+(operator: "start with critical and high"). Not fixed yet; tracked for
+the next authorized pass, not silently dropped.
+

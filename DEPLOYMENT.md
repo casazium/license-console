@@ -25,6 +25,7 @@ In Coolify's environment variables UI for this service (never committed to the r
 | `SESSION_SECRET` | HMAC key for signed session cookies. Generate: `openssl rand -base64 32` |
 | `ADMIN_UI_USERNAME` | Self-hosted login username |
 | `ADMIN_UI_PASSWORD` | Self-hosted login password |
+| `PUBLIC_BASE_URL` | This service's own real Domain (below), e.g. `https://console.example.com`, no trailing slash. Every emailed link (signup confirmation, password reset) and email-triggered redirect is built from this — leaving it unset fails loudly at request time in production rather than silently emailing links to this container's own unreachable internal address (security review finding H2). |
 
 For a *live* deployment (connected to a real `casazium/license` server, which is almost always what you want), also set:
 
