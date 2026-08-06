@@ -11,6 +11,16 @@ const DEFAULT_COLOR = '#228be6';
 export type Branding = {
   logoUrl: string | null;
   titleHtml: string;
+  // Security review finding L3: true only for the platform/env-var
+  // source (BRANDING_TITLE_HTML) - genuinely operator-trusted config,
+  // not user input, exactly as BrandTitle.tsx's own comment claims.
+  // false whenever titleHtml came from tenant_branding instead - once a
+  // settings UI lets a tenant set this themselves (none exists yet;
+  // nothing writes that table today), that value must never reach
+  // dangerouslySetInnerHTML. Carried on the data itself, not left to
+  // every call site to remember, so a future render path gets this
+  // right by construction.
+  titleIsHtml: boolean;
   copyrightHolder: string | null;
   color: string;
   faviconUrl: string | null;
@@ -49,6 +59,7 @@ function getPlatformBranding(): Branding {
   return {
     logoUrl: process.env.BRANDING_LOGO_URL?.trim() || null,
     titleHtml: process.env.BRANDING_TITLE_HTML?.trim() || DEFAULT_TITLE_HTML,
+    titleIsHtml: true,
     copyrightHolder: process.env.BRANDING_COPYRIGHT_HOLDER?.trim() || null,
     color: rawColor ? unwrapQuotes(rawColor) : DEFAULT_COLOR,
     faviconUrl: process.env.BRANDING_FAVICON_URL?.trim() || null,
@@ -93,9 +104,16 @@ export function getBranding(tenantId?: string): Branding {
     return platform;
   }
 
+  const tenantTitle = row.title_html?.trim();
+
   return {
     logoUrl: row.logo_url?.trim() || platform.logoUrl,
-    titleHtml: row.title_html?.trim() || platform.titleHtml,
+    titleHtml: tenantTitle || platform.titleHtml,
+    // false whenever the tenant's own value is actually used - see the
+    // Branding type's own comment above. Falls back to the platform
+    // value's trust level, not a blanket false, when there's no tenant
+    // override to apply.
+    titleIsHtml: tenantTitle ? false : platform.titleIsHtml,
     copyrightHolder: row.copyright_holder?.trim() || platform.copyrightHolder,
     // No unwrapQuotes() here, unlike the platform/env path above - a
     // DB-stored value came from a settings form (once one exists), not

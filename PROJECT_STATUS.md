@@ -2845,3 +2845,94 @@ tracked.
 `npm run lint` and `npm run build` both clean after every fix, not just
 at the end.
 
+## 51. All eight Low findings resolved (2026-08-06)
+
+Operator: "continue into the low findings too," directly following
+§50's own closing note. Companion to `casazium/license`'s own
+PROJECT_STATUS.md §62. Six fixed, two confirmed already mitigated as a
+side effect of earlier fixes in this pass - no code change forced where
+nothing was actually still broken.
+
+### L1 (fixed): `/api/logout` required a session
+
+Not in `proxy.ts`'s `PUBLIC_PATHS` - an unauthenticated `POST
+/api/logout` (an expired-but-still-present cookie, most commonly) got
+307'd to `/login` before the route ever ran, so the cookie-clearing
+`Set-Cookie` never went out. The route itself has no session check at
+all and nothing sensitive to protect - its *absence* from the list was
+the bug. Added. Verified against a real running server: an
+unauthenticated `POST /api/logout` now returns a real `200` with a
+real cookie-clearing `Set-Cookie` header, no redirect.
+
+### L2 (confirmed already decided, no change): email verification gates nothing
+
+Not a new finding to act on - the operator was asked directly earlier
+this session ("so what happens if you don't verify your email
+address?") and explicitly chose nag-only ("Keep it nag-only for now").
+The review flagging this independently is useful confirmation the
+current behavior matches that decision, not a signal to revisit it.
+
+### L3 (fixed): latent stored XSS in the branding title
+
+`BrandTitle.tsx` rendered `titleHtml` via `dangerouslySetInnerHTML`
+unconditionally, and `lib/branding.ts`'s `getBranding()` now sources
+that value from `tenant_branding.title_html` (a DB column) as well as
+the original, genuinely-trusted `BRANDING_TITLE_HTML` env var -
+`BrandTitle.tsx`'s own comment ("titleHtml is operator-controlled
+config... not user input") stopped being true for the DB path the
+moment `SaaS-B3` added it, even though nothing writes that table today
+(confirmed - dormant, not live). Fixed by carrying the trust
+distinction on the data itself: `Branding` gained a `titleIsHtml`
+field, `true` only for the env-var source, `false` whenever a tenant's
+own DB value is actually used - `BrandTitle` only uses
+`dangerouslySetInnerHTML` when the caller asserts `isHtml`, rendering
+as plain (React-escaped) text otherwise. All 4 real call sites (login,
+signup, forgot-password, reset-password pages) updated to pass the new
+flag. Verified by inserting a real `<img src=x onerror=...>` payload
+into `tenant_branding` against a real DB and confirming `getBranding()`'s
+own query/logic (replicated exactly, including the real SQL) resolves
+it to `titleIsHtml: false` - the render-time conditional itself is a
+single, type-checked line, already confirmed correct by a clean build.
+
+### L4 (fixed): token tables never pruned
+
+`email_verification_tokens`/`password_reset_tokens` rows only ever
+deleted themselves individually on successful use - a token nobody
+redeems (an abandoned signup, an unclicked reset link) sat past its own
+expiry forever. Fixed with the same pattern `casazium/license` already
+uses for `tenant_auth_log` retention (that repo's `PROJECT_STATUS.md`
+§62's own L8 note): prune by `expires_at` once at DB open, then on an
+`unref()`'d daily interval, in `lib/db.ts`. Verified against a real
+database: inserted one expired reset token, one valid reset token, and
+one expired verification token directly, booted the real app (which
+opens the DB and runs the prune), and confirmed only the expired rows
+were gone afterward - the valid one survived untouched.
+
+### L5 (fixed): `/api/reset-password` was missing its `isMultiTenant()` gate
+
+Every sibling SaaS-only route (`signup`, `forgot-password`) and page
+404s under self-hosted; this one didn't - harmless in practice (an
+empty `accounts` table under self-hosted means no token could ever
+match anyway) but inconsistent with the stated posture, and worth being
+explicit rather than relying on that being incidentally true forever.
+Added the same gate. Verified against a real server with
+`MULTI_TENANT` unset: `POST /api/reset-password` now returns a real
+`404`.
+
+### L6 (confirmed already mitigated, no code change): `X-Forwarded-Proto` trusted for the emitted scheme
+
+Checked rather than assumed. The only place this ever mattered -
+`request.nextUrl.origin` resolution - is now excluded from production
+entirely by the H2 fix (`PUBLIC_BASE_URL` is used instead, never
+derived from any request header once set, and production throws if
+it's unset). The one remaining internal use (`proxy.ts`'s `/login`
+redirect) only ever borrows a scheme for a same-host redirect - the
+host itself was never spoofable, confirmed during H2's own
+investigation - and this app already sends
+`Strict-Transport-Security` site-wide, which forces real browsers to
+upgrade regardless of what scheme a redirect's own `Location` header
+specifies. No further action needed.
+
+`npm run lint` and `npm run build` both clean after every fix, not just
+at the end.
+

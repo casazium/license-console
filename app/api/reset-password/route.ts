@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isMultiTenant } from '@/lib/config';
 import { getDb } from '@/lib/db';
 import { hashPassword } from '@/lib/password';
 import { hashOneTimeToken } from '@/lib/one-time-token';
@@ -38,6 +39,17 @@ export async function POST(request: NextRequest) {
       { error: 'Too many requests. Try again later.' },
       { status: 429, headers: { 'Retry-After': String(rateLimit.retryAfterSeconds) } }
     );
+  }
+
+  // Security review finding L5: every sibling SaaS-only route
+  // (signup, forgot-password) and page 404s under self-hosted - this
+  // one didn't, despite self-hosted having no accounts table for a
+  // reset token to ever reference. Harmless in practice today (an
+  // empty accounts table means no token can ever match), but
+  // inconsistent with the stated posture, and worth being explicit
+  // rather than relying on that being incidentally true forever.
+  if (!isMultiTenant()) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
   const body = await request.json().catch(() => null);

@@ -40,7 +40,7 @@ export default function SignupPage() {
         p="md"
         style={{ flex: 1, paddingTop: 'clamp(24px, 8vh, 96px)' }}
       >
-        <BrandTitle titleHtml={branding.titleHtml} style={{ fontSize: '1.75rem', fontWeight: 600, textAlign: 'center' }} />
+        <BrandTitle titleHtml={branding.titleHtml} isHtml={branding.titleIsHtml} style={{ fontSize: '1.75rem', fontWeight: 600, textAlign: 'center' }} />
         <SignupForm />
         <Text size="sm" c="dimmed">
           Already have an account? <Link href="/login">Sign in</Link>

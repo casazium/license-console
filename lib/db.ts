@@ -73,6 +73,25 @@ function openDatabase(): Database.Database {
   const schemaSql = readFileSync(schemaPath, 'utf-8');
   database.exec(schemaSql);
 
+  // Expired-token pruning (security review finding L4): both token
+  // tables accumulate a row per signup/resend/forgot-password request
+  // and were never cleaned up - each row deletes itself individually on
+  // successful use (reset-password.ts, verify-email/route.ts), but a
+  // token nobody ever redeems (an abandoned signup, a reset link never
+  // clicked) just sits there past its own expiry forever. Same pattern
+  // as casazium/license's own tenant_auth_log retention (that repo's
+  // src/app.js): run once at boot, then on an unref()'d daily interval
+  // so it can't hold the process open. Deletes by expires_at, not a
+  // fixed age, since these tokens already carry their own real
+  // (short, 1h/24h) TTL - no separate retention window to invent.
+  const pruneExpiredTokens = () => {
+    database.prepare(`DELETE FROM email_verification_tokens WHERE expires_at < datetime('now')`).run();
+    database.prepare(`DELETE FROM password_reset_tokens WHERE expires_at < datetime('now')`).run();
+  };
+  pruneExpiredTokens();
+  const pruneInterval = setInterval(pruneExpiredTokens, 24 * 60 * 60 * 1000);
+  pruneInterval.unref();
+
   return database;
 }
 

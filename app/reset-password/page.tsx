@@ -50,7 +50,7 @@ export default async function ResetPasswordPage({
         p="md"
         style={{ flex: 1, paddingTop: 'clamp(24px, 8vh, 96px)' }}
       >
-        <BrandTitle titleHtml={branding.titleHtml} style={{ fontSize: '1.75rem', fontWeight: 600, textAlign: 'center' }} />
+        <BrandTitle titleHtml={branding.titleHtml} isHtml={branding.titleIsHtml} style={{ fontSize: '1.75rem', fontWeight: 600, textAlign: 'center' }} />
         <ResetPasswordForm token={token} />
       </Stack>
       <Box component="footer" p="md">

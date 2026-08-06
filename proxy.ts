@@ -23,9 +23,19 @@ import { SESSION_COOKIE_NAME, verifySessionToken } from '@/lib/session';
 // looseness this list already had for /signup vs. any hypothetical
 // /signup/* sub-route, since the route's own check is the real
 // boundary, not this list.
+//
+// /api/logout (security review finding L1): the route itself has no
+// session check at all - it unconditionally deletes the session
+// cookie, nothing sensitive to protect - so its absence from this list
+// was itself the bug: an expired-but-still-present cookie failed
+// verifySessionToken() here, this proxy redirected to /login before
+// the route ever ran, and the sign-out button's own POST never got a
+// chance to clear that stale cookie. Confirmed live: an unauthenticated
+// POST here previously 307'd to /login instead of clearing the cookie.
 const PUBLIC_PATHS = [
   '/login',
   '/api/login',
+  '/api/logout',
   '/signup',
   '/api/signup',
   '/forgot-password',
