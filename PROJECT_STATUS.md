@@ -1,8 +1,10 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-04 (relocated the SaaS-tier plan, its review, and
-its task breakdown to `casazium/license`'s own PROJECT_STATUS.md — see §29)
+Last updated: 2026-08-11 (stale-branch cleanup: `saas-tier` confirmed
+fully merged into `main`, local copy deleted — see §56; also fixed a
+local-clone git-config defect that produced a false "31 unpushed
+commits" alarm along the way)
 
 > Admin console UI for `casazium/license`. This document exists so work can resume
 > across sessions without re-deriving decisions already made. Update it whenever
@@ -3591,4 +3593,58 @@ is gone in practice (e.g. repeated refreshes of both login pages across
 a couple of redeploys, watching for either page changing based on the
 other's deploy order) before this can be marked fully confirmed the same
 way §67 was.
+
+## 56. Stale-branch cleanup: `saas-tier` confirmed merged; a local-clone git-config defect produced (and then disproved) a false "31 unpushed commits" alarm (2026-08-11)
+
+Prompted by the same cross-repo branch-cleanup pass as `casazium/license`
+§68 — operator asked to check every repo's stale branches, not just
+`casazium/casazium`'s.
+
+This repo carries exactly one non-`main` branch, `saas-tier`. First pass
+looked alarming: `git merge-base --is-ancestor origin/saas-tier
+origin/main` returned **false**, with 28 commits showing as unmerged and
+a 7,221-line diff between the two — directly contradicting
+`casazium/casazium`'s own `PROJECT_STATUS.md` (task `Merge saas-tier ->
+main: license-console`, recorded done). Investigated rather than trusted
+either record: comparing local `main` (this session's clone) against
+`origin/main` showed local `main` **31 commits ahead** — including the
+entire `saas-tier` merge, four rounds of security-review fixes, and the
+beta-readiness pass — none of it seemingly on GitHub. Reported this to
+the operator as a real risk (unpushed work, possibly never actually
+landed) rather than deleting anything; operator asked to push local
+`main` to `origin`.
+
+**The push was already unnecessary — the alarm was a false one, root-
+caused before concluding otherwise.** `git push origin main` reported
+"Everything up-to-date"; investigating why revealed `remote.origin.fetch`
+was empty in this session's local clone of this repo specifically (not
+`casazium/license`, not `casazium/casazium` — confirmed by checking both,
+clean) — with no fetch refspec, `git fetch` was pulling objects
+successfully but silently never updating `refs/remotes/origin/main`,
+leaving it frozen at whatever value the initial clone happened to set.
+`git ls-remote origin main` (a direct, uncached query to GitHub) showed
+`origin/main` had actually matched local `main` all along. Fixed the
+refspec (`git config remote.origin.fetch
+"+refs/heads/*:refs/remotes/origin/*"`), re-fetched, and confirmed: local
+`main` and the real `origin/main` are identical, and — rechecked with a
+now-trustworthy `origin/main` — `saas-tier` **is** fully merged, 0 unique
+commits, same as every other repo. No actual gap ever existed; only this
+clone's tracking ref was lying.
+
+**Cause of the git-config defect not identified** (whether an artifact of
+how this container's `add_repo`/clone tooling set this particular clone
+up, or something from a prior session's manual `git remote` edit) — flagged
+here in case a future session hits the same misleading symptom in this
+or another repo; the fix (setting the standard fetch refspec explicitly)
+is one line and safe to reapply if seen again.
+
+Local `saas-tier` deleted with a plain `git branch -d saas-tier`
+(non-force — succeeded on its own, second confirmation nothing was
+unmerged). The remote copy on GitHub could not be deleted this session:
+`git push origin --delete saas-tier` failed with a real `HTTP 403`
+(organization egress-policy denial at the git-proxy layer, not retried,
+matching the same limitation hit in `casazium/license` and previously in
+`casazium/casazium`). `origin/saas-tier` still exists on GitHub; the
+operator needs to delete it directly there — confirmed safe to do so by
+the verification above.
 
