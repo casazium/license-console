@@ -41,6 +41,12 @@ COPY --from=builder --chown=node:node /app/.next/static ./.next/static
 # subset above - lib/db.ts imports it at runtime, so Next's tracer already
 # includes it.
 COPY --from=builder --chown=node:node /app/scripts/backup-db.mjs ./scripts/backup-db.mjs
+# scripts/backup-and-push.sh: chained backup + off-box B2 push, invoked
+# as a single file (not an inline Coolify Scheduled Task command) since
+# Coolify's command field did not reliably execute a `&&`-chained,
+# quoted command - see the script's own header comment.
+COPY --from=builder --chown=node:node /app/scripts/backup-and-push.sh ./scripts/backup-and-push.sh
+RUN chmod +x ./scripts/backup-and-push.sh
 
 # rclone (off-box backup push, beta-readiness follow-up, same as
 # casazium/license's own Dockerfile): runs from inside this container via
