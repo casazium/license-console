@@ -1,9 +1,10 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-12 (off-box backup gap: Coolify Scheduled Tasks
-now running on both resources, `rclone` added for the B2 push — not yet
-wired up end to end, see §57)
+Last updated: 2026-08-12 (off-box backup gap closed end to end -
+real B2 pushes confirmed, plus a standalone/SaaS commingling bug,
+a missing remote-retention gap, and a local sidecar-pruning bug all
+found and fixed along the way — see §58)
 
 > Admin console UI for `casazium/license`. This document exists so work can resume
 > across sessions without re-deriving decisions already made. Update it whenever
@@ -3681,4 +3682,47 @@ actual Coolify build log on redeploy.
 **Not yet done**: the Scheduled Task commands on both resources still
 need updating to actually invoke `rclone` after the backup step, once
 this Dockerfile change is deployed and confirmed to build cleanly.
+
+## 58. Off-box backup gap closed end to end - real pushes confirmed, plus three real bugs found and fixed along the way (2026-08-12)
+
+Companion to `casazium/license`'s own §73, same session, same three
+bugs found and fixed - full reasoning lives there, summarized here.
+
+**A costly misdiagnosis, corrected.** Three different command
+formulations (plain `&&`, `sh -c "..."`, and finally a real script file,
+added specifically to rule out a suspected Coolify command-parsing bug)
+all showed only the backup script's own output, no trace of `rclone`.
+The actual cause, found only by checking the B2 bucket directly instead
+of continuing to trust the Coolify task log: `rclone copy` prints
+nothing on a clean, successful run - every prior sighting of its output
+had come from *failed* attempts. The original plain `&&` command had
+been working the whole time. `scripts/backup-and-push.sh` was kept
+anyway (a cleaner pattern regardless), its header comment corrected to
+record what actually happened.
+
+**Bug found: standalone and SaaS-tier backups were indistinguishable.**
+Fixed by branching the remote path on `MULTI_TENANT`
+(`licenseServer/console/saas/` vs. `.../standalone/`) - reuses a
+variable already set correctly and differently on both resources.
+
+**Bug found: no retention on the remote side.** A single afternoon of
+manual debugging runs alone produced 6 snapshots in the bucket with no
+cleanup path. Fixed with `rclone delete --min-age`, reusing the same
+`BACKUP_RETENTION_DAYS` variable (default 14) `backup-db.mjs`'s local
+pruning already reads, run after the push so an interrupted run never
+leaves the remote with zero backups.
+
+**Bug found while investigating the above: local pruning had its own
+gap.** `backup-db.mjs`'s prune regex only matched the bare `.db`
+extension, leaving `-shm`/`-wal` sidecar files behind forever once their
+`.db` aged out and was deleted. Fixed by widening the pattern, pruned
+independently by each sidecar's own mtime.
+
+**Operational note, confirmed directly:** `rclone copy` syncs the
+*entire* local `/app/backups` folder against the remote on every run,
+not just the newest file - confirmed when a manual bucket-wide delete
+(via Backblaze's web UI, testing the new retention step) was
+immediately undone by the next single task run, correctly re-uploading
+every local file still present. A genuinely useful self-healing
+property, not a bug.
 
