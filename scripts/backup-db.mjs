@@ -71,11 +71,23 @@ async function main() {
   }
   console.log('Backup integrity check passed.');
 
+  // Matches the -shm/-wal sidecar files too, not just the .db itself -
+  // same fix as casazium/license's own backup-db.js, same session. The
+  // earlier pattern only matched the bare .db extension, so a backup's
+  // SQLite WAL-mode sidecars (created when the verify step above
+  // reopens the backup to run its integrity check) never got cleaned up
+  // even after the .db they belonged to aged out and was deleted - an
+  // unbounded local-disk leak, confirmed by finding several already
+  // accumulated. Independently safe to prune each sidecar by its own
+  // mtime: they're created within milliseconds of the .db file by the
+  // same verify step, and are already inert by the time this prune
+  // runs, since that step's own db.close() (in a finally block) has
+  // long since released them.
   const cutoffMs = now.getTime() - RETENTION_DAYS * 24 * 60 * 60 * 1000;
   const entries = await fs.readdir(backupDir);
   let pruned = 0;
   for (const entry of entries) {
-    if (!/^console-.*\.db$/.test(entry)) continue;
+    if (!/^console-.*\.db(-shm|-wal)?$/.test(entry)) continue;
     const entryPath = path.join(backupDir, entry);
     const stat = await fs.stat(entryPath);
     if (stat.mtimeMs < cutoffMs) {
