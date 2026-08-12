@@ -48,6 +48,18 @@ COPY --from=builder --chown=node:node /app/scripts/backup-db.mjs ./scripts/backu
 COPY --from=builder --chown=node:node /app/scripts/backup-and-push.sh ./scripts/backup-and-push.sh
 RUN chmod +x ./scripts/backup-and-push.sh
 
+# scripts/restore-drill.mjs + restore-drill-from-b2.sh (beta-readiness
+# finding): the backup pipeline above had never actually been used to
+# restore anything - see restore-drill.mjs's own header comment. Same
+# execution model as backup-and-push.sh: run inside this container via a
+# Coolify Scheduled Task, never touches DB_FILE or the live database.
+# Depends on lib/db/schema.sql already having been copied into
+# .next/standalone/lib/db/ by scripts/copy-standalone-assets.mjs
+# (postbuild) before this COPY --from=builder runs.
+COPY --from=builder --chown=node:node /app/scripts/restore-drill.mjs ./scripts/restore-drill.mjs
+COPY --from=builder --chown=node:node /app/scripts/restore-drill-from-b2.sh ./scripts/restore-drill-from-b2.sh
+RUN chmod +x ./scripts/restore-drill-from-b2.sh
+
 # rclone (off-box backup push, beta-readiness follow-up, same as
 # casazium/license's own Dockerfile): runs from inside this container via
 # a Coolify Scheduled Task. No config file baked in; the B2 key/secret are

@@ -1,10 +1,11 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-12 (off-box backup gap closed end to end -
-real B2 pushes confirmed, plus a standalone/SaaS commingling bug,
-a missing remote-retention gap, and a local sidecar-pruning bug all
-found and fixed along the way — see §58)
+Last updated: 2026-08-12 (restore drill added - the backup pipeline had
+never actually been used to restore anything; see §59. §58 closed the
+off-box push gap - real B2 pushes confirmed, plus a standalone/SaaS
+commingling bug, a missing remote-retention gap, and a local
+sidecar-pruning bug all found and fixed along the way)
 
 > Admin console UI for `casazium/license`. This document exists so work can resume
 > across sessions without re-deriving decisions already made. Update it whenever
@@ -3725,4 +3726,83 @@ not just the newest file - confirmed when a manual bucket-wide delete
 immediately undone by the next single task run, correctly re-uploading
 every local file still present. A genuinely useful self-healing
 property, not a bug.
+
+## 59. Restore drill: `scripts/restore-drill.mjs` + `restore-drill-from-b2.sh` - the backup pipeline had never actually been used to restore anything (2026-08-12)
+
+Companion to `casazium/license`'s own §74, same session, same rationale:
+§57/§58 closed the off-box push gap, but a backup that has never been
+restored is unverified, not merely untested. `restore-drill.mjs` closes
+it - safe to run against a real production B2 backup on the live host,
+since it only ever operates on a throwaway scratch copy (`os.tmpdir()`)
+and never touches `DB_FILE` or the live database.
+
+Three checks:
+
+1. **`PRAGMA integrity_check` on the transferred copy** - catches
+   corruption introduced by local storage + the rclone/B2 round trip,
+   independent of `backup-db.mjs`'s own check at capture time.
+2. **Row counts across every real table** - a schema-only or stale
+   backup passes `integrity_check` but fails this.
+3. **Re-applying `lib/db/schema.sql`, then the same `MULTI_TENANT`
+   fail-loud guard `lib/db.ts`'s `openDatabase()` runs on every real
+   connection open** (refuses to proceed if `MULTI_TENANT` isn't `'true'`
+   but `accounts` already has rows) - the check that matters most, since
+   it's the exact gate that would otherwise only be exercised for real
+   during a live incident: restoring a SaaS-tier backup onto a
+   standalone-configured resource.
+
+**Design decision: reimplements `lib/db.ts`'s `openDatabase()` logic
+rather than importing it** - same choice `backup-db.mjs` already made
+for the same reason, this session: `lib/db.ts` is TypeScript, and this
+repo has no `tsx`/`ts-node` devDependency to run it standalone. Its
+actual logic (schema exec + the `MULTI_TENANT` guard) is short enough to
+reproduce directly rather than add a new toolchain dependency just for
+one script. Kept in sync by hand - any future change to `openDatabase()`
+needs updating here too. `casazium/license`'s matching script makes the
+same reimplementation choice, for a related but distinct reason (its
+Dockerfile deliberately ships only an obfuscated bundle, not `src/`).
+
+**A real bug found and fixed while writing this script, before it ever
+shipped:** the first draft copied `backup-db.mjs`'s own `ROOT_DIR`
+pattern (`path.dirname(fileURLToPath(new URL('.', import.meta.url)))`)
+to locate `lib/db/schema.sql` relative to the script. `path.dirname()`
+on a *directory* URL (trailing slash) strips one extra path segment -
+confirmed directly (`path.dirname('/app/scripts/')` returns `/app`, not
+`/app/scripts`) - so `ROOT_DIR` silently resolved one level too high,
+and the schema read failed with `ENOENT` on first real run against a
+synthetic test database. Fixed by computing `SCRIPTS_DIR` as
+`path.dirname(fileURLToPath(import.meta.url))` (dirname of the *file*
+path itself) instead. Caught by actually running the script against a
+locally-built test database before shipping it, not by inspection -
+`backup-db.mjs`'s own copy of this same pattern is unaffected only
+because its default `BACKUP_DIR` (`path.join(ROOT_DIR, '../backups')`)
+is never exercised in production (`BACKUP_DIR` is always set explicitly
+by the Coolify Scheduled Task), so the same one-level-off bug has been
+silently latent there this whole time. Not fixed in `backup-db.mjs`
+itself this session (out of scope, never actually triggered) - worth a
+follow-up if that script's default path is ever relied on.
+
+**`restore-drill-from-b2.sh`** wraps it the same way `backup-and-push.sh`
+wraps `backup-db.mjs` - same `MULTI_TENANT`-branched remote path, same
+latest-`.db`-by-lexicographic-sort selection (filenames are ISO-8601
+timestamped), same scratch-dir-and-cleanup pattern. Safe to run as its
+own Coolify Scheduled Task on the same schedule/container as
+`backup-and-push.sh`.
+
+**Verification performed this session (local, not yet run against a
+real production B2 backup):** built a synthetic `console.db` locally via
+`lib/db/schema.sql`, ran `restore-drill.mjs` against it - passed all
+three checks. Separately confirmed the fail path: inserted a real
+`accounts` row into a second synthetic DB, ran the drill with
+`MULTI_TENANT` unset - correctly threw and exited 1 rather than starting
+silently. Not yet run against an actual B2-fetched production backup on
+the VPS - that's the next step to fully close this gap, same posture
+§57 was in before §58's real-bucket verification.
+
+Both new scripts wired into the Dockerfile the same way
+`backup-and-push.sh` was (`COPY` + `chmod +x`, before `USER node`) - the
+schema-copy dependency on `scripts/copy-standalone-assets.mjs`'s
+postbuild step (which places `lib/db/schema.sql` into
+`.next/standalone/lib/db/`) is noted inline in both the script's header
+and the Dockerfile comment.
 
