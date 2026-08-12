@@ -21,7 +21,20 @@
 # right instance. Reuses MULTI_TENANT rather than a new variable - it's
 # already set correctly and differently on this repo's two resources,
 # so no new per-resource Coolify configuration is needed.
+#
+# Retention: backup-db.mjs already prunes anything older than
+# BACKUP_RETENTION_DAYS (default 14) from the LOCAL /app/backups folder,
+# but nothing pruned what had already been pushed to B2 - remote storage
+# would otherwise grow forever, one snapshot per scheduled run,
+# indefinitely (confirmed as a real, not hypothetical, problem - a single
+# afternoon of manual debugging runs alone produced 6). Reuses the same
+# BACKUP_RETENTION_DAYS variable rather than a second one, so local and
+# remote retention can never drift out of sync with each other. Runs
+# after the push, not before, so an interrupted run never leaves the
+# remote with zero backups.
 set -e
+
+RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-14}"
 
 if [ "$MULTI_TENANT" = "true" ]; then
   REMOTE_MODE="saas"
@@ -29,5 +42,8 @@ else
   REMOTE_MODE="standalone"
 fi
 
+REMOTE_PATH=":b2,account=$blazeKeyID,key=$blazeLicenseServerAppKey:licenseServer/console/$REMOTE_MODE/"
+
 node scripts/backup-db.mjs
-rclone copy /app/backups ":b2,account=$blazeKeyID,key=$blazeLicenseServerAppKey:licenseServer/console/$REMOTE_MODE/"
+rclone copy /app/backups "$REMOTE_PATH"
+rclone delete "$REMOTE_PATH" --min-age "${RETENTION_DAYS}d"
