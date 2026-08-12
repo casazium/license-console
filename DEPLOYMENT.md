@@ -60,17 +60,19 @@ Once it's up, confirm it's actually serving: visit the Domain in a browser and c
 
 This console's own SQLite database matters more than it might look: under `MULTI_TENANT`, it's the *only* copy of every hosted tenant's encrypted `casazium/license` API key (`accounts.tenant_api_key_encrypted`). Lose it and every one of those tenants' licenses are stranded on that server with no way back in, even though the licenses themselves are untouched — there was previously no backup mechanism for it at all.
 
-**What's set up:** `scripts/backup-db.mjs` (present in the runtime image) takes a WAL-safe, integrity-checked snapshot of `DB_FILE` into `BACKUP_DIR` (`/app/backups` — a separate named volume, `console-backups`, from `console-data`, same reasoning as `casazium/license`'s own backup setup). Prunes snapshots older than `BACKUP_RETENTION_DAYS` (default 14).
+**What's set up:** `scripts/backup-db.mjs` (present in the runtime image) takes a WAL-safe, integrity-checked snapshot of `DB_FILE` into `BACKUP_DIR` (`/app/backups` — a separate named volume, `console-backups`, from `console-data`, same reasoning as `casazium/license`'s own backup setup). Prunes snapshots older than `BACKUP_RETENTION_DAYS` (default 14). A Coolify **Scheduled Task** runs `scripts/backup-and-push.sh` (which chains `backup-db.mjs` with an off-box push) daily on both resources (standalone + SaaS-tier) — confirmed live and working directly against the Backblaze B2 bucket's actual contents, not just clean exit codes (`PROJECT_STATUS.md` §57/§58).
 
-**What you still need to do:**
-
-1. Add a Coolify **Scheduled Task** for this service running `node scripts/backup-db.mjs` daily (env vars are already set in the compose file).
-2. Confirm `console-backups` is recognized as persistent storage.
-3. Push `/app/backups` off-box for real disaster protection — same caveat as `casazium/license`'s own Backups section; not set up here, real infrastructure to provision separately.
+**Off-box destination:** Backblaze B2, pushed via `rclone` at the end of `backup-and-push.sh`, with remote retention (`rclone delete --min-age`) matching the local `BACKUP_RETENTION_DAYS` window. Destination path is branched on `MULTI_TENANT` (`licenseServer/console/saas/` vs. `.../standalone/`) so the two resources' backups never land in the same place. Full detail, including two real bugs found and fixed while setting this up, in `PROJECT_STATUS.md` §58.
 
 This matters for self-hosted deployments too, just less acutely — self-hosted mode barely touches this database at all (every real write is gated behind `MULTI_TENANT`, see the persistent-storage note in step 4 above), so back it up if you've turned SaaS mode on, skip it otherwise.
 
-**Restore procedure** — same shape as `casazium/license`'s own (see that repo's `DEPLOYMENT.md` for the full walkthrough): stop the service, copy the chosen `console-<timestamp>.db` from `/app/backups` over `/app/data/console.db`, remove any stale `-wal`/`-shm` siblings, restart, and verify by signing in and confirming a tenant's licenses still load through their API key. Rehearsed against a scratch database during this work (backup → integrity-checked → restore → verified round-trips real data correctly) — not yet rehearsed against this specific deployment's real container/volume names.
+**Restore procedure** — same shape as `casazium/license`'s own (see that repo's `DEPLOYMENT.md` for the full walkthrough): stop the service, copy the chosen `console-<timestamp>.db` from `/app/backups` over `/app/data/console.db`, remove any stale `-wal`/`-shm` siblings, restart, and verify by signing in and confirming a tenant's licenses still load through their API key.
+
+**Automated restore verification:** `scripts/restore-drill.mjs` runs this same round-trip in an isolated scratch location (never touches the live DB) - integrity check, row counts, and a re-apply of `lib/db/schema.sql` plus the same `MULTI_TENANT` fail-loud guard `lib/db.ts` runs on every real connection open, against a real backup file. `scripts/restore-drill-from-b2.sh` wraps it to pull the latest actual B2 backup first, and is safe to run on the live host as its own Coolify Scheduled Task. Verified locally against synthetic/scratch data (`PROJECT_STATUS.md` §59) - **not yet rehearsed against this specific deployment's real container/volume names.** Do that once for real before relying on it:
+
+```bash
+docker exec <container> sh scripts/restore-drill-from-b2.sh
+```
 
 ## Deploying the SaaS-tier instance (SaaS-C1)
 
