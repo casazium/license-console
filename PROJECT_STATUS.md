@@ -1,10 +1,9 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-11 (stale-branch cleanup: `saas-tier` confirmed
-fully merged into `main`, local copy deleted — see §56; also fixed a
-local-clone git-config defect that produced a false "31 unpushed
-commits" alarm along the way)
+Last updated: 2026-08-12 (off-box backup gap: Coolify Scheduled Tasks
+now running on both resources, `rclone` added for the B2 push — not yet
+wired up end to end, see §57)
 
 > Admin console UI for `casazium/license`. This document exists so work can resume
 > across sessions without re-deriving decisions already made. Update it whenever
@@ -3647,4 +3646,39 @@ matching the same limitation hit in `casazium/license` and previously in
 `casazium/casazium`). `origin/saas-tier` still exists on GitHub; the
 operator needs to delete it directly there — confirmed safe to do so by
 the verification above.
+
+## 57. Off-box backup gap: Coolify Scheduled Tasks live on both resources; `rclone` added for the B2 push (2026-08-12)
+
+Companion to `casazium/license`'s own `PROJECT_STATUS.md` §72 — same
+gap, same fix, same session. `casazium/license`'s `SUPERADMIN_REPORTING_DESIGN.md`
+§10 named the off-box backup gap for both repos' production databases as
+still-open and independent from the reporting design; this is that work
+starting.
+
+**Local, on-schedule backups now confirmed running.** `scripts/backup-db.mjs`
+already existed and worked (built for `BETA-2`) but had no Scheduled Task
+triggering it - operator created one (`node scripts/backup-db.mjs`,
+daily) on both resources this repo runs (standalone and SaaS-tier) and
+confirmed each ran cleanly (integrity check passed, per the actual
+task-execution log).
+
+**Off-box push, mechanism only so far.** Same B2 setup as
+`casazium/license`: one shared bucket (`licenseServer`), one Application
+Key scoped only to backup-push permissions
+(`blazeKeyID`/`blazeLicenseServerAppKey`, server-wide Coolify variables
+covering both repos' resources on both hosts) - operator's deliberate
+choice of one shared credential over per-service ones, judged an
+acceptable simpler tradeoff given the bounded blast radius of a leaked
+backup-push-only key. Added `rclone` to the runtime image (`Dockerfile`)
+so the push runs from inside the same container the Scheduled Task
+already executes in. **Could not verify the `apk add` install via a real
+build** - no Docker daemon available in this session, and this session's
+own network policy blocked a direct check against Alpine's package
+mirror - relying on `rclone` being a long-standing, ordinarily-available
+Alpine community package rather than a verified build; confirm via the
+actual Coolify build log on redeploy.
+
+**Not yet done**: the Scheduled Task commands on both resources still
+need updating to actually invoke `rclone` after the backup step, once
+this Dockerfile change is deployed and confirmed to build cleanly.
 

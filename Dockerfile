@@ -42,6 +42,13 @@ COPY --from=builder --chown=node:node /app/.next/static ./.next/static
 # includes it.
 COPY --from=builder --chown=node:node /app/scripts/backup-db.mjs ./scripts/backup-db.mjs
 
+# rclone (off-box backup push, beta-readiness follow-up, same as
+# casazium/license's own Dockerfile): runs from inside this container via
+# a Coolify Scheduled Task. No config file baked in; the B2 key/secret are
+# read from the blazeKeyID/blazeLicenseServerAppKey environment variables
+# Coolify injects, referenced directly on the Scheduled Task's command line.
+RUN apk add --no-cache rclone
+
 # Run as the non-root `node` user this base image already provides, rather
 # than root. /app/data and /app/backups must be chowned ahead of time so
 # the named volumes Coolify mounts there (docker-compose-coolify.yml,
