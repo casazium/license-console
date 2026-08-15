@@ -28,6 +28,7 @@ export type {
   RecentActivation,
   RecentlyIssuedLicense,
   SeatUtilization,
+  SelfLicenseStatus,
 } from './license-types';
 
 export type BackendMode = 'mock' | 'live';
@@ -114,3 +115,5 @@ export const createCheckoutSession: typeof mock.createCheckoutSession = (plan, t
   client().createCheckoutSession(plan, tenantApiKey);
 export const completeStubCheckout: typeof mock.completeStubCheckout = (plan, tenantApiKey) =>
   client().completeStubCheckout(plan, tenantApiKey);
+export const getSelfLicenseStatus: typeof mock.getSelfLicenseStatus = (tenantApiKey) =>
+  client().getSelfLicenseStatus(tenantApiKey);

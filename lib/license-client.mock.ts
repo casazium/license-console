@@ -16,6 +16,7 @@ import type {
   RecentActivation,
   RecentlyIssuedLicense,
   SeatUtilization,
+  SelfLicenseStatus,
 } from './license-types';
 
 type Store = {
@@ -377,4 +378,13 @@ export async function createCheckoutSession(
 
 export async function completeStubCheckout(plan: string, _tenantApiKey?: string): Promise<BillingStatus> {
   return { status: 'active', plan };
+}
+
+// Standalone/demo mode never runs against a real casazium/license
+// backend, so there's no real Tier-A/Tier-B distinction to report - fixed
+// 'tier-a' matches the common real-world case (most deployments aren't
+// Tier-B) and keeps the dashboard's self-license indicator hidden in
+// demo mode, same as it would be for any ordinary live Tier-A backend.
+export async function getSelfLicenseStatus(_tenantApiKey?: string): Promise<SelfLicenseStatus> {
+  return { tier: 'tier-a' };
 }

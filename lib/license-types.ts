@@ -68,6 +68,22 @@ export type RecentlyIssuedLicense = {
   issued_at: string;
 };
 
+// Mirrors casazium/license's GET /v1/self-license/status response
+// exactly (src/lib/self-license-client.js's getSelfLicenseStatus()) -
+// 'tier-a' covers every non-Tier-B backend, which is most deployments;
+// 'tier-b' always carries a lastOutcome, null only before the connected
+// backend's very first call-home attempt has resolved.
+export type SelfLicenseOutcome = {
+  outcome: 'success' | 'failure' | 'misconfigured' | 'load-error';
+  at: string;
+  expiresAt?: string;
+  error?: string;
+};
+
+export type SelfLicenseStatus =
+  | { tier: 'tier-a' }
+  | { tier: 'tier-b'; lastOutcome: SelfLicenseOutcome | null };
+
 export type IssueLicenseInput = {
   product_id: string;
   tier: string;

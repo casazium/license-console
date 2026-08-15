@@ -45,6 +45,7 @@ import type {
   RecentActivation,
   RecentlyIssuedLicense,
   SeatUtilization,
+  SelfLicenseStatus,
 } from './license-types';
 
 // The real backend's own GET /list-licenses limit ceiling (see
@@ -434,6 +435,19 @@ export async function completeStubCheckout(plan: string, tenantApiKey?: string):
   );
   if (!res.ok) {
     await throwForFailedResponse(res, 'Failed to complete stub checkout');
+  }
+  return res.json();
+}
+
+// Beta-testing visibility indicator - GET /v1/self-license/status
+// (casazium/license's src/routes/self-license-status.js). Whole-instance
+// state, not tenant-scoped data, but keeps the same trailing
+// `tenantApiKey` signature as every export above for consistency -
+// resolveApiKey() already does the right thing with it either way.
+export async function getSelfLicenseStatus(tenantApiKey?: string): Promise<SelfLicenseStatus> {
+  const res = await liveFetch('/self-license/status', {}, tenantApiKey);
+  if (!res.ok) {
+    await throwForFailedResponse(res, 'Failed to get self-license status');
   }
   return res.json();
 }

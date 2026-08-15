@@ -1,7 +1,18 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-15 (§60: docker-compose-coolify.yml audited
+Last updated: 2026-08-15 (§61: new SelfLicenseIndicator on the
+post-login dashboard - a beta-testing visibility badge for whether
+casazium/license's Tier-B self-license call-home is actually
+succeeding, consuming that repo's new GET /v1/self-license/status
+(its own PROJECT_STATUS.md §125). Renders nothing for the common
+tier-a case, deliberately placed post-login not on the login page.
+Verified live: a real console dev instance, pointed at a real
+casazium/license backend, correctly fetched and rendered the tier-a
+case end to end - confirmed via the backend's own request logs
+showing two real 200s for GET /v1/self-license/status, not assumed.
+npm run build and npm run lint both clean.)
+2026-08-15 (§60: docker-compose-coolify.yml audited
 against every real process.env read in the codebase - no gap found,
 unlike casazium/license's own compose file the same day (that repo's
 PROJECT_STATUS.md §122). A real self-hosted console resource was then
@@ -3876,4 +3887,70 @@ Documentation-only in this repo (no code or compose file changed - the
 audit found nothing to fix). Full detail of the `casazium/license`-side
 work this depended on lives in that repo's own PROJECT_STATUS.md
 §116-§123.
+
+## 61. SelfLicenseIndicator - a beta-testing visibility badge for casazium/license's self-license call-home status (2026-08-15)
+
+Continuation of the same session. Operator's beta-testing idea: an
+indicator on "the login page" showing whether the connected
+`casazium/license` backend's self-license has "been verified lately."
+Sketched first, since "the login page" specifically meant
+pre-authentication visibility - flagged that as a minor information
+leak (a coarse subscription-status signal visible to anyone who
+reaches the URL, logged in or not) and proposed the post-login
+dashboard instead, matching where `BETA-1`'s tenant-API-key surface
+already lives. Built on confirmation.
+
+**New types** (`lib/license-types.ts`): `SelfLicenseOutcome`/
+`SelfLicenseStatus`, mirroring `casazium/license`'s
+`GET /v1/self-license/status` response shape exactly (that repo's own
+PROJECT_STATUS.md §125).
+
+**New client function, all three layers** (mode dispatcher pattern,
+same as every other export): `license-client.mock.ts` returns a fixed
+`{tier: 'tier-a'}` (standalone/demo mode never runs against a real
+backend, so there's no real Tier-A/B distinction - keeps the indicator
+correctly hidden in demo mode); `license-client.live.ts` does a real
+`GET /self-license/status` through the existing `liveFetch()`/
+`resolveApiKey()` machinery, no new auth path; `license-client.ts`
+re-exports through `client()` like every other function.
+
+**New component**, `components/SelfLicenseIndicator.tsx` - an async
+Server Component, fetched independently of the dashboard's own
+`Promise.all` batch (`app/(app)/dashboard/page.tsx`) specifically so a
+failure to reach this one endpoint can never take down the rest of the
+dashboard (a bare `try/catch` around the fetch, returns `null` on any
+error) - same fail-soft posture as the backend mechanism it displays.
+Renders nothing for `tier: 'tier-a'` (the common case, matching
+`MockDataNotice`'s own "decide my own visibility" pattern), a neutral
+badge before the first call-home attempt resolves, green with the
+verified timestamp + expiry on success, red with the timestamp + error
+text on failure. Uses `lib/format.ts`'s existing `formatDateTime()`
+(fixed UTC, not relative time) rather than inventing a new time
+format - this codebase already deliberately avoids relative-time
+strings for hydration-safety/cross-page-consistency reasons documented
+in that file's own header comment.
+
+**Verified for real, not just type-checked.** `npm run lint` and
+`npm run build` (a real `next build`, full TypeScript + route
+generation) both clean. Then two live smoke tests, both against real
+running processes, not simulated:
+
+1. **Mock mode**: booted the dev server with no `LICENSE_API_URL`/
+   `LICENSE_ADMIN_API_KEY` set, logged in for real (`POST /api/login`
+   with a real session cookie), fetched `/dashboard` - `200`, no
+   "self-license" text anywhere in the rendered HTML, confirming the
+   indicator correctly renders `null` in demo mode.
+2. **Live mode, cross-repo**: booted a real `casazium/license` backend
+   (`node src/app.js`, real generated secrets, no compiled self-license
+   module) alongside this console pointed at it via real
+   `LICENSE_API_URL`/`LICENSE_ADMIN_API_KEY`, confirmed
+   `GET /v1/self-license/status` directly (`{"tier":"tier-a"}`, `200`),
+   then logged into the console for real and fetched `/dashboard` -
+   `200`, still no visible badge (correct - `tier-a`), and confirmed via
+   the *backend's own request logs* that two real `GET /v1/self-license/
+   status` calls actually arrived and both returned genuine `200`s, not
+   a silently-swallowed error masquerading as "nothing to show."
+
+Both smoke-test processes and their scratch DB/env files were killed
+and deleted afterward - nothing left running, no stray files.
 
