@@ -1,7 +1,14 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-12 (restore drill added - the backup pipeline had
+Last updated: 2026-08-15 (§60: docker-compose-coolify.yml audited
+against every real process.env read in the codebase - no gap found,
+unlike casazium/license's own compose file the same day (that repo's
+PROJECT_STATUS.md §122). A real self-hosted console resource was then
+configured end to end against casazium/license's new SLS/Tier-B
+backend and a real ADMIN_API_KEY/LICENSE_ADMIN_API_KEY mismatch was
+diagnosed and fixed live)
+2026-08-12 (restore drill added - the backup pipeline had
 never actually been used to restore anything; see §59. §58 closed the
 off-box push gap - real B2 pushes confirmed, plus a standalone/SaaS
 commingling bug, a missing remote-retention gap, and a local
@@ -3805,4 +3812,68 @@ schema-copy dependency on `scripts/copy-standalone-assets.mjs`'s
 postbuild step (which places `lib/db/schema.sql` into
 `.next/standalone/lib/db/`) is noted inline in both the script's header
 and the Dockerfile comment.
+
+## 60. docker-compose-coolify.yml audited (no gap found); real self-hosted console deployed against the new SLS backend, one live auth mismatch found and fixed (2026-08-15)
+
+Companion session to `casazium/license`'s own PROJECT_STATUS.md §122/
+§123 - operator had just fixed a real `docker-compose-coolify.yml` gap
+in that repo (missing `build.args:`/`environment:` entries broke a
+Tier-B/SLS deployment) and asked for the same audit here.
+
+**Audit found no equivalent gap.** Unlike `casazium/license`'s
+Dockerfile, this repo's `Dockerfile` declares no build ARGs at all
+(only `ENV NODE_ENV=production`/`ENV HOSTNAME=0.0.0.0`, both baked) -
+structurally, there's no operator-configurable build-time switch here,
+so the specific "build arg never forwarded" bug class that hit
+`casazium/license` can't occur in this repo. Every real
+`process.env.*` read across the whole codebase (not just
+`lib/config.ts`) was grepped and cross-checked against
+`docker-compose-coolify.yml`'s `environment:` list: all 18 operator-
+configurable runtime vars present and correctly placed; `DB_FILE`/
+`HOSTNAME`/`BACKUP_DIR` correctly present as literals matching the
+image's `WORKDIR`/volume mounts; `NODE_ENV` correctly absent (baked
+into the image); `APP_VERSION`/`GIT_SHA` correctly absent (computed at
+build time in `next.config.mjs`, not real env vars); `BACKUP_RETENTION_DAYS`
+correctly absent (optional, has a working default); `NEXT_RUNTIME`
+correctly absent (Next.js-internal). Confirmed with `docker compose
+config` - valid YAML, every `${VAR}` resolves correctly. Nothing
+changed in this repo as a result - a real, verified "already correct"
+finding, not just an absence of complaints.
+
+**A real self-hosted console resource was then configured end to end**
+against `casazium/license`'s new SLS/Tier-B backend (that repo's
+PROJECT_STATUS.md §123), walked through variable-by-variable: `MULTI_TENANT`/
+`ACCOUNT_ENCRYPTION_KEY`/`EMAIL_PROVIDER`/`RESEND_API_KEY`/`EMAIL_FROM`
+all correctly left blank for self-hosted mode (confirmed against
+`lib/email/index.ts`'s exact fail-loud gate -
+`NODE_ENV === 'production' && isMultiTenant() && !rawProvider` - which
+self-hosted mode never trips); `LICENSE_STANDALONE_MODE` left blank
+(live backend, not demo mode); `LICENSE_API_URL` initially
+miscommunicated as the wrong resource (`mls.casazium.com`, Casazium's
+internal master resource) before being corrected to the actual SLS
+resource's own domain (`sls.casazium.com`) - a real, easy-to-make
+mix-up given both MLS and SLS run the identical codebase, just as
+different Coolify resources with different jobs.
+
+**A real live bug found and fixed during first boot:** the console's
+dashboard threw `LicenseApiError: Unauthorized` (`status: 403`) on
+`getRecentlyIssuedLicenses`/`getRecentActivations`. Traced the exact
+error text back to `casazium/license`'s `src/hooks/require-admin.js`,
+which returns precisely `403 { error: 'Unauthorized' }` on any
+`ADMIN_API_KEY` mismatch - confirming the request reached the SLS
+backend fine (not a `LICENSE_API_URL`/routing/CORS problem) and the
+failure was `LICENSE_ADMIN_API_KEY` not matching that resource's own
+`ADMIN_API_KEY`. Also checked, before handing back a diagnosis: this
+repo's `resolveApiKey()` trims `LICENSE_ADMIN_API_KEY` before sending
+it, but `require-admin.js` does *not* trim `process.env.ADMIN_API_KEY`
+before comparing - a real asymmetry that could make an accidental
+trailing newline in the SLS resource's own Coolify variable
+unmatchable no matter how carefully the console's side is copied.
+Operator resolved it directly; exact root cause on their end not
+reported back, only confirmed fixed.
+
+Documentation-only in this repo (no code or compose file changed - the
+audit found nothing to fix). Full detail of the `casazium/license`-side
+work this depended on lives in that repo's own PROJECT_STATUS.md
+§116-§123.
 
