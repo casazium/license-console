@@ -55,6 +55,27 @@ export async function SelfLicenseIndicator({ tenantApiKey }: { tenantApiKey?: st
     );
   }
 
+  // A real, meaningfully different state from both 'success' and no
+  // lastOutcome at all: the backend found a still-valid cached
+  // credential on this boot and skipped a fresh call-home entirely (see
+  // that repo's own recordOutcome('restored') call site) - not "never
+  // checked in," but also not a fresh verification this exact boot.
+  // `at` is honestly labeled as this boot's confirmation time, not the
+  // credential's original issuance time, since the backend has no way
+  // to report the latter (no napi export surfaces it).
+  if (lastOutcome.outcome === 'restored') {
+    return (
+      <Group gap="xs" mb="md">
+        <Badge color="blue" variant="light">
+          Self-license: using cached credential
+        </Badge>
+        <Text size="xs" c="dimmed">
+          confirmed still valid as of {formatDateTime(lastOutcome.at)}
+        </Text>
+      </Group>
+    );
+  }
+
   return (
     <Group gap="xs" mb="md">
       <Badge color="red" variant="light">

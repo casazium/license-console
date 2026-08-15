@@ -1,7 +1,15 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-15 (§61: new SelfLicenseIndicator on the
+Last updated: 2026-08-15 (§62: added a 'restored' outcome branch to
+SelfLicenseIndicator, matching casazium/license's own §126 fix - a
+redeploy landing inside the backend's 14-day credential validity
+window previously showed the same "pending first check-in" badge as a
+genuinely fresh Tier-B build that had never checked in, even though
+the mechanism was actually healthy. New blue badge: "using cached
+credential", honestly labeled with the boot's own confirmation time,
+not a fabricated expiry. npm run lint/build both clean.)
+2026-08-15 (§61: new SelfLicenseIndicator on the
 post-login dashboard - a beta-testing visibility badge for whether
 casazium/license's Tier-B self-license call-home is actually
 succeeding, consuming that repo's new GET /v1/self-license/status
@@ -3953,4 +3961,36 @@ running processes, not simulated:
 
 Both smoke-test processes and their scratch DB/env files were killed
 and deleted afterward - nothing left running, no stray files.
+
+## 62. SelfLicenseIndicator's 'restored' outcome - closing the same blind spot found in casazium/license's own §126 (2026-08-15)
+
+Continuation of the same session, same day as §61. Operator asked
+whether a redeploy of the real SLS instance would show "pending first
+check-in" on the new badge. `casazium/license`'s own investigation
+(that repo's PROJECT_STATUS.md §126) found a real gap: a redeploy
+landing inside the backend's 14-day credential validity window
+restores a still-valid cached credential and skips a fresh call-home
+entirely, leaving `lastOutcome` `null` - indistinguishable from a
+genuinely fresh Tier-B build that had never checked in, even though
+the mechanism is actually healthy. That repo added a new `'restored'`
+outcome to close it; this is the console-side half.
+
+**`lib/license-types.ts`**: `SelfLicenseOutcome['outcome']` gained
+`'restored'`, with a comment explaining why it's meaningfully
+different from both `'success'` and a null `lastOutcome` - and why it
+never carries `expiresAt` (the backend has no way to know the restored
+credential's real expiry, see that repo's own `recordOutcome()` call
+site).
+
+**`components/SelfLicenseIndicator.tsx`**: new branch, a blue badge
+reading "Self-license: using cached credential", labeled "confirmed
+still valid as of `<time>`" - deliberately not claiming to know when
+the credential was originally verified, only that this boot confirmed
+it's still trusted. Placed between the `'success'` branch and the
+catch-all failure/misconfigured/load-error branch.
+
+`npm run lint`/`npm run build` both clean (no dedicated test suite in
+this repo, per the SaaS-B2-era convention documented elsewhere in this
+file - `npm run build`'s real TypeScript pass across the whole app is
+the verification layer here).
 

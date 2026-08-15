@@ -73,8 +73,20 @@ export type RecentlyIssuedLicense = {
 // 'tier-a' covers every non-Tier-B backend, which is most deployments;
 // 'tier-b' always carries a lastOutcome, null only before the connected
 // backend's very first call-home attempt has resolved.
+//
+// 'restored': a real, meaningfully different state from 'success' - the
+// backend found a still-valid cached credential on boot and skipped a
+// fresh call-home entirely, so `at` is this boot's confirmation time,
+// not the original issuance time, and `expiresAt` is never present
+// here (no way for the backend to know it - see that repo's own
+// recordOutcome() call site for why). Distinguishing this from a plain
+// null lastOutcome is the whole point: "verified previously, currently
+// trusted" reads very differently from "never checked in at all" on a
+// beta-testing indicator, even though both would otherwise look
+// identical on every redeploy that lands inside the 14-day credential
+// validity window.
 export type SelfLicenseOutcome = {
-  outcome: 'success' | 'failure' | 'misconfigured' | 'load-error';
+  outcome: 'success' | 'failure' | 'misconfigured' | 'load-error' | 'restored';
   at: string;
   expiresAt?: string;
   error?: string;
