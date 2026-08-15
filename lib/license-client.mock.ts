@@ -176,12 +176,16 @@ export async function listLicenses(
   // mock.xxx`) - unused here, mock mode has no real tenant concept.
   _tenantApiKey?: string
 ): Promise<ListLicensesResult> {
-  const { status, product_id, limit = 10, offset = 0 } = params;
+  const { status, product_id, issued_to, limit = 10, offset = 0 } = params;
   const { licenses, activations } = getStore();
 
   const filtered = licenses.filter((license) => {
     if (status && license.status !== status) return false;
     if (product_id && license.product_id !== product_id) return false;
+    // Mirrors the real backend's case-insensitive substring match (see
+    // casazium/license's src/routes/list-licenses.js) - no wildcard
+    // escaping needed here since this is a plain substring check, not SQL.
+    if (issued_to && !license.issued_to.toLowerCase().includes(issued_to.toLowerCase())) return false;
     return true;
   });
 

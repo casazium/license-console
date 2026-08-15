@@ -1,7 +1,23 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-15 (§62: added a 'restored' outcome branch to
+Last updated: 2026-08-15 (§63: pre-launch gap analysis finding #4 -
+added a "Customer" search box to the Licenses page, alongside the
+existing Status/Product filters (same URL-param-driven pattern as the
+existing product_id TextInput in LicensesFilters.tsx). Threads issued_to
+through ListLicensesParams -> license-client.live.ts's
+fetchRawLicenses (as a new query param) and license-client.mock.ts (a
+case-insensitive substring filter matching the real backend's own new
+LIKE-based match - see casazium/license's own PROJECT_STATUS.md §130
+for the server-side half of this fix). npm run lint and tsc --noEmit
+both clean; npm run build succeeds. Verified live in a real browser
+(Playwright against the pre-installed Chromium, self-hosted admin
+login, mock backend data): the search box renders, a non-matching
+search correctly shows the existing "No licenses match these filters"
+empty state, a substring search matches the expected rows, and an
+ALL-CAPS search still matches - confirming case-insensitivity survives
+the full path through the UI, not just the backend route in isolation.)
+2026-08-15 (§62: added a 'restored' outcome branch to
 SelfLicenseIndicator, matching casazium/license's own §126 fix - a
 redeploy landing inside the backend's 14-day credential validity
 window previously showed the same "pending first check-in" badge as a

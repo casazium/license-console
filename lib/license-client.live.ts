@@ -127,6 +127,7 @@ async function fetchRawLicenses(
   params: {
     status?: 'active' | 'revoked';
     product_id?: string;
+    issued_to?: string;
     limit: number;
     offset: number;
   },
@@ -135,6 +136,7 @@ async function fetchRawLicenses(
   const query = new URLSearchParams();
   if (params.status) query.set('status', params.status);
   if (params.product_id) query.set('product_id', params.product_id);
+  if (params.issued_to) query.set('issued_to', params.issued_to);
   query.set('limit', String(params.limit));
   query.set('offset', String(params.offset));
 
@@ -173,8 +175,11 @@ export async function listLicenses(
   params: ListLicensesParams = {},
   tenantApiKey?: string
 ): Promise<ListLicensesResult> {
-  const { status, product_id, limit = 10, offset = 0 } = params;
-  const { licenses, total } = await fetchRawLicenses({ status, product_id, limit, offset }, tenantApiKey);
+  const { status, product_id, issued_to, limit = 10, offset = 0 } = params;
+  const { licenses, total } = await fetchRawLicenses(
+    { status, product_id, issued_to, limit, offset },
+    tenantApiKey
+  );
 
   return {
     licenses: licenses.map((license) => ({

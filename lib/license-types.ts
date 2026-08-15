@@ -120,6 +120,10 @@ export type LicenseListItem = License & { activations_used: number };
 export type ListLicensesParams = {
   status?: 'active' | 'revoked';
   product_id?: string;
+  // Customer search (pre-launch gap analysis finding #4): case-insensitive
+  // substring match against issued_to on the backend (see casazium/license's
+  // src/routes/list-licenses.js).
+  issued_to?: string;
   limit?: number;
   offset?: number;
 };

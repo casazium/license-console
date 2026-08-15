@@ -6,9 +6,11 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 export function LicensesFilters({
   status,
   productId,
+  issuedTo,
 }: {
   status?: string;
   productId?: string;
+  issuedTo?: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -38,6 +40,18 @@ export function LicensesFilters({
         value={status ?? null}
         onChange={(value) => updateParam('status', value)}
         w={160}
+      />
+      <TextInput
+        label="Customer"
+        placeholder="Search by email"
+        defaultValue={issuedTo ?? ''}
+        onBlur={(event) => updateParam('issued_to', event.currentTarget.value.trim() || null)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.currentTarget.blur();
+          }
+        }}
+        w={220}
       />
       {/*
         Plain text, not a dropdown: the real backend has no products

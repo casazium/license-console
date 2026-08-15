@@ -16,13 +16,14 @@ const PAGE_SIZE = 10;
 export default async function LicensesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; status?: string; product_id?: string }>;
+  searchParams: Promise<{ page?: string; status?: string; product_id?: string; issued_to?: string }>;
 }) {
   const params = await searchParams;
   const page = Math.max(1, Number(params.page) || 1);
   const status = params.status === 'active' || params.status === 'revoked' ? params.status : undefined;
   const productId = params.product_id?.trim() || undefined;
-  const hasFilters = Boolean(status || productId);
+  const issuedTo = params.issued_to?.trim() || undefined;
+  const hasFilters = Boolean(status || productId || issuedTo);
 
   // SaaS-B2: see dashboard/page.tsx's matching comment.
   const { identity, tenantApiKey } = await requireSessionWithTenantKey();
@@ -36,6 +37,7 @@ export default async function LicensesPage({
       {
         status,
         product_id: productId,
+        issued_to: issuedTo,
         limit: PAGE_SIZE,
         offset: (page - 1) * PAGE_SIZE,
       },
@@ -67,7 +69,7 @@ export default async function LicensesPage({
         <Title order={2}>Licenses</Title>
         <IssueLicenseButton />
       </Group>
-      <LicensesFilters status={status} productId={productId} />
+      <LicensesFilters status={status} productId={productId} issuedTo={issuedTo} />
       <LicensesTable licenses={licenses} hasFilters={hasFilters} />
       {total > 0 && (
         <Group justify="space-between" mt="md">
