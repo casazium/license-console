@@ -3,7 +3,20 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Anchor, Button, Group, NumberInput, Select, Stack, Textarea, TextInput, Title } from '@mantine/core';
+import {
+  Anchor,
+  Button,
+  Fieldset,
+  Group,
+  NumberInput,
+  Select,
+  SimpleGrid,
+  Stack,
+  TagsInput,
+  Textarea,
+  TextInput,
+  Title,
+} from '@mantine/core';
 import { DateInput, TimeInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
@@ -11,6 +24,63 @@ import { issueLicenseAction } from './actions';
 import { brandButtonStyle } from '@/components/brandButtonStyle';
 import { US_TIMEZONE_OPTIONS, zonedDateTimeToIso } from '@/lib/timezone';
 import { notifyRateLimited, notifyOverQuota, notifyPaymentFailed, notifyProductIdTaken } from '@/lib/notify';
+import type { LicenseLimits } from '@/lib/license-client';
+
+// Mirrors casazium/license's own ALLOWED_LIMIT_KEYS numeric subset
+// exactly (that repo's src/lib/validateLicenseLimits.js) - `features`
+// is handled separately below since it's the one array-of-strings
+// exception on that same allow-list, not a NumberInput.
+const NUMERIC_LIMIT_FIELDS: { key: keyof Omit<LicenseLimits, 'features'>; label: string }[] = [
+  { key: 'users', label: 'Users' },
+  { key: 'seats', label: 'Seats' },
+  { key: 'admins', label: 'Admins' },
+  { key: 'projects', label: 'Projects' },
+  { key: 'environments', label: 'Environments' },
+  { key: 'tenants', label: 'Tenants' },
+  { key: 'api_calls_per_day', label: 'API calls / day' },
+  { key: 'rate_limit_rps', label: 'Rate limit (req/s)' },
+  { key: 'concurrent_sessions', label: 'Concurrent sessions' },
+];
+
+// '' (not undefined) is Mantine NumberInput's own empty-value
+// representation - kept distinct from 0 so a blank field means "no
+// limit set" (the key is omitted from the submitted limits object
+// entirely), not "limit is zero" (which would mean no access at all).
+type LimitsFormValues = Record<(typeof NUMERIC_LIMIT_FIELDS)[number]['key'], number | ''> & {
+  features: string[];
+};
+
+const INITIAL_LIMITS: LimitsFormValues = {
+  users: '',
+  seats: '',
+  admins: '',
+  projects: '',
+  environments: '',
+  tenants: '',
+  api_calls_per_day: '',
+  rate_limit_rps: '',
+  concurrent_sessions: '',
+  features: [],
+};
+
+// Only keys the admin actually filled in are included - an omitted key
+// means "not enforced" to the backend (validateLicenseLimits.js only
+// validates keys present in the object), not "limit is zero". Returns
+// undefined (not {}) when nothing was set, so issueLicenseAction's
+// payload omits `limits` entirely for the common case of no limits.
+function buildLimits(values: LimitsFormValues): LicenseLimits | undefined {
+  const limits: LicenseLimits = {};
+  for (const { key } of NUMERIC_LIMIT_FIELDS) {
+    const value = values[key];
+    if (value !== '') {
+      limits[key] = value;
+    }
+  }
+  if (values.features.length > 0) {
+    limits.features = values.features;
+  }
+  return Object.keys(limits).length > 0 ? limits : undefined;
+}
 
 type IssueLicenseValues = {
   product_id: string;
@@ -21,6 +91,7 @@ type IssueLicenseValues = {
   expires_timezone: string;
   max_activations: number;
   notes: string;
+  limits: LimitsFormValues;
 };
 
 function todayDateString(): string {
@@ -65,6 +136,7 @@ export function IssueLicenseForm({
       expires_timezone: 'America/New_York',
       max_activations: 1,
       notes: '',
+      limits: INITIAL_LIMITS,
     },
     validate: {
       product_id: (value) => (value.trim() ? null : 'Required'),
@@ -89,6 +161,7 @@ export function IssueLicenseForm({
         ),
         max_activations: values.max_activations,
         notes: values.notes.trim() || undefined,
+        limits: buildLimits(values.limits),
       });
       if (!result.ok) {
         // SaaS-B4: explicit mapping, not a generic "something went wrong" -
@@ -156,6 +229,27 @@ export function IssueLicenseForm({
             minRows={2}
             {...form.getInputProps('notes')}
           />
+          <Fieldset legend="Limits (optional)">
+            <Stack gap="sm">
+              <SimpleGrid cols={2}>
+                {NUMERIC_LIMIT_FIELDS.map(({ key, label }) => (
+                  <NumberInput
+                    key={key}
+                    label={label}
+                    placeholder="No limit"
+                    min={0}
+                    {...form.getInputProps(`limits.${key}`)}
+                  />
+                ))}
+              </SimpleGrid>
+              <TagsInput
+                label="Features"
+                description="Press Enter after each feature flag to add it"
+                placeholder="Add a feature flag"
+                {...form.getInputProps('limits.features')}
+              />
+            </Stack>
+          </Fieldset>
           <Button type="submit" loading={submitting} style={brandButtonStyle}>
             {submitLabel}
           </Button>

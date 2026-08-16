@@ -96,6 +96,25 @@ export type SelfLicenseStatus =
   | { tier: 'tier-a' }
   | { tier: 'tier-b'; lastOutcome: SelfLicenseOutcome | null };
 
+// Mirrors casazium/license's own ALLOWED_LIMIT_KEYS exactly (that repo's
+// src/lib/validateLicenseLimits.js) - every key optional (an admin sets
+// only the limits that apply to a given product/tier; an absent key
+// means "not enforced", not "zero"), all non-negative integers except
+// `features`, which is the one array-of-strings exception on that
+// backend allow-list.
+export type LicenseLimits = {
+  users?: number;
+  seats?: number;
+  admins?: number;
+  projects?: number;
+  environments?: number;
+  tenants?: number;
+  api_calls_per_day?: number;
+  rate_limit_rps?: number;
+  concurrent_sessions?: number;
+  features?: string[];
+};
+
 export type IssueLicenseInput = {
   product_id: string;
   tier: string;
@@ -103,6 +122,7 @@ export type IssueLicenseInput = {
   expires_at: string;
   max_activations: number;
   notes?: string;
+  limits?: LicenseLimits;
 };
 
 // GET /list-licenses returns activations_count per row directly (a

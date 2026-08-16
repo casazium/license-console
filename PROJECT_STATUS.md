@@ -1,7 +1,31 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-15 (§63: pre-launch gap analysis finding #4 -
+Last updated: 2026-08-15 (§64: pre-launch gap analysis finding #6 -
+the "Issue License" form now exposes casazium/license's own `limits`
+object, which the backend has always accepted but this console never
+surfaced - an operator previously had no way to set a seat count, an
+API-calls-per-day cap, or any other usage limit except by calling
+POST /issue-license directly. New "Limits (optional)" fieldset: 9
+NumberInputs mirroring that repo's own ALLOWED_LIMIT_KEYS numeric
+subset exactly (users, seats, admins, projects, environments, tenants,
+api_calls_per_day, rate_limit_rps, concurrent_sessions), plus a
+TagsInput for `features` - the one array-of-strings exception on that
+same allow-list. A blank field is genuinely omitted from the submitted
+limits object (not sent as 0), matching validateLicenseLimits.js's own
+semantics: an absent key means "not enforced," not "limit is zero."
+IssueLicenseInput/LicenseLimits types added; license-client.live.ts's
+issueLicense already forwarded the whole input object verbatim, so no
+client-layer change was needed there. lint/tsc/build all clean.
+Verified live end to end (real browser, real console dev server, real
+casazium/license backend, not mocked): submitted seats=25,
+api_calls_per_day=5000, concurrent_sessions=10, features=[sso,
+advanced-reporting] with the rest left blank, then fetched the license
+back via GET /admin/license/:key and confirmed the stored limits
+object contained exactly those 4 keys with no zero-filled extras;
+separately confirmed the common no-limits-set path still issues
+cleanly and stores limits: {}.)
+2026-08-15 (§63: pre-launch gap analysis finding #4 -
 added a "Customer" search box to the Licenses page, alongside the
 existing Status/Product filters (same URL-param-driven pattern as the
 existing product_id TextInput in LicensesFilters.tsx). Threads issued_to

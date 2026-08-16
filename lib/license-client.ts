@@ -22,6 +22,7 @@ export type {
   ExpiringLicense,
   IssueLicenseInput,
   License,
+  LicenseLimits,
   LicenseListItem,
   ListLicensesParams,
   ListLicensesResult,
