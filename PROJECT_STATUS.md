@@ -1,7 +1,66 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-15 (§64: pre-launch gap analysis finding #6 -
+Last updated: 2026-08-16 (§65: pre-launch gap analysis finding #1 -
+the console side of the new license-update route (see casazium/license's
+own PROJECT_STATUS.md §131 for the backend route and the SQL-injection
+finding an independent design review caught before this was built). New
+"Edit terms" button on the license detail page, opening a modal to
+change expires_at (with a "Perpetual" checkbox), max_activations (with
+an "Unlimited seats" checkbox), and limits (reusing the exact Fieldset
+already built for the Issue License form). Always resends the full
+current form state on Save rather than computing a client-side partial
+diff - simpler and less surprising.
+
+Extracted the limits-editing form model (NUMERIC_LIMIT_FIELDS,
+buildLimits, INITIAL_LIMITS) and its Fieldset UI out of IssueLicenseForm.tsx
+into lib/limits-form.ts and components/LimitsFieldset.tsx respectively,
+now shared by both the issue form and the new edit-terms modal - one
+place to update if casazium/license's own ALLOWED_LIMIT_KEYS allow-list
+ever changes, not two.
+
+Fixed 4 pre-existing type/rendering gaps surfaced while building this
+(not all originally scoped, but load-bearing for this feature to work
+correctly):
+- License.expires_at was typed non-nullable (string) despite the
+  backend having supported null/perpetual for a while; License had no
+  limits field at all and a dead usage_limit/usage_count pair that
+  never matched what the live backend actually returns (only
+  license-client.mock.ts ever populated them) - the live detail page
+  rendered "undefined / undefined" for every real license's Usage line
+  until this fix, confirmed via a real browser test before and after.
+- lib/format.ts's formatDate/formatDateTime both used to construct
+  `new Date(iso)` unconditionally - new Date(null) is the Unix epoch,
+  not "never" - so a perpetual license's expiry silently rendered as
+  1970-01-01. Both now null-tolerant, rendering "Never".
+- max_activations is nullable too (null = unlimited seats, a state the
+  edit-terms route can now reach) - License.max_activations widened,
+  and both the detail page's and LicensesTable.tsx's seat badges now
+  render "Unlimited" instead of doing arithmetic against null.
+- A live browser test caught a second bug the design review didn't:
+  setting "Unlimited seats" and saving showed "0 / 0" instead of
+  "0 / Unlimited" on reload - traced to casazium/license's own
+  admin-license.js response schema still declaring max_activations as
+  plain `type: 'integer'`, silently coercing a real null DB value to 0
+  on the way out (fixed there, see that repo's own PROJECT_STATUS.md).
+
+New updateLicenseTerms client function (live + mock, dispatcher-typed
+per the existing convention) and updateLicenseTermsAction Server Action,
+following the established ActionResult<T> + requireSessionWithTenantKey()
++ markIfTenantRejected() shape. Revalidates the detail page, the list
+page (Expires/Seats columns), and the dashboard (expiring-soon and
+near-seat-limit widgets all derive from these same fields).
+
+Verified live end to end against a real running casazium/license
+backend (not mocked): confirmed the Usage line and seat badge no longer
+show the undefined/epoch/0-vs-unlimited bugs before touching anything;
+opened the modal and confirmed it prefills from the license's real
+current expires_at/max_activations/limits; saved with both "Perpetual"
+and "Unlimited seats" checked and confirmed "Expires at: Never" and
+"Seats: 0 / Unlimited" render correctly; re-opened and edited back to a
+real expiry and a changed limit value and confirmed both round-trip
+correctly. lint/tsc/build all clean.)
+2026-08-15 (§64: pre-launch gap analysis finding #6 -
 the "Issue License" form now exposes casazium/license's own `limits`
 object, which the backend has always accepted but this console never
 surfaced - an operator previously had no way to set a seat count, an

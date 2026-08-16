@@ -5,7 +5,7 @@ import { isRateLimited } from '@/lib/errors';
 import { requireSessionWithTenantKey, markIfTenantRejected } from '@/lib/tenant-context';
 import { MockDataNotice } from '@/components/MockDataNotice';
 import { RateLimitNotice } from '@/components/RateLimitNotice';
-import { ActivationsTable, NotesEditor, RevokeDeleteActions } from './LicenseActions';
+import { ActivationsTable, EditTermsButton, NotesEditor, RevokeDeleteActions } from './LicenseActions';
 
 export const dynamic = 'force-dynamic';
 
@@ -88,24 +88,37 @@ export default async function LicenseDetailPage({
           <Text size="sm" fw={700}>
             Seats:
           </Text>
-          <Badge
-            color={
-              activations.length >= license.max_activations
-                ? 'red'
-                : license.max_activations - activations.length <= 1
-                  ? 'yellow'
-                  : 'gray'
-            }
-            variant="light"
-          >
-            {activations.length} / {license.max_activations}
-          </Badge>
+          {license.max_activations === null ? (
+            <Badge color="gray" variant="light">
+              {activations.length} / Unlimited
+            </Badge>
+          ) : (
+            <Badge
+              color={
+                activations.length >= license.max_activations
+                  ? 'red'
+                  : license.max_activations - activations.length <= 1
+                    ? 'yellow'
+                    : 'gray'
+              }
+              variant="light"
+            >
+              {activations.length} / {license.max_activations}
+            </Badge>
+          )}
         </Group>
         <Text size="sm">
           <b>Usage:</b>{' '}
-          {license.usage_limit === null
-            ? license.usage_count
-            : `${license.usage_count} / ${license.usage_limit}`}
+          {Object.keys(license.limits).filter((k) => k !== 'features').length === 0 ? (
+            'No usage limits set'
+          ) : (
+            <>
+              {Object.entries(license.limits)
+                .filter(([metric]) => metric !== 'features')
+                .map(([metric, limit]) => `${metric}: ${license.usage[metric] ?? 0} / ${limit}`)
+                .join(', ')}
+            </>
+          )}
         </Text>
         {license.revoked_at && (
           <Text size="sm">
@@ -115,6 +128,13 @@ export default async function LicenseDetailPage({
       </SimpleGrid>
 
       <NotesEditor licenseKey={license.key} notes={license.notes} />
+
+      <EditTermsButton
+        licenseKey={license.key}
+        expiresAt={license.expires_at}
+        maxActivations={license.max_activations}
+        limits={license.limits}
+      />
 
       <RevokeDeleteActions licenseKey={license.key} status={license.status} />
 

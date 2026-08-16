@@ -30,6 +30,8 @@ export type {
   RecentlyIssuedLicense,
   SeatUtilization,
   SelfLicenseStatus,
+  UpdateLicenseTermsInput,
+  UpdateLicenseTermsResult,
 } from './license-types';
 
 export type BackendMode = 'mock' | 'live';
@@ -94,6 +96,8 @@ export const setLicenseRevoked: typeof mock.setLicenseRevoked = (key, revoked, t
   client().setLicenseRevoked(key, revoked, tenantApiKey);
 export const updateLicenseNotes: typeof mock.updateLicenseNotes = (key, notes, tenantApiKey) =>
   client().updateLicenseNotes(key, notes, tenantApiKey);
+export const updateLicenseTerms: typeof mock.updateLicenseTerms = (input, tenantApiKey) =>
+  client().updateLicenseTerms(input, tenantApiKey);
 export const deleteLicense: typeof mock.deleteLicense = (key, tenantApiKey) =>
   client().deleteLicense(key, tenantApiKey);
 export const listActivations: typeof mock.listActivations = (key, tenantApiKey) =>

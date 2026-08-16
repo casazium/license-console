@@ -7,7 +7,10 @@ import {
   reissueActivationToken,
   setLicenseRevoked,
   updateLicenseNotes,
+  updateLicenseTerms,
   type IssueLicenseInput,
+  type UpdateLicenseTermsInput,
+  type UpdateLicenseTermsResult,
 } from '@/lib/license-client';
 import { isRateLimited, isOverQuota, isPaymentFailed, isProductIdTaken } from '@/lib/errors';
 import { requireSessionWithTenantKey, markIfTenantRejected } from '@/lib/tenant-context';
@@ -91,6 +94,26 @@ export async function updateLicenseNotesAction(
     await updateLicenseNotes(key, notes, tenantApiKey);
     revalidatePath(`/licenses/${key}`);
     return { ok: true, data: undefined };
+  } catch (err) {
+    if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
+    markIfTenantRejected(err, identity.tenantId);
+    throw err;
+  }
+}
+
+export async function updateLicenseTermsAction(
+  input: UpdateLicenseTermsInput,
+): Promise<ActionResult<UpdateLicenseTermsResult>> {
+  const { identity, tenantApiKey } = await requireSessionWithTenantKey();
+  try {
+    const result = await updateLicenseTerms(input, tenantApiKey);
+    // Both the detail page (shows the terms directly) and the list page
+    // (Expires/Seats columns) and dashboard (expiring-soon, near-seat-
+    // limit widgets) all derive from these same fields.
+    revalidatePath(`/licenses/${input.key}`);
+    revalidatePath('/licenses');
+    revalidatePath('/dashboard');
+    return { ok: true, data: result };
   } catch (err) {
     if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
     markIfTenantRejected(err, identity.tenantId);

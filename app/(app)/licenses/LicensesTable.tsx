@@ -25,6 +25,9 @@ const COLUMNS: { key: SortColumn; label: string }[] = [
 
 function sortValue(license: LicenseListItem, column: SortColumn): string | number {
   if (column === 'seats') return license.activations_used;
+  // Perpetual (expires_at: null) sorts after every real date - "never
+  // expires" is the furthest-out value, not the earliest.
+  if (column === 'expires_at') return license.expires_at ?? '9999-12-31T00:00:00.000Z';
   return license[column];
 }
 
@@ -110,18 +113,24 @@ export function LicensesTable({
             <Table.Td>{license.issued_to}</Table.Td>
             <Table.Td>{formatDate(license.expires_at)}</Table.Td>
             <Table.Td>
-              <Badge
-                color={
-                  license.activations_used >= license.max_activations
-                    ? 'red'
-                    : license.max_activations - license.activations_used <= 1
-                      ? 'yellow'
-                      : 'gray'
-                }
-                variant="light"
-              >
-                {license.activations_used} / {license.max_activations}
-              </Badge>
+              {license.max_activations === null ? (
+                <Badge color="gray" variant="light">
+                  {license.activations_used} / Unlimited
+                </Badge>
+              ) : (
+                <Badge
+                  color={
+                    license.activations_used >= license.max_activations
+                      ? 'red'
+                      : license.max_activations - license.activations_used <= 1
+                        ? 'yellow'
+                        : 'gray'
+                  }
+                  variant="light"
+                >
+                  {license.activations_used} / {license.max_activations}
+                </Badge>
+              )}
             </Table.Td>
           </Table.Tr>
         ))}

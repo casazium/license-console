@@ -11,10 +11,29 @@ export type License = {
   status: 'active' | 'revoked';
   issued_to: string;
   issued_at: string;
-  expires_at: string;
-  usage_limit: number | null;
-  usage_count: number;
-  max_activations: number;
+  // Nullable (independent-review finding, surfaced while building the
+  // license-terms edit route): the real backend has treated null as
+  // perpetual for a while now (casazium/license's own pre-launch gap
+  // analysis finding #10), but this type declared it non-nullable
+  // regardless - GET /admin/license/:key already returns real nulls for
+  // perpetual licenses, so every reader of this field was silently lying
+  // about what it held. lib/format.ts's formatDate/formatDateTime are
+  // now null-tolerant to match.
+  expires_at: string | null;
+  // Real fields the backend actually returns (GET /admin/license/:key -
+  // casazium/license's admin-license.js), replacing the usage_limit/
+  // usage_count pair below that never matched anything the live backend
+  // sends (see that field's own removal note) - only license-client.mock.ts
+  // ever populated them, so the live detail page rendered
+  // "undefined / undefined" for every real license until this fix.
+  limits: LicenseLimits;
+  usage: Record<string, number>;
+  // Nullable (independent-review finding): null means unlimited seats,
+  // already true on the backend (license_keys.max_activations has no
+  // NOT NULL constraint, and activate-license.js's own seat check skips
+  // entirely when this isn't a number) - the license-terms edit route
+  // can now set this state, so the type needs to be able to represent it.
+  max_activations: number | null;
   revoked_at: string | null;
   // Freeform operator context ("renewed via phone call", "beta
   // customer") - editable independently of issuing the license (see
@@ -123,6 +142,32 @@ export type IssueLicenseInput = {
   max_activations: number;
   notes?: string;
   limits?: LicenseLimits;
+};
+
+// POST /admin/update-license-terms (casazium/license) - every field
+// independently optional; only the fields present in the request are
+// changed. expires_at: null sets the license to perpetual;
+// max_activations: null sets it to unlimited seats. limits, if provided,
+// replaces the whole object (not a merge) - see that route's own
+// docblock for why a merge mode isn't offered.
+export type UpdateLicenseTermsInput = {
+  key: string;
+  expires_at?: string | null;
+  max_activations?: number | null;
+  limits?: LicenseLimits;
+};
+
+export type UpdateLicenseTermsResult = {
+  key: string;
+  expires_at: string | null;
+  limits: LicenseLimits;
+  max_activations: number | null;
+  usage: Record<string, number>;
+  status: 'active' | 'revoked';
+  // Real current activation count, so the caller can warn when a lowered
+  // max_activations just went below what's already in use (a soft cap,
+  // not blocked - see the route's own docblock).
+  activations_count: number;
 };
 
 // GET /list-licenses returns activations_count per row directly (a

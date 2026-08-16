@@ -26,8 +26,16 @@
 // locale, and sorts correctly as plain text. Built from toISOString()
 // rather than Intl.DateTimeFormat options - toISOString() is always UTC
 // and always zero-padded, so no locale/timeZone options are needed here.
-export function formatDate(iso: string): string {
-  return new Date(iso).toISOString().slice(0, 10);
+//
+// null accepted, not just string (independent-review finding surfaced
+// while building the license-terms edit route): expires_at has been
+// nullable on the backend for a while (null = perpetual license), and
+// both functions used to construct new Date(null) unconditionally -
+// which is the Unix epoch, not "never" - silently rendering a perpetual
+// license's expiry as 1970-01-01 rather than a caller ever having a
+// chance to special-case it.
+export function formatDate(iso: string | null): string {
+  return iso === null ? 'Never' : new Date(iso).toISOString().slice(0, 10);
 }
 
 // "UTC" suffix, not left implicit: operator-reported gap - a bare
@@ -38,6 +46,6 @@ export function formatDate(iso: string): string {
 // settings page, not built yet), so every admin sees times in their own
 // zone instead of having to mentally convert from UTC. Until then, at
 // least label what zone is actually shown so it isn't ambiguous.
-export function formatDateTime(iso: string): string {
-  return `${new Date(iso).toISOString().slice(0, 19).replace('T', ' ')} UTC`;
+export function formatDateTime(iso: string | null): string {
+  return iso === null ? 'Never' : `${new Date(iso).toISOString().slice(0, 19).replace('T', ' ')} UTC`;
 }

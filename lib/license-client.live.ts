@@ -46,6 +46,8 @@ import type {
   RecentlyIssuedLicense,
   SeatUtilization,
   SelfLicenseStatus,
+  UpdateLicenseTermsInput,
+  UpdateLicenseTermsResult,
 } from './license-types';
 
 // The real backend's own GET /list-licenses limit ceiling (see
@@ -239,6 +241,24 @@ export async function setLicenseRevoked(
   }
 }
 
+export async function updateLicenseTerms(
+  input: UpdateLicenseTermsInput,
+  tenantApiKey?: string
+): Promise<UpdateLicenseTermsResult> {
+  const res = await liveFetch(
+    '/admin/update-license-terms',
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
+    tenantApiKey
+  );
+  if (!res.ok) {
+    await throwForFailedResponse(res, 'Failed to update license terms');
+  }
+  return res.json();
+}
+
 export async function updateLicenseNotes(key: string, notes: string, tenantApiKey?: string): Promise<void> {
   const res = await liveFetch(
     '/admin/update-notes',
@@ -340,6 +360,12 @@ export async function getExpiringLicenses(
   const cutoff = now + withinDays * 24 * 60 * 60 * 1000;
 
   return licenses
+    // A perpetual license (expires_at: null) can never be "expiring
+    // soon" by definition - excluded here explicitly rather than relying
+    // on new Date(null) coincidentally producing the epoch (independent-
+    // review finding: expires_at is genuinely nullable now, and this
+    // function's own return type promises a real string per license).
+    .filter((license): license is typeof license & { expires_at: string } => license.expires_at !== null)
     .filter((license) => {
       const expiresAt = new Date(license.expires_at).getTime();
       return expiresAt >= now && expiresAt <= cutoff;
@@ -362,6 +388,12 @@ export async function getLicensesNearSeatLimit(
   const licenses = await getBroadActiveLicenses(tenantApiKey);
 
   return licenses
+    // A license with unlimited seats (max_activations: null - reachable
+    // since the license-terms edit route can set it) is never "near its
+    // seat limit," because it has none - excluded here explicitly rather
+    // than relying on `null - number` producing NaN and NaN <= 1 always
+    // being false.
+    .filter((license): license is typeof license & { max_activations: number } => license.max_activations !== null)
     .map((license) => ({
       key: license.key,
       product_id: license.product_id,

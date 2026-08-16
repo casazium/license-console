@@ -17,6 +17,8 @@ import type {
   RecentlyIssuedLicense,
   SeatUtilization,
   SelfLicenseStatus,
+  UpdateLicenseTermsInput,
+  UpdateLicenseTermsResult,
 } from './license-types';
 
 type Store = {
@@ -39,8 +41,8 @@ function seedStore(): Store {
         issued_to: 'demo-customer@example.com',
         issued_at: '2026-06-01T00:00:00Z',
         expires_at: '2027-06-01T00:00:00Z',
-        usage_limit: 10000,
-        usage_count: 421,
+        limits: { api_calls_per_day: 10000 },
+        usage: { api_calls_per_day: 421 },
         max_activations: 3,
         revoked_at: null,
         notes: 'Enterprise pilot - upgraded from trial 2026-05-20',
@@ -53,8 +55,8 @@ function seedStore(): Store {
         issued_to: 'another-customer@example.com',
         issued_at: '2026-05-15T00:00:00Z',
         expires_at: '2026-11-15T00:00:00Z',
-        usage_limit: 1000,
-        usage_count: 998,
+        limits: { api_calls_per_day: 1000 },
+        usage: { api_calls_per_day: 998 },
         max_activations: 1,
         revoked_at: null,
         notes: null,
@@ -67,8 +69,8 @@ function seedStore(): Store {
         issued_to: 'churned-customer@example.com',
         issued_at: '2026-03-01T00:00:00Z',
         expires_at: '2026-04-01T00:00:00Z',
-        usage_limit: 100,
-        usage_count: 100,
+        limits: { api_calls_per_day: 100 },
+        usage: { api_calls_per_day: 100 },
         max_activations: 1,
         revoked_at: '2026-04-02T00:00:00Z',
         notes: 'Churned - non-payment. Do not renew without finance sign-off.',
@@ -83,8 +85,8 @@ function seedStore(): Store {
         issued_to: 'renewal-due-customer@example.com',
         issued_at: '2025-08-01T00:00:00Z',
         expires_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
-        usage_limit: 5000,
-        usage_count: 3120,
+        limits: { api_calls_per_day: 5000 },
+        usage: { api_calls_per_day: 3120 },
         max_activations: 2,
         revoked_at: null,
         notes: null,
@@ -138,8 +140,8 @@ function generateSyntheticLicenses(count: number): { licenses: License[]; activa
       issued_to: `customer-${i + 1}@example.com`,
       issued_at: new Date(issuedAt).toISOString(),
       expires_at: new Date(expiresAt).toISOString(),
-      usage_limit: 1000 * (1 + (i % 10)),
-      usage_count: 50 * (i % 20),
+      limits: { api_calls_per_day: 1000 * (1 + (i % 10)) },
+      usage: { api_calls_per_day: 50 * (i % 20) },
       max_activations: maxActivations,
       revoked_at: revoked ? new Date(issuedAt + 2 * day).toISOString() : null,
       notes: i % 5 === 0 ? 'Sample note - resold via reseller partner' : null,
@@ -218,14 +220,48 @@ export async function issueLicense(
     issued_to: input.issued_to,
     issued_at: new Date().toISOString(),
     expires_at: input.expires_at,
-    usage_limit: null,
-    usage_count: 0,
+    limits: input.limits ?? {},
+    usage: {},
     max_activations: input.max_activations,
     revoked_at: null,
     notes: input.notes || null,
   };
   getStore().licenses.push(license);
   return { key: license.key };
+}
+
+export async function updateLicenseTerms(
+  input: UpdateLicenseTermsInput,
+  _tenantApiKey?: string
+): Promise<UpdateLicenseTermsResult> {
+  const license = getStore().licenses.find((entry) => entry.key === input.key);
+  if (!license) {
+    throw new Error('License key not found');
+  }
+  // Same "only provided fields change" semantics as the real backend -
+  // Object.hasOwn, not truthiness, so expires_at: null / max_activations:
+  // null are real signals (perpetual / unlimited seats), not "absent".
+  if (Object.hasOwn(input, 'expires_at')) {
+    license.expires_at = input.expires_at ?? null;
+  }
+  if (Object.hasOwn(input, 'max_activations')) {
+    license.max_activations = input.max_activations ?? null;
+  }
+  if (Object.hasOwn(input, 'limits')) {
+    license.limits = input.limits ?? {};
+  }
+
+  const activationsCount = getStore().activations[license.key]?.length ?? 0;
+
+  return {
+    key: license.key,
+    expires_at: license.expires_at,
+    limits: license.limits,
+    max_activations: license.max_activations,
+    usage: license.usage,
+    status: license.status,
+    activations_count: activationsCount,
+  };
 }
 
 export async function setLicenseRevoked(
@@ -307,6 +343,9 @@ export async function getExpiringLicenses(
 
   return licenses
     .filter((license) => license.status === 'active')
+    // A perpetual license (expires_at: null) can never be "expiring
+    // soon" - same reasoning as license-client.live.ts's own filter.
+    .filter((license): license is typeof license & { expires_at: string } => license.expires_at !== null)
     .filter((license) => {
       const expiresAt = new Date(license.expires_at).getTime();
       return expiresAt >= now && expiresAt <= cutoff;
@@ -330,6 +369,10 @@ export async function getLicensesNearSeatLimit(
 
   return licenses
     .filter((license) => license.status === 'active')
+    // A license with unlimited seats (max_activations: null) is never
+    // "near its seat limit" - same reasoning as license-client.live.ts's
+    // own filter.
+    .filter((license): license is typeof license & { max_activations: number } => license.max_activations !== null)
     .map((license) => {
       const used = activations[license.key]?.length ?? 0;
       return {
