@@ -101,6 +101,13 @@ CREATE TABLE IF NOT EXISTS accounts (
 -- adding uniqueness as a separate index rather than inline.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_email ON accounts(email);
 
+-- SUPERADMIN_REPORTING_DESIGN.md §6's "indexed, timed queries" rule -
+-- GET /api/admin/report-extract's GROUP BY tenant_id would otherwise be
+-- a full table scan; matches casazium/license's own
+-- idx_license_keys_tenant reasoning (that repo's src/app.js comment) for
+-- the equivalent extract endpoint on that side.
+CREATE INDEX IF NOT EXISTS idx_accounts_tenant_id ON accounts(tenant_id);
+
 -- One-time signup-confirmation links. Only the hash is stored (mirrors
 -- casazium/license's own activations.token_hash / lib/activation-token.js
 -- pattern) - the plaintext token only ever exists in the confirmation

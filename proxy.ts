@@ -32,6 +32,18 @@ import { SESSION_COOKIE_NAME, verifySessionToken } from '@/lib/session';
 // the route ever ran, and the sign-out button's own POST never got a
 // chance to clear that stale cookie. Confirmed live: an unauthenticated
 // POST here previously 307'd to /login instead of clearing the cookie.
+//
+// /api/admin/report-extract (SUPERADMIN_REPORTING_DESIGN.md §6): same
+// shape as /api/verify-email above - its own bearer REPORT_EXTRACT_KEY
+// check (lib/report-extract-auth.ts) IS the real credential, not this
+// proxy's session cookie. Its only intended caller (casazium/license's
+// scripts/tenant-report.js) never holds a console session at all - found
+// live during end-to-end smoke testing: an unauthenticated request with
+// a correct bearer token still 307'd to /login before the route handler
+// (and its own auth check) ever ran, making REPORT_EXTRACT_KEY
+// unreachable dead code. This route's own check is what actually gates
+// it, exactly as intended - this list entry only stops a *different*
+// gate from shadowing it first.
 const PUBLIC_PATHS = [
   '/login',
   '/api/login',
@@ -43,6 +55,7 @@ const PUBLIC_PATHS = [
   '/reset-password',
   '/api/reset-password',
   '/api/verify-email',
+  '/api/admin/report-extract',
 ];
 
 export async function proxy(request: NextRequest) {
