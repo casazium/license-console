@@ -108,6 +108,17 @@ export type SelfLicenseOutcome = {
   outcome: 'success' | 'failure' | 'misconfigured' | 'load-error' | 'restored';
   at: string;
   expiresAt?: string;
+  // The real self-license *subscription's* own expiry (casazium/license's
+  // credential.rs subscription_expires_at), NOT the same thing as
+  // expiresAt above - that's always just the rolling ~14-day credential
+  // cache window, renewed automatically on every successful call-home.
+  // This is the operator-meaningful date a lapsed subscription actually
+  // matters on, previously invisible anywhere until call-home simply
+  // started failing with no advance warning. Only ever present on a
+  // 'success' outcome, and only from an MLS build new enough to send it -
+  // absent (not null) otherwise, same optional-field convention as
+  // expiresAt.
+  subscriptionExpiresAt?: string;
   error?: string;
 };
 
