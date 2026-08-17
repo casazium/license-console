@@ -1,7 +1,15 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-17 (§66: GET /api/admin/report-extract - the
+Last updated: 2026-08-17 (§67: subscription-expiry warning added to
+SelfLicenseIndicator - the Tier-B counterpart to §66's neighbor,
+casazium/license's Tier-A expiry gap. Second badge alongside the
+existing call-home-health one, red under 7 days remaining or already
+lapsed. tsc/eslint/build all clean. Verified end to end against a real
+Tier-B/SLS casazium/license instance - actual compiled native module,
+real signed call-home round trip - and a real console dashboard: both
+badges rendered together in the served HTML.)
+2026-08-17 (§66: GET /api/admin/report-extract - the
 counterpart to casazium/license's new cross-tenant reporting extract
 endpoint, gated by its own REPORT_EXTRACT_KEY, no email addresses in
 the response ever. Found and fixed a real bug during end-to-end smoke
@@ -4141,4 +4149,36 @@ no token → 401, a real session cookie in place of the bearer token →
 401, the correct key → 200 with the expected joined data.
 
 `npx tsc --noEmit`, `npx eslint .`, and `npx next build` all clean.
+
+## 67. Subscription-expiry warning added to SelfLicenseIndicator - the Tier-B counterpart to §66's neighbor, casazium/license's Tier-A expiry gap (2026-08-17)
+
+Operator pointed out, correctly, that Tier-B/SLS instances also have a
+license that expires - the prior work only closed this for Tier-A. See
+`casazium/license`'s own PROJECT_STATUS.md §135 for the full
+investigation: the only `expires_at` that mechanism ever exposed was
+always the rolling ~14-day credential cache window, never the
+underlying subscription's own expiry, so an operator got zero advance
+warning before call-home simply started failing.
+
+**`SelfLicenseIndicator.tsx`** now renders a second badge, alongside
+(not replacing) the existing call-home-health one, whenever
+`lastOutcome.subscriptionExpiresAt` is present (a new optional field on
+`SelfLicenseOutcome`, `lib/license-types.ts`):
+- `< 7` days remaining: red, "Self-license subscription expires in N
+  day(s)".
+- already lapsed: red, "Self-License Subscription Expired" - a real,
+  reachable state, not hypothetical: the cached ~14-day credential can
+  still be valid (so `lastOutcome` still reads `'success'`) even after
+  the underlying subscription itself has lapsed, right up until the next
+  renewal attempt fails.
+- otherwise: no second badge - the existing "verified · valid until
+  \<date>" text on the primary badge already covers the healthy case.
+
+`npx tsc --noEmit`, `npx eslint .`, and `npx next build` all clean.
+Verified end to end against a real Tier-B/SLS `casazium/license`
+instance (the actual compiled native module, a real signed call-home
+round trip against a mock MLS, not a stubbed response) and a real
+console dashboard here: confirmed both badges rendered together in the
+actual served HTML, green "Self-license verified" and red "Self-license
+subscription expires in 3 days".
 
