@@ -8,7 +8,13 @@ existing call-home-health one, red under 7 days remaining or already
 lapsed. tsc/eslint/build all clean. Verified end to end against a real
 Tier-B/SLS casazium/license instance - actual compiled native module,
 real signed call-home round trip - and a real console dashboard: both
-badges rendered together in the served HTML.)
+badges rendered together in the served HTML. Real production
+deployment same day confirmed subscriptionExpiresAt now flows
+correctly from casazium/license (see that repo's own PROJECT_STATUS.md
+§135 for the real MLS-vs-SLS separate-deployment gotcha found along the
+way) - this console's own code fetched/typed/rendered it exactly as
+designed, second badge correctly staying hidden since the live
+subscription date is outside the 7-day warning window.)
 2026-08-17 (§66: GET /api/admin/report-extract - the
 counterpart to casazium/license's new cross-tenant reporting extract
 endpoint, gated by its own REPORT_EXTRACT_KEY, no email addresses in
@@ -4181,4 +4187,15 @@ round trip against a mock MLS, not a stubbed response) and a real
 console dashboard here: confirmed both badges rendered together in the
 actual served HTML, green "Self-license verified" and red "Self-license
 subscription expires in 3 days".
+
+**Real production deployment, same day**: `subscriptionExpiresAt`
+confirmed present and correct on the underlying `casazium/license`
+instance this console depends on (see that repo's own PROJECT_STATUS.md
+§135 for the full account, including the real MLS-vs-SLS separate-
+deployment gotcha found along the way). This console's own code was
+unaffected - fetched, typed, and rendered exactly as designed - the
+operator's live subscription date is comfortably outside the 7-day
+warning window, so the second badge correctly stayed hidden in
+production, matching the "otherwise: no second badge" branch verified
+above.
 
