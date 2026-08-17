@@ -1,7 +1,15 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-16 (§65: pre-launch gap analysis finding #1 -
+Last updated: 2026-08-17 (§66: GET /api/admin/report-extract - the
+counterpart to casazium/license's new cross-tenant reporting extract
+endpoint, gated by its own REPORT_EXTRACT_KEY, no email addresses in
+the response ever. Found and fixed a real bug during end-to-end smoke
+testing: proxy.ts's session-cookie gate was intercepting the route
+before its own auth check ever ran, since it wasn't in PUBLIC_PATHS -
+confirmed live over real HTTP after the fix. tsc/eslint/build all
+clean.)
+2026-08-16 (§65: pre-launch gap analysis finding #1 -
 the console side of the new license-update route (see casazium/license's
 own PROJECT_STATUS.md §131 for the backend route and the SQL-injection
 finding an independent design review caught before this was built). New
@@ -4092,4 +4100,45 @@ catch-all failure/misconfigured/load-error branch.
 this repo, per the SaaS-B2-era convention documented elsewhere in this
 file - `npm run build`'s real TypeScript pass across the whole app is
 the verification layer here).
+
+## 66. GET /api/admin/report-extract - the counterpart cross-tenant reporting endpoint, plus a real proxy.ts bug found in production smoke testing (2026-08-17)
+
+Counterpart to `casazium/license`'s new `GET /admin/report-extract`
+(that repo's own PROJECT_STATUS.md §134, `SUPERADMIN_REPORTING_DESIGN.md`
+§6) - one aggregate row per tenant (signup count, first-signup date,
+whether any account is email-verified, whether the tenant is locked
+out), feeding that repo's rewritten `scripts/tenant-report.js`.
+
+**New `app/api/admin/report-extract/route.ts`** + `lib/report-extract-
+auth.ts`: gated by its own `REPORT_EXTRACT_KEY` (comma-separated,
+constant-time compared) - a credential distinct from both the session
+cookie and `ADMIN_UI_PASSWORD`, since this route crosses tenant
+boundaries and nothing else in this app is allowed to. **No email
+addresses in the response, ever** - §6's own strongest simplification;
+none of the real reporting questions need one, and this app's existing
+`MULTI_TENANT` boot guard (`lib/db.ts`) already keeps `accounts` empty
+on a self-hosted deployment, so there's nothing to leak there either.
+Response is built field-by-field from the query result, not a
+passthrough of `SELECT *`, so a future column added to `accounts`
+can't silently start appearing here. New `idx_accounts_tenant_id`
+index (`lib/db/schema.sql`) so the `GROUP BY tenant_id` isn't a full
+table scan.
+
+**Real bug found during end-to-end smoke testing, not by inspection**:
+booted this console and a real `license` server locally, signed up a
+real tenant, then hit the new route directly with a correct bearer
+token - got a 307 redirect to `/login` instead of the JSON response.
+`proxy.ts`'s session-cookie gate runs on every path not explicitly
+listed in `PUBLIC_PATHS`, and this new route wasn't in that list -
+meaning it was being rejected before its own bearer-token check (or
+even the route handler itself) ever ran, making `REPORT_EXTRACT_KEY`
+unreachable dead code. Fixed by adding
+`/api/admin/report-extract` to `PUBLIC_PATHS`, same shape as the
+existing `/api/verify-email` exception (the route's own credential
+check is the real gate, this list entry only stops a *different* gate
+from shadowing it first). Reconfirmed live afterward over real HTTP:
+no token → 401, a real session cookie in place of the bearer token →
+401, the correct key → 200 with the expected joined data.
+
+`npx tsc --noEmit`, `npx eslint .`, and `npx next build` all clean.
 
