@@ -30,6 +30,7 @@ export type {
   RecentlyIssuedLicense,
   SeatUtilization,
   SelfLicenseStatus,
+  TierAStatus,
   UpdateLicenseTermsInput,
   UpdateLicenseTermsResult,
 } from './license-types';
@@ -122,3 +123,5 @@ export const completeStubCheckout: typeof mock.completeStubCheckout = (plan, ten
   client().completeStubCheckout(plan, tenantApiKey);
 export const getSelfLicenseStatus: typeof mock.getSelfLicenseStatus = (tenantApiKey) =>
   client().getSelfLicenseStatus(tenantApiKey);
+export const getTierAStatus: typeof mock.getTierAStatus = (tenantApiKey) =>
+  client().getTierAStatus(tenantApiKey);

@@ -115,6 +115,37 @@ export type SelfLicenseStatus =
   | { tier: 'tier-a' }
   | { tier: 'tier-b'; lastOutcome: SelfLicenseOutcome | null };
 
+// Mirrors casazium/license's GET /v1/admin/tier-a-status response exactly
+// (src/lib/tier-a-license.js's inspectTierALicense()). Deliberately a
+// LIVE re-check on that repo's side, not a memo of what its boot gate
+// decided once at startup - see that function's own header comment for
+// why: a running instance keeps serving requests unchanged even after
+// its own license's expiresAt passes (no periodic re-check by design),
+// so this can report 'expired' for an instance that is, in fact, still
+// up and healthy right now - the console's own indicator (see
+// TierAStatusIndicator.tsx) is what turns that into the "will not
+// restart" warning, not a claim that anything is broken this instant.
+//
+// applicable: false covers both a Tier-B build (its own, unrelated
+// call-home mechanism applies instead - see SelfLicenseStatus above) and
+// Casazium's own internal watermark (no purchased activation license
+// needed for itself) - the console hides this indicator entirely for
+// either case, same "decide my own visibility" posture as
+// SelfLicenseIndicator's own tier: 'tier-a' branch.
+//
+// 'not-configured'/'invalid' are real, reachable states on an actually-
+// running server - not just theoretical - if it's up at all under a
+// CASAZIUM_UNLICENSED_EVAL=1 evaluation allowance rather than a genuine
+// activation license (that repo's own checkTierABoot() would otherwise
+// have refused to boot in the first place).
+export type TierAStatus =
+  | { applicable: false; reason: 'tier-b' | 'internal' }
+  | { applicable: true; status: 'not-configured' }
+  | { applicable: true; status: 'invalid'; reason: string }
+  | { applicable: true; status: 'perpetual'; issuedTo: string; expiresAt: null }
+  | { applicable: true; status: 'active'; issuedTo: string; expiresAt: string }
+  | { applicable: true; status: 'expired'; issuedTo: string; expiresAt: string };
+
 // Mirrors casazium/license's own ALLOWED_LIMIT_KEYS exactly (that repo's
 // src/lib/validateLicenseLimits.js) - every key optional (an admin sets
 // only the limits that apply to a given product/tier; an absent key

@@ -46,6 +46,7 @@ import type {
   RecentlyIssuedLicense,
   SeatUtilization,
   SelfLicenseStatus,
+  TierAStatus,
   UpdateLicenseTermsInput,
   UpdateLicenseTermsResult,
 } from './license-types';
@@ -485,6 +486,18 @@ export async function getSelfLicenseStatus(tenantApiKey?: string): Promise<SelfL
   const res = await liveFetch('/self-license/status', {}, tenantApiKey);
   if (!res.ok) {
     await throwForFailedResponse(res, 'Failed to get self-license status');
+  }
+  return res.json();
+}
+
+// Tier-A activation-license expiry, for the dashboard's countdown/expired
+// badge - GET /v1/admin/tier-a-status (casazium/license's
+// src/routes/admin-tier-a-status.js). Same "whole-instance state, not
+// tenant-scoped" shape as getSelfLicenseStatus above.
+export async function getTierAStatus(tenantApiKey?: string): Promise<TierAStatus> {
+  const res = await liveFetch('/admin/tier-a-status', {}, tenantApiKey);
+  if (!res.ok) {
+    await throwForFailedResponse(res, 'Failed to get Tier-A license status');
   }
   return res.json();
 }

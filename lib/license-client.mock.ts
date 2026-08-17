@@ -17,6 +17,7 @@ import type {
   RecentlyIssuedLicense,
   SeatUtilization,
   SelfLicenseStatus,
+  TierAStatus,
   UpdateLicenseTermsInput,
   UpdateLicenseTermsResult,
 } from './license-types';
@@ -434,4 +435,13 @@ export async function completeStubCheckout(plan: string, _tenantApiKey?: string)
 // demo mode, same as it would be for any ordinary live Tier-A backend.
 export async function getSelfLicenseStatus(_tenantApiKey?: string): Promise<SelfLicenseStatus> {
   return { tier: 'tier-a' };
+}
+
+// Standalone/demo mode never runs against a real casazium/license
+// backend, so there's no real activation-license file to report on -
+// 'internal' (the same reason Casazium's own hosted instances skip this
+// gate) keeps the dashboard's Tier-A badge hidden in demo mode, same
+// posture as getSelfLicenseStatus's own mock above.
+export async function getTierAStatus(_tenantApiKey?: string): Promise<TierAStatus> {
+  return { applicable: false, reason: 'internal' };
 }

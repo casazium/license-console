@@ -11,6 +11,7 @@ import { requireSessionWithTenantKey, markIfTenantRejected } from '@/lib/tenant-
 import { MockDataNotice } from '@/components/MockDataNotice';
 import { RateLimitNotice } from '@/components/RateLimitNotice';
 import { SelfLicenseIndicator } from '@/components/SelfLicenseIndicator';
+import { TierAStatusIndicator } from '@/components/TierAStatusIndicator';
 import { ExpiringLicensesTable } from './ExpiringLicensesTable';
 import { RecentActivationsTable } from './RecentActivationsTable';
 import { RecentlyIssuedLicensesTable } from './RecentlyIssuedLicensesTable';
@@ -69,6 +70,7 @@ export default async function DashboardPage() {
         Dashboard
       </Title>
       <SelfLicenseIndicator tenantApiKey={tenantApiKey} />
+      <TierAStatusIndicator tenantApiKey={tenantApiKey} />
       <SimpleGrid cols={{ base: 1, sm: 3 }}>
         <Card withBorder padding="lg">
           <Text size="sm" c="dimmed">
