@@ -74,7 +74,11 @@ export function IssueLicenseForm({
       tier: '',
       issued_to: '',
       expires_date: todayDateString(),
-      expires_time: '00:00',
+      // End of day, not start of day (00:00) - the date defaults to
+      // today, so midnight has already passed by the time anyone opens
+      // this form; a license issued with the untouched defaults would
+      // be born already expired.
+      expires_time: '23:59',
       expires_timezone: 'America/New_York',
       max_activations: 1,
       notes: '',
