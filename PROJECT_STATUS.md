@@ -1,7 +1,12 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-19 (§68: restore drill rehearsed for real
+Last updated: 2026-08-19 (§69: Issue License form defaulted a new
+license to already-expired - `expires_time` defaulted to midnight
+against a date that defaults to today, so it had already passed by
+the time the form opened. Fixed to `23:59`. Found live during the real
+beta smoke test. See §69 below for full detail.)
+2026-08-19 (§68: restore drill rehearsed for real
 against both live Coolify resources, standalone and SaaS - both
 PASSED, closing `casazium/casazium`'s `BETA_LAUNCH_STATUS.md`'s last
 open infrastructure item. See §68 below for full detail.)
@@ -4234,4 +4239,21 @@ resources documented in that repo's own `PROJECT_STATUS.md` §151; this
 closes the last open item in `casazium/casazium`'s
 `BETA_LAUNCH_STATUS.md` §3, which is being updated to v1.10 in the
 same session.
+
+## 69. Issue License form defaulted a license to already-expired - found live during the real beta smoke test (2026-08-19)
+
+The real end-to-end smoke test run against the live hosted stack
+(`BETA_LAUNCH_STATUS.md` §5 step 2) surfaced a genuine bug in
+`IssueLicenseForm.tsx`, shared by both `/licenses/new` and onboarding
+(`SaaS-B5`): its form defaults were `expires_date: todayDateString()`
+(today) and `expires_time: '00:00'` (midnight) - since the date
+defaults to *today*, midnight has already passed by the time anyone
+opens the form (unless it's literally 12:00:00 AM), so a license
+issued with the untouched defaults was born already expired. Operator
+caught this directly while reviewing the defaults, not from a report.
+
+**Fixed** (`04f7fa0`): default `expires_time` changed to `'23:59'`
+(end of day, not start of day). `zonedDateTimeToIso()` (`lib/timezone.ts`)
+correctly converts this to end-of-day in the selected timezone,
+DST-aware. `tsc --noEmit` and `eslint .` both clean. Pushed.
 
