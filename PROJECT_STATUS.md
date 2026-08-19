@@ -1,7 +1,11 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-17 (§67: subscription-expiry warning added to
+Last updated: 2026-08-19 (§68: restore drill rehearsed for real
+against both live Coolify resources, standalone and SaaS - both
+PASSED, closing `casazium/casazium`'s `BETA_LAUNCH_STATUS.md`'s last
+open infrastructure item. See §68 below for full detail.)
+2026-08-17 (§67: subscription-expiry warning added to
 SelfLicenseIndicator - the Tier-B counterpart to §66's neighbor,
 casazium/license's Tier-A expiry gap. Second badge alongside the
 existing call-home-health one, red under 7 days remaining or already
@@ -4198,4 +4202,36 @@ operator's live subscription date is comfortably outside the 7-day
 warning window, so the second badge correctly stayed hidden in
 production, matching the "otherwise: no second badge" branch verified
 above.
+
+## 68. Restore-drill rehearsed for real against both live Coolify resources - closes `BETA_LAUNCH_STATUS.md`'s last open infrastructure item (2026-08-19)
+
+`scripts/restore-drill-from-b2.sh`/`restore-drill.mjs` (§59) had only
+ever been verified against synthetic/scratch data - never run against
+either live Coolify deployment's real B2 backups. Operator ran `sh
+scripts/restore-drill-from-b2.sh` directly from each resource's own
+Coolify terminal:
+
+- **Standalone** (`license.casazium.com`): `accounts: 0`,
+  `email_verification_tokens: 0`, `password_reset_tokens: 0`,
+  `tenant_branding: 0` - `accounts: 0` is expected and required here
+  (self-hosted has no accounts/signup concept), and the `MULTI_TENANT`
+  fail-loud guard (§ restore-drill.mjs's own check 3) correctly found
+  nothing to refuse. Integrity check and schema re-apply both `ok`.
+  **PASSED.**
+- **SaaS** (`license-cloud.casazium.com`): `accounts: 2`,
+  `email_verification_tokens: 0`, `password_reset_tokens: 0`,
+  `tenant_branding: 0` - the 2 accounts (both already verified, hence
+  0 pending tokens) is what identifies this as the SaaS resource, not
+  an assumption. `MULTI_TENANT` guard correctly allowed a non-zero
+  `accounts` count. Same checks, all `ok`. **PASSED.**
+
+Both real B2 backups round-tripped through `rclone` and passed
+integrity check, had correctly-shaped data for their resource type,
+and re-applied `lib/db/schema.sql` plus the `MULTI_TENANT` fail-loud
+guard `lib/db.ts`'s `openDatabase()` runs on every real connection
+open, without error. Companion run against both `casazium/license`
+resources documented in that repo's own `PROJECT_STATUS.md` §151; this
+closes the last open item in `casazium/casazium`'s
+`BETA_LAUNCH_STATUS.md` §3, which is being updated to v1.10 in the
+same session.
 
