@@ -1,7 +1,12 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-20 (§74: fixed a false "Failed to delete
+Last updated: 2026-08-20 (§75: fixed a Dockerfile gap that left §72's
+check-db-integrity.mjs out of the runtime image, then verified it live
+in production - a clean pass against the real deployed database,
+alongside casazium/license's own equivalent check. See §75 below for
+full detail.)
+2026-08-20 (§74: fixed a false "Failed to delete
 account" toast on a successful delete - §73's own redirect() fix threw
 a control-flow error that the client's catch{} was wrongly treating as
 a real failure, caught via unstable_rethrow. Reported directly by the
@@ -4510,4 +4515,33 @@ signal surfacing as a false toast) - worth checking the full user-visible
 surface, not just the symptom that was originally reported, especially
 around framework-internal control-flow mechanisms like `redirect()`/
 `notFound()` that don't behave like ordinary thrown errors.
+
+## 75. Dockerfile fix + real production verification of §72's script (2026-08-20)
+
+Same gap as `casazium/license`'s own §156, found the same way: §72's
+`scripts/check-db-integrity.mjs` isn't part of the Next standalone
+trace (nothing at runtime imports it), so it needed an explicit `COPY
+--from=builder` line in the Dockerfile's runner stage alongside
+`backup-db.mjs`/`restore-drill.mjs` - missing from §72's own commit.
+Operator ran the script inside the real deployed container right after
+redeploying, got `Cannot find module`; `ls scripts/` confirmed it
+wasn't there. A first retry still failed identically - a stale
+container from before the fix had actually been redeployed, not a
+second bug, confirmed once a real redeploy picked up the fix commit
+(`c813b32`).
+
+A second, unrelated mix-up during the same troubleshooting: the
+operator ran `node scripts/check-db-integrity.js` (the `.js` name -
+`casazium/license`'s own script) inside *this* repo's container, where
+the file is `check-db-integrity.mjs` - a filename mismatch between the
+two repos' otherwise-parallel scripts, not a bug in either one.
+
+**Verified live in production** after the operator's own real
+redeploy: `node scripts/check-db-integrity.mjs` run inside the live
+`casazium/license-console` Coolify container against its real
+production database - clean pass, alongside `casazium/license`'s own
+equivalent check on its side (see that repo's §156). Confirms the real
+production database has no structural corruption and no dangling
+foreign keys, including specifically after §71's account-deletion
+feature has actually been exercised against it in production.
 
