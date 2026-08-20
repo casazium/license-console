@@ -1,3 +1,21 @@
 body {
   margin: 0;
 }
+
+/* iOS/iPadOS Safari bug (operator report, on a real iPad): pulling down
+   past the top of the page - a rubber-band overscroll gesture - animates
+   Safari's own dynamic toolbar, and Mantine AppShell's fixed-position
+   header (position: fixed; top: 0, its own default CSS) doesn't always
+   repaint in sync with that animation. The header/burger visibly render
+   underneath the toolbar while dragging, then snap back into place on
+   release - a real, documented WebKit rendering glitch with
+   position: fixed near the top of the viewport, not something specific
+   to this app's own CSS. overscroll-behavior-y disables exactly the
+   rubber-band gesture that triggers it, without changing this app's
+   normal scroll behavior otherwise. html AND body, not just one - iOS
+   Safari's overscroll bounce can originate from either depending on
+   which one ends up as the actual scrolling box for a given page. */
+html,
+body {
+  overscroll-behavior-y: none;
+}
