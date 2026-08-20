@@ -1,7 +1,10 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-19 (§70: deactivate-by-instance-id UI +
+Last updated: 2026-08-20 (§71: self-service hard account deletion -
+"Danger zone" section on Settings, password-re-entry-gated. See §71
+below for full detail.)
+2026-08-19 (§70: deactivate-by-instance-id UI +
 quota visibility - both of BETA_LAUNCH_STATUS.md §4's flagged
 cheap/high-value deferred items. See §70 below for full detail.)
 2026-08-19 (§69: Issue License form defaulted a new
@@ -4307,4 +4310,73 @@ and confirmed it actually worked end to end: the Seats badge went
 `1/1` (red) → `0/1` (yellow), the activations table emptied to "No
 activations yet.", and a real success toast appeared. `BETA_LAUNCH_STATUS.md`
 §4 updated to check both items off.
+
+## 71. Self-service hard account deletion - "Danger zone" on Settings (2026-08-20)
+
+Operator picked `BETA_LAUNCH_STATUS.md` §4's account-settings gap to
+work on, on a real concern: someone trying the beta shouldn't have to
+email support to have their data gone. Decided hard-delete-now, no
+grace period (a beta-sized user base doesn't need one), with an
+explicit condition: document it clearly on `casazium/casazium` and
+warn about it in the app itself. `casazium/license`'s own
+`PROJECT_STATUS.md` §154 has the full narrative and the backend side
+(`DELETE /v1/delete-account`); this entry covers the console.
+
+**`lib/auth.ts`**: new `verifyAccountPassword(accountId, password)` -
+re-authentication for the destructive confirm step, looked up by the
+already-verified session's account id (not `verifyCredentials()`'s
+username+password shape - the caller has no reason to re-collect the
+email). Same constant-cost-regardless-of-match posture as
+`verifyCredentials()`'s own decoy-hash pattern (`DUMMY_PASSWORD_HASH`).
+
+**`lib/license-client.{live,mock}.ts`/`.ts`**: `deleteAccount(tenantApiKey)`
+dispatcher trio, calling the new backend route. Caught a real bug here
+mid-build: `liveFetch()`'s shared helper always sets
+`Content-Type: application/json`, and Fastify 400s on an empty body
+under that header even when the route declares no body schema at all -
+confirmed live, the request never reached the route until the call was
+changed to send `body: '{}'`.
+
+**`app/(app)/settings/actions.ts`** (new): `deleteAccountAction` -
+verifies the password server-side, calls the license-server delete,
+then cleans up this console's own local rows (`tenant_branding`
+explicitly, `accounts` cascades `email_verification_tokens`/
+`password_reset_tokens` via real FK), clears the session cookie. Order
+matters: license-server side first: if that call fails or is
+rate-limited, the account stays fully intact on both sides rather than
+this console silently forgetting an account that still has real data
+server-side. No explicit session-revocation call needed - deleting the
+`accounts` row outright is already the strongest possible revocation
+(`verifySessionToken()` already rejects any token whose account no
+longer exists).
+
+**`app/(app)/settings/DeleteAccountSection.tsx`** (new) + wired into
+`page.tsx`: a "Danger zone" section, gated the same way the rest of
+the Settings page already is (only renders under `MULTI_TENANT` with a
+resolved tenant key - self-hosted has no accounts-table concept to
+delete). Mantine `Modal` confirm (this app's standing convention, not
+`window.confirm()`) with explicit consequences copy - stops issued
+licenses working immediately for the tenant's own customers, deletes
+every license/activation/usage record, cancels any subscription - and
+a password field to confirm. On success, `window.location.assign('/login')`,
+not `router.push()` - the same documented gotcha
+`StubCheckoutConfirm.tsx` already flags (a client-router navigation
+immediately after an awaited Server Action call reliably gets dropped
+under this app's dev-mode Turbopack setup), and a hard reload is the
+right call anyway once the session cookie is gone.
+
+`tsc --noEmit`, `eslint .`, and `next build` all clean.
+
+**Verified live, end-to-end, not just typed** - real local
+`casazium/license` + this console running together: real signup, this
+tenant's own API key read live off the Settings page (not
+hand-copied) and used to issue + activate a real license directly
+against the license server, then on Settings: a wrong password
+correctly rejected with an inline "Incorrect password" error and the
+account left fully intact, then the correct password deleted it and
+landed on `/login`. Confirmed afterward: `verify-license` 404s on the
+now-deleted license, the tenant's own API key 403s on
+`GET /billing/status`, and logging back in with the same
+email/password 401s. `BETA_LAUNCH_STATUS.md` §4 updated to mark this
+item partially fixed.
 

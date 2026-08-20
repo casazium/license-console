@@ -323,6 +323,21 @@ export async function deactivateByInstanceId(
   return true;
 }
 
+// Mock counterpart to the live client's hard-delete. Not actually
+// reachable through the UI in standalone mode (the Settings page's
+// delete-account section only renders when tenantApiKey is set, which
+// standalone/mock mode never has - MULTI_TENANT signup provisions a real
+// tenant, no mock equivalent, per this repo's README). Kept for type
+// parity with the live/dispatcher trio and in case a future test wants
+// to exercise it directly.
+export async function deleteAccount(_tenantApiKey?: string): Promise<void> {
+  const store = getStore();
+  store.licenses.length = 0;
+  for (const key of Object.keys(store.activations)) {
+    delete store.activations[key];
+  }
+}
+
 export async function getDashboardStats(_tenantApiKey?: string): Promise<DashboardStats> {
   const { licenses, activations } = getStore();
   return {

@@ -92,3 +92,25 @@ export async function verifyCredentials(username: string, password: string): Pro
 
   return { id: adminUsername, role: 'admin', mode: 'selfhosted' };
 }
+
+/**
+ * Re-authentication check for the destructive account-deletion confirm
+ * step (BETA_LAUNCH_STATUS.md §4) - proves the person driving the
+ * already-authenticated session still knows the account password, the
+ * same reasoning every "type your password to delete your account" flow
+ * uses (a left-open session or a hijacked one shouldn't be enough on its
+ * own for a permanent, unrecoverable action). Deliberately looked up by
+ * accountId, not verifyCredentials()'s username+password shape - the
+ * caller already has a verified session's account id and has no reason
+ * to know or re-collect the email. SaaS-only, same as verifyCredentials'
+ * own SaaS branch - self-hosted's single shared admin login has no
+ * accounts row to check and never reaches this (its own delete-account
+ * button never renders - see the Settings page).
+ */
+export async function verifyAccountPassword(accountId: string, password: string): Promise<boolean> {
+  const account = getDb()
+    .prepare('SELECT password_hash FROM accounts WHERE id = ?')
+    .get(accountId) as { password_hash: string } | undefined;
+
+  return verifyPassword(password, account?.password_hash ?? DUMMY_PASSWORD_HASH);
+}

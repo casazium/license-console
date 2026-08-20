@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { Anchor, Code, Stack, Text, Title } from '@mantine/core';
 import { requireSessionWithTenantKey } from '@/lib/tenant-context';
 import { ApiKeyReveal } from './ApiKeyReveal';
+import { DeleteAccountSection } from './DeleteAccountSection';
 
 // Beta-readiness finding: nothing in this console ever showed a hosted
 // tenant their own API key or the API's real base URL, even though
@@ -63,6 +64,8 @@ export default async function SettingsPage() {
         </Anchor>{' '}
         to activate/verify licenses from your licensed application.
       </Text>
+
+      <DeleteAccountSection />
     </Stack>
   );
 }

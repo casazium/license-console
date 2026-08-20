@@ -498,6 +498,28 @@ export async function completeStubCheckout(plan: string, tenantApiKey?: string):
   return res.json();
 }
 
+// Self-service hard account deletion (BETA_LAUNCH_STATUS.md §4) -
+// DELETE /v1/delete-account (casazium/license's own
+// src/routes/delete-tenant-account.js). Permanent, no grace period - the
+// server-side route purges the tenant's license_keys/activations/
+// tenant_auth_log/billing_subscriptions/product_ownership and the tenant
+// row itself in one transaction. The caller (deleteAccountAction) is
+// responsible for the console's own local cleanup afterward (its
+// accounts/tenant_branding rows, session revocation) - this function only
+// covers the license-server side.
+export async function deleteAccount(tenantApiKey?: string): Promise<void> {
+  // Empty string, not omitted - liveFetch() always sets
+  // Content-Type: application/json (every other export needs it), and
+  // Fastify's default JSON body parser 400s on an empty body whenever
+  // that header is present, regardless of whether the route itself
+  // requires one. Confirmed live: the route has no body schema at all,
+  // but the request never reached it without this.
+  const res = await liveFetch('/delete-account', { method: 'DELETE', body: '{}' }, tenantApiKey);
+  if (!res.ok) {
+    await throwForFailedResponse(res, 'Failed to delete account');
+  }
+}
+
 // Beta-testing visibility indicator - GET /v1/self-license/status
 // (casazium/license's src/routes/self-license-status.js). Whole-instance
 // state, not tenant-scoped data, but keeps the same trailing
