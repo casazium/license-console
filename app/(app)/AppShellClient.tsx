@@ -68,7 +68,7 @@ export function AppShellClient({
         <Group h="100%" px="md" justify="space-between">
           <Group gap="xs">
             <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
-            <BrandLogo logoUrl={branding.logoUrl} size={28} />
+            <BrandLogo logoUrl={branding.logoUrl} linkUrl={branding.logoLinkUrl} size={28} />
           </Group>
           <Button variant="subtle" style={brandTextButtonStyle} onClick={handleSignOut}>
             Sign out

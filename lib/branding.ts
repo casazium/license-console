@@ -10,6 +10,12 @@ const DEFAULT_COLOR = '#228be6';
 
 export type Branding = {
   logoUrl: string | null;
+  // Optional destination for clicking the logo (BRANDING_LOGO_LINK_URL) -
+  // e.g. the operator's own marketing site. Independent of logoUrl itself:
+  // a logo can be shown with no link (the default, current behavior), but
+  // a link with no logo is meaningless, so BrandLogo.tsx only ever renders
+  // this when logoUrl is also set.
+  logoLinkUrl: string | null;
   titleHtml: string;
   // Security review finding L3: true only for the platform/env-var
   // source (BRANDING_TITLE_HTML) - genuinely operator-trusted config,
@@ -58,6 +64,7 @@ function getPlatformBranding(): Branding {
 
   return {
     logoUrl: process.env.BRANDING_LOGO_URL?.trim() || null,
+    logoLinkUrl: process.env.BRANDING_LOGO_LINK_URL?.trim() || null,
     titleHtml: process.env.BRANDING_TITLE_HTML?.trim() || DEFAULT_TITLE_HTML,
     titleIsHtml: true,
     copyrightHolder: process.env.BRANDING_COPYRIGHT_HOLDER?.trim() || null,
@@ -108,6 +115,12 @@ export function getBranding(tenantId?: string): Branding {
 
   return {
     logoUrl: row.logo_url?.trim() || platform.logoUrl,
+    // No tenant_branding column for this - always the platform/env-var
+    // value. Nothing writes a tenant override for any field yet (this
+    // function's own header comment), so adding one here with no way to
+    // ever set it would be dead plumbing; add a logo_link_url column
+    // alongside a real settings-UI write path if that's ever built.
+    logoLinkUrl: platform.logoLinkUrl,
     titleHtml: tenantTitle || platform.titleHtml,
     // false whenever the tenant's own value is actually used - see the
     // Branding type's own comment above. Falls back to the platform

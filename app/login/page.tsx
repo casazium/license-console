@@ -23,7 +23,7 @@ export default function LoginPage() {
     <Box style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       {branding.logoUrl && (
         <Box component="header" p="md">
-          <BrandLogo logoUrl={branding.logoUrl} size={40} />
+          <BrandLogo logoUrl={branding.logoUrl} linkUrl={branding.logoLinkUrl} size={40} />
         </Box>
       )}
       {/*

@@ -1,7 +1,10 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-20 (§77: added app/(app)/loading.tsx, closing
+Last updated: 2026-08-20 (§78: added an optional
+BRANDING_LOGO_LINK_URL env var so the logo can open a URL when
+clicked - operator request. See §78 below for full detail.)
+2026-08-20 (§77: added app/(app)/loading.tsx, closing
 BETA_LAUNCH_STATUS.md §4's "no loading states anywhere in the console"
 gap - a single shared spinner covering every data-fetching page under
 the authenticated layout, verified live via a real navigation with an
@@ -4675,4 +4678,35 @@ screenshotted ~600ms into that navigation - the spinner was genuinely
 visible, nav chrome still interactive around it, confirming the Suspense
 boundary actually fires on a real navigation rather than only in theory.
 `tsc --noEmit`, `eslint .`, and `npm run build` all clean.
+
+## 78. Optional logo link - `BRANDING_LOGO_LINK_URL` (2026-08-20)
+
+Operator request: `BRANDING_LOGO_URL` shows a logo, but clicking it did
+nothing - no way to make it open a URL (e.g. the operator's own
+marketing site). `BrandLogo.tsx` was a bare `<img>` at all 5 of its call
+sites (login, signup, forgot-password, reset-password, `AppShellClient`'s
+nav header) - confirmed directly, not assumed.
+
+**New `Branding.logoLinkUrl` field**, read from `BRANDING_LOGO_LINK_URL`
+in `getPlatformBranding()`, same optional/trim/no-quote-unwrapping
+pattern as `BRANDING_LOGO_URL` itself. No new `tenant_branding` DB
+column - `getBranding()`'s tenant-override merge always falls back to
+the platform value, matching every other field's own documented
+reasoning: nothing writes a tenant override for *any* branding field
+yet, so a column with no way to ever set it would be dead plumbing.
+
+**`BrandLogo.tsx`** takes an optional `linkUrl` prop; when set (and only
+when `logoUrl` is also set - a link with nothing to click is
+meaningless), wraps the `<img>` in a plain `<a href>` - a genuine
+cross-origin navigation to the operator's own site, not an in-app route,
+same reasoning `shared/components/Navbar`'s own `logo.href` uses in
+`casazium/casazium`. All 5 call sites updated to pass it through.
+
+**Verified live, both states**: started a real local standalone server
+with `BRANDING_LOGO_URL` set and `BRANDING_LOGO_LINK_URL` set to a test
+URL, curled `/login`, confirmed the response contains a real
+`<a href="...">` wrapping the `<img>`. Restarted with
+`BRANDING_LOGO_LINK_URL` unset, confirmed the logo renders as a bare
+`<img>` again with no anchor anywhere - the unset default is unchanged,
+no regression. `tsc --noEmit` and `eslint .` clean.
 
