@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { unstable_rethrow } from 'next/navigation';
 import { Alert, Box, Button, Group, List, Modal, PasswordInput, Stack, Text, Title } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
@@ -33,14 +34,11 @@ export function DeleteAccountSection() {
     setBusy(true);
     try {
       // A resolved promise here always means the delete did NOT happen -
-      // on success, the action itself calls redirect('/login') rather
-      // than returning a value, specifically so this code never runs on
-      // that path (see actions.ts's own comment for why: a client
-      // component receiving a plain return value from a Server Action
-      // makes Next re-render the current route afterward, which briefly
-      // flashed an "Unauthorized" error boundary here, since by then the
-      // account and session were already gone - confirmed live, reported
-      // directly by the operator testing the real deployed app).
+      // see actions.ts's own comment: on success it calls redirect('/login')
+      // instead of returning, which avoids a real bug where a plain
+      // return value made Next re-render /settings afterward and briefly
+      // flash an "Unauthorized" error boundary (the account/session were
+      // already gone by then).
       const result = await deleteAccountAction(password);
       if (result.reason === 'invalid-password') {
         setError('Incorrect password');
@@ -48,7 +46,19 @@ export function DeleteAccountSection() {
         notifyRateLimited();
       }
       setBusy(false);
-    } catch {
+    } catch (err) {
+      // redirect() itself works by throwing a special digest-tagged
+      // error, which propagates here as a rejected promise on the
+      // success path - not a real failure. Confirmed live (reported
+      // directly by the operator): without this check, a *successful*
+      // delete still showed "Failed to delete account" right before
+      // landing on /login, since this catch block was swallowing that
+      // signal and treating it as a genuine error. unstable_rethrow
+      // detects Next's own control-flow errors (redirect, notFound) and
+      // rethrows them so the framework can still complete the
+      // navigation; anything else falls through to the real error toast
+      // below.
+      unstable_rethrow(err);
       notifications.show({
         color: 'red',
         title: 'Failed to delete account',
