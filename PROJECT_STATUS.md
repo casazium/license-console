@@ -1,7 +1,12 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-20 (§76: wired /api/health/db into the real
+Last updated: 2026-08-20 (§77: added app/(app)/loading.tsx, closing
+BETA_LAUNCH_STATUS.md §4's "no loading states anywhere in the console"
+gap - a single shared spinner covering every data-fetching page under
+the authenticated layout, verified live via a real navigation with an
+artificial delay. See §77 below for full detail.)
+2026-08-20 (§76: wired /api/health/db into the real
 Coolify healthcheck (was /login, never touched the database) - found
 and fixed a real proxy-auth bug live while verifying it, the same
 PUBLIC_PATHS gap already documented twice in proxy.ts. Operator then
@@ -4642,4 +4647,32 @@ the tools this repo has, not merely untried.
 §157: turning on Coolify's built-in notifications for these two
 resources' container-status-change events is an operator-side Coolify
 settings change, not something either repo's own code can provide.
+
+## 77. Route-level loading states - `app/(app)/loading.tsx` (BETA_LAUNCH_STATUS.md §4) (2026-08-20)
+
+Operator asked what "no loading states anywhere in the console" actually
+meant. Every page under this layout (`dashboard`, `licenses`,
+`licenses/[key]`, `billing`, `settings`) is an async Server Component
+that fetches from `casazium/license` before rendering anything - without
+a `loading.tsx`, Next shows nothing at all during that fetch, so a slow
+request reads as "did my click even register?" rather than "it's
+working." Confirmed directly: zero `loading.tsx` files and zero
+`<Suspense>` boundaries existed anywhere in this app before this.
+
+**One shared file, not bespoke skeletons per page**: `app/(app)/loading.tsx`
+- a centered Mantine `Loader`. This slots into `AppShellClient`'s
+`<AppShell.Main>` in place of `{children}` - the nav chrome around it
+(sidebar, header) stays mounted and interactive, since only the layout's
+children slot suspends, not the layout itself. One file covers every
+route under this layout in one place, matching the scope of the actual
+gap rather than a full skeleton-screen redesign.
+
+**Verified live, not just trusted from Next's documented semantics**:
+temporarily added an artificial 2.5s delay to `dashboard/page.tsx`
+(reverted before commit, never shipped), logged into a real local
+standalone-mode server, navigated away and back to `/dashboard`, and
+screenshotted ~600ms into that navigation - the spinner was genuinely
+visible, nav chrome still interactive around it, confirming the Suspense
+boundary actually fires on a real navigation rather than only in theory.
+`tsc --noEmit`, `eslint .`, and `npm run build` all clean.
 
