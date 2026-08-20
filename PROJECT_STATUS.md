@@ -1,7 +1,10 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-19 (§69: Issue License form defaulted a new
+Last updated: 2026-08-19 (§70: deactivate-by-instance-id UI +
+quota visibility - both of BETA_LAUNCH_STATUS.md §4's flagged
+cheap/high-value deferred items. See §70 below for full detail.)
+2026-08-19 (§69: Issue License form defaulted a new
 license to already-expired - `expires_time` defaulted to midnight
 against a date that defaults to today, so it had already passed by
 the time the form opened. Fixed to `23:59`. Found live during the real
@@ -4256,4 +4259,52 @@ caught this directly while reviewing the defaults, not from a report.
 (end of day, not start of day). `zonedDateTimeToIso()` (`lib/timezone.ts`)
 correctly converts this to end-of-day in the selected timezone,
 DST-aware. `tsc --noEmit` and `eslint .` both clean. Pushed.
+
+## 70. Deactivate-by-instance-id UI + quota visibility - both of BETA_LAUNCH_STATUS.md §4's flagged "cheap and high-value" deferred items (2026-08-19)
+
+With the beta open, operator asked to tackle both items §4 itself
+flagged as cheap/high-value if there's room.
+
+**1. `deactivate-by-instance-id` had no console UI.** The backend
+route (`POST /admin/deactivate-by-instance-id`, `casazium/license`,
+existing since `R3-LICENSE-M1`) is the recovery path for
+activation-slot exhaustion, but nothing in this console ever called
+it - the most likely recurring support ticket ("customer reimaged
+their laptop, burned the last seat") had no self-service fix. Added:
+`deactivateByInstanceId()` in `license-client.live.ts`/`.mock.ts`/
+the dispatcher, `deactivateByInstanceIdAction` in
+`app/(app)/licenses/actions.ts` (mirrors `reissueActivationTokenAction`
+exactly), and a "Deactivate" button per activation row in
+`ActivationsTable` (`LicenseActions.tsx`) with a Mantine `Modal`
+confirm step - not `window.confirm()`, per this repo's own standing
+rule from `RevokeDeleteActions`' delete modal (not part of the page
+DOM, can't be styled/screenshotted/tested).
+
+**2. Quota visibility.** `casazium/license`'s `GET /billing/status`
+extended with `licensesUsed`/`licenseLimit` (that repo's own
+`PROJECT_STATUS.md` §152) - `BillingStatus` type extended to match,
+mock's `getBillingStatus`/`completeStubCheckout` derive
+`licensesUsed` from the mock store's own active-license count rather
+than a second hardcoded number, and the Billing page now shows
+"Licenses used N / M" with a `Progress` bar, red past the limit.
+`null`-guarded, though unreachable in practice since this page
+already 404s under self-hosted before reaching the render.
+
+`tsc --noEmit`, `eslint .`, and `next build` (incl. static generation)
+all clean.
+
+**Verified live, not just typed** - a full local `casazium/license` +
+this console running together (`CASAZIUM_UNLICENSED_EVAL=1`, per
+`README.md`'s own "Local SaaS-tier testing" walkthrough), driven with
+real Playwright/Chromium, not mocked: signed up a real tenant, issued
+a real license via the onboarding form (also incidentally re-confirmed
+§69's expiration-default fix - the form now shows `11:59 PM` by
+default, not midnight), confirmed the Billing page rendered
+`Licenses used 1 / 5` correctly against the real `checkQuota()`
+numbers. Then `POST /activate-license` against the real server to
+create a real activation, clicked Deactivate + confirmed in the modal,
+and confirmed it actually worked end to end: the Seats badge went
+`1/1` (red) → `0/1` (yellow), the activations table emptied to "No
+activations yet.", and a real success toast appeared. `BETA_LAUNCH_STATUS.md`
+§4 updated to check both items off.
 
