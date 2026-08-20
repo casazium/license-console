@@ -1,7 +1,10 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-20 (§71: self-service hard account deletion -
+Last updated: 2026-08-20 (§72: database integrity check script added -
+PRAGMA integrity_check + foreign_key_check, ad hoc only (no test suite
+in this repo). See §72 below for full detail.)
+2026-08-20 (§71: self-service hard account deletion -
 "Danger zone" section on Settings, password-re-entry-gated. See §71
 below for full detail.)
 2026-08-19 (§70: deactivate-by-instance-id UI +
@@ -4379,4 +4382,36 @@ now-deleted license, the tenant's own API key 403s on
 `GET /billing/status`, and logging back in with the same
 email/password 401s. `BETA_LAUNCH_STATUS.md` §4 updated to mark this
 item partially fixed.
+
+## 72. Database integrity check script - PRAGMA integrity_check + foreign_key_check (2026-08-20)
+
+Companion to `casazium/license`'s own `PROJECT_STATUS.md` §155 -
+operator asked directly, while testing §71's account-deletion feature,
+whether a database integrity test exists. `backup-db.mjs`/
+`restore-drill.mjs` already run `PRAGMA integrity_check`; nothing
+checked referential integrity. This is exactly the check that would
+surface the orphaned-`accounts`-row failure mode
+`BETA_LAUNCH_STATUS.md` v1.17 (`casazium/casazium`) documents for
+§71's own delete flow - the specific gap that motivated writing this.
+
+**`scripts/check-db-integrity.mjs`** (new, ad hoc): same two pragmas
+as `casazium/license`'s counterpart - `integrity_check` (not `{ simple:
+true }`, so a multi-problem result isn't silently truncated to its
+first row) and `foreign_key_check`. Defaults to `DB_FILE` (or
+`./data/console.db`); accepts an explicit path for a backup or
+restore-drill scratch copy. `eslint` clean.
+
+No CI wiring, unlike the `casazium/license` counterpart (which also
+gained a Vitest test that runs on every `npm test`) - this repo has no
+automated test suite at all (no `test` script in `package.json`,
+confirmed, same fact this session's other work already established).
+Ad hoc only: run manually, after direct DB surgery, or alongside a
+real backup.
+
+Verified live, both directions: seeded a real schema-initialized DB
+(`accounts`, `email_verification_tokens`, `tenant_branding`), confirmed
+the script passes clean; then, separately, injected a real dangling
+foreign key (`foreign_keys = OFF`, a `password_reset_tokens` row
+pointing at a nonexistent `account_id`) and confirmed the script
+correctly fails, reporting the exact violation.
 
