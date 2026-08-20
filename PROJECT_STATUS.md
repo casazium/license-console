@@ -1,7 +1,13 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-20 (§73: fixed a real UX bug in §71's account
+Last updated: 2026-08-20 (§74: fixed a false "Failed to delete
+account" toast on a successful delete - §73's own redirect() fix threw
+a control-flow error that the client's catch{} was wrongly treating as
+a real failure, caught via unstable_rethrow. Reported directly by the
+operator testing the real deployed app, immediately after §73 shipped.
+See §74 below for full detail.)
+2026-08-20 (§73: fixed a real UX bug in §71's account
 deletion - a brief "Unauthorized" error-boundary flash right before
 landing on /login, reported directly by the operator testing the real
 deployed app. See §73 below for full detail.)
@@ -4464,4 +4470,44 @@ sequence, and zero console errors/pageerrors fired this run (versus
 the explicit `Error: Unauthorized` logged before the fix, on an
 otherwise identical run). Confirmed the delete itself still works
 correctly throughout (lands on `/login`).
+
+## 74. Fixed a false "Failed to delete account" toast on a successful delete - §73's own fix had a second symptom (2026-08-20)
+
+Operator reported testing the real deployed app again, immediately
+after §73 shipped: the error-boundary flash was gone, but now a red
+"Failed to delete account" toast appeared right before landing on
+`/login` - on a delete that had actually succeeded. §73's own "verified
+live" claim checked for the console-logged `Unauthorized` error and a
+visible error-boundary flash (both gone, correctly) but never checked
+for a false toast notification - a different UI surface, and a gap in
+that verification pass, not a regression introduced after it.
+
+**Root cause**: `redirect('/login')` (§73's own fix, inside the Server
+Action) works by throwing a special digest-tagged control-flow error
+that Next's framework machinery intercepts to complete the navigation.
+That error was also propagating to the client as a rejected promise on
+the *success* path, and `DeleteAccountSection.tsx`'s blanket `catch {}`
+around the action call had no way to tell it apart from a real failure
+- so every successful delete hit the same "Something went wrong" toast
+a genuine error would.
+
+**Fix**: `next/navigation`'s `unstable_rethrow(err)`, the framework's
+own documented mechanism for distinguishing its own control-flow
+errors (`redirect`, `notFound`) from real ones inside a catch block -
+added as the first line of the catch, before the error toast. Anything
+that isn't one of Next's own signals still falls through to the real
+error toast unchanged.
+
+Verified live: signup -> issue/activate a license -> delete with the
+correct password -> no visible error text anywhere in the flow, straight
+to `/login`, no console errors. `tsc --noEmit` and `eslint .` clean.
+
+Lesson carried forward, not just fixed and moved on: a live-verification
+pass that checks one specific manifestation of a bug (here: the error
+boundary/console error) can still miss a second, independent
+manifestation of the *same* root cause (here: a swallowed control-flow
+signal surfacing as a false toast) - worth checking the full user-visible
+surface, not just the symptom that was originally reported, especially
+around framework-internal control-flow mechanisms like `redirect()`/
+`notFound()` that don't behave like ordinary thrown errors.
 
