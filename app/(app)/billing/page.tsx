@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { Badge, Stack, Text, Title } from '@mantine/core';
+import { Badge, Progress, Stack, Text, Title } from '@mantine/core';
 import { getBillingStatus } from '@/lib/license-client';
 import { isMultiTenant } from '@/lib/config';
 import { isRateLimited } from '@/lib/errors';
@@ -68,6 +68,29 @@ export default async function BillingPage() {
           Your subscription is not active - issuing new licenses is blocked
           until this is resolved.
         </Text>
+      )}
+
+      {/* Beta-readiness finding (BETA_LAUNCH_STATUS.md §4): a tenant
+          previously only discovered the plan's license-issuance limit by
+          hitting the over-quota error - the same numbers checkQuota()
+          enforces server-side (issue-license.js), not a re-derived
+          approximation. licensesUsed/licenseLimit are null only under
+          self-hosted, which this page already 404s before reaching here
+          (isMultiTenant() check above), so no null-guard is needed for
+          the arithmetic below. */}
+      {billing.licensesUsed !== null && billing.licenseLimit !== null && (
+        <Stack gap={4}>
+          <Text size="sm" c="dimmed">
+            Licenses used
+          </Text>
+          <Text size="lg" fw={600}>
+            {billing.licensesUsed} / {billing.licenseLimit}
+          </Text>
+          <Progress
+            value={(billing.licensesUsed / billing.licenseLimit) * 100}
+            color={billing.licensesUsed >= billing.licenseLimit ? 'red' : 'blue'}
+          />
+        </Stack>
       )}
 
       <PlanSelector currentPlan={billing.plan} />

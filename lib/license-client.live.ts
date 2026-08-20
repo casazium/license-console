@@ -321,6 +321,27 @@ export async function reissueActivationToken(
   return { token: data.token };
 }
 
+export async function deactivateByInstanceId(
+  key: string,
+  instanceId: string,
+  tenantApiKey?: string
+): Promise<boolean | null> {
+  const res = await liveFetch(
+    '/admin/deactivate-by-instance-id',
+    {
+      method: 'POST',
+      body: JSON.stringify({ key, instance_id: instanceId }),
+    },
+    tenantApiKey
+  );
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    await throwForFailedResponse(res, 'Failed to deactivate activation');
+  }
+  const data: { deactivated: boolean } = await res.json();
+  return data.deactivated;
+}
+
 export async function getDashboardStats(tenantApiKey?: string): Promise<DashboardStats> {
   const res = await liveFetch('/admin/stats', {}, tenantApiKey);
   if (!res.ok) {

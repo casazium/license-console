@@ -15,6 +15,7 @@ import { US_TIMEZONE_OPTIONS, zonedDateTimeToIso } from '@/lib/timezone';
 import { limitsToFormValues, buildLimits, type LimitsFormValues } from '@/lib/limits-form';
 import { LimitsFieldset } from '@/components/LimitsFieldset';
 import {
+  deactivateByInstanceIdAction,
   deleteLicenseAction,
   reissueActivationTokenAction,
   setLicenseRevokedAction,
@@ -372,7 +373,9 @@ export function ActivationsTable({
   licenseKey: string;
   activations: Activation[];
 }) {
+  const router = useRouter();
   const [busyInstance, setBusyInstance] = useState<string | null>(null);
+  const [confirmInstance, setConfirmInstance] = useState<string | null>(null);
 
   async function handleReissue(instanceId: string) {
     setBusyInstance(instanceId);
@@ -403,38 +406,106 @@ export function ActivationsTable({
     }
   }
 
+  // Beta-readiness finding (BETA_LAUNCH_STATUS.md §4): the backend route
+  // (POST /admin/deactivate-by-instance-id, casazium/license) has existed
+  // since R3-LICENSE-M1 as the recovery path for activation-slot
+  // exhaustion, but the console never wired it into the UI - the most
+  // likely recurring support ticket ("customer reimaged their laptop,
+  // burned the last seat") had no self-service fix. Confirmed via a
+  // Mantine Modal, not window.confirm() - see RevokeDeleteActions' own
+  // delete modal above for why (not part of the page DOM, can't be
+  // styled/screenshotted/tested).
+  async function handleDeactivate(instanceId: string) {
+    setConfirmInstance(null);
+    setBusyInstance(instanceId);
+    try {
+      const result = await deactivateByInstanceIdAction(licenseKey, instanceId);
+      if (!result.ok) {
+        notifyRateLimited();
+        return;
+      }
+      if (!result.data) {
+        notifications.show({ color: 'red', title: 'Deactivate failed', message: instanceId });
+        return;
+      }
+      notifications.show({ color: 'orange', title: 'Activation deactivated', message: instanceId });
+      router.refresh();
+    } catch {
+      notifications.show({
+        color: 'red',
+        title: 'Deactivate failed',
+        message: 'Something went wrong. Please try again.',
+      });
+    } finally {
+      setBusyInstance(null);
+    }
+  }
+
   if (activations.length === 0) {
     return null;
   }
 
   return (
-    <Table>
-      <Table.Thead>
-        <Table.Tr>
-          <Table.Th>Instance</Table.Th>
-          <Table.Th>Activated at</Table.Th>
-          <Table.Th />
-        </Table.Tr>
-      </Table.Thead>
-      <Table.Tbody>
-        {activations.map((activation) => (
-          <Table.Tr key={activation.instance_id}>
-            <Table.Td>{activation.instance_id}</Table.Td>
-            <Table.Td>{formatDateTime(activation.activated_at)}</Table.Td>
-            <Table.Td>
-              <Button
-                size="xs"
-                variant="subtle"
-                style={brandTextButtonStyle}
-                loading={busyInstance === activation.instance_id}
-                onClick={() => handleReissue(activation.instance_id)}
-              >
-                Reissue token
-              </Button>
-            </Table.Td>
+    <>
+      <Table>
+        <Table.Thead>
+          <Table.Tr>
+            <Table.Th>Instance</Table.Th>
+            <Table.Th>Activated at</Table.Th>
+            <Table.Th />
           </Table.Tr>
-        ))}
-      </Table.Tbody>
-    </Table>
+        </Table.Thead>
+        <Table.Tbody>
+          {activations.map((activation) => (
+            <Table.Tr key={activation.instance_id}>
+              <Table.Td>{activation.instance_id}</Table.Td>
+              <Table.Td>{formatDateTime(activation.activated_at)}</Table.Td>
+              <Table.Td>
+                <Group gap="xs" justify="flex-end" wrap="nowrap">
+                  <Button
+                    size="xs"
+                    variant="subtle"
+                    style={brandTextButtonStyle}
+                    loading={busyInstance === activation.instance_id}
+                    onClick={() => handleReissue(activation.instance_id)}
+                  >
+                    Reissue token
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="subtle"
+                    color="red"
+                    loading={busyInstance === activation.instance_id}
+                    onClick={() => setConfirmInstance(activation.instance_id)}
+                  >
+                    Deactivate
+                  </Button>
+                </Group>
+              </Table.Td>
+            </Table.Tr>
+          ))}
+        </Table.Tbody>
+      </Table>
+
+      <Modal
+        opened={confirmInstance !== null}
+        onClose={() => setConfirmInstance(null)}
+        title="Deactivate this instance"
+        centered
+      >
+        <Text size="sm">
+          Free up this seat on <b>{confirmInstance}</b>? The instance will need to activate again to
+          resume using this license.
+        </Text>
+        <Group justify="flex-end" mt="lg">
+          <Button variant="default" onClick={() => setConfirmInstance(null)}>
+            Cancel
+          </Button>
+          <Button color="red" onClick={() => confirmInstance && handleDeactivate(confirmInstance)}>
+            Deactivate
+          </Button>
+        </Group>
+      </Modal>
+    </>
   );
 }

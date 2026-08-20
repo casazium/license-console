@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import {
+  deactivateByInstanceId,
   deleteLicense,
   issueLicense,
   reissueActivationToken,
@@ -128,6 +129,22 @@ export async function reissueActivationTokenAction(
   const { identity, tenantApiKey } = await requireSessionWithTenantKey();
   try {
     const result = await reissueActivationToken(key, instanceId, tenantApiKey);
+    return { ok: true, data: result };
+  } catch (err) {
+    if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
+    markIfTenantRejected(err, identity.tenantId);
+    throw err;
+  }
+}
+
+export async function deactivateByInstanceIdAction(
+  key: string,
+  instanceId: string,
+): Promise<ActionResult<boolean | null>> {
+  const { identity, tenantApiKey } = await requireSessionWithTenantKey();
+  try {
+    const result = await deactivateByInstanceId(key, instanceId, tenantApiKey);
+    revalidatePath(`/licenses/${key}`);
     return { ok: true, data: result };
   } catch (err) {
     if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };

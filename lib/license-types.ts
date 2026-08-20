@@ -242,7 +242,12 @@ export type ListLicensesResult = {
 
 // Mirrors casazium/license's own BillingProvider.getSubscriptionStatus
 // return shape exactly (src/lib/billing/provider.js) - SaaS-B4.
+// licensesUsed/licenseLimit added for BETA_LAUNCH_STATUS.md §4's
+// quota-visibility beta-readiness finding - null under self-hosted
+// (no tenantId, no plan concept at all - same posture as `plan` itself).
 export type BillingStatus = {
   status: 'active' | 'past_due' | 'canceled';
   plan: string | null;
+  licensesUsed: number | null;
+  licenseLimit: number | null;
 };

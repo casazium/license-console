@@ -105,6 +105,8 @@ export const listActivations: typeof mock.listActivations = (key, tenantApiKey) 
   client().listActivations(key, tenantApiKey);
 export const reissueActivationToken: typeof mock.reissueActivationToken = (key, instanceId, tenantApiKey) =>
   client().reissueActivationToken(key, instanceId, tenantApiKey);
+export const deactivateByInstanceId: typeof mock.deactivateByInstanceId = (key, instanceId, tenantApiKey) =>
+  client().deactivateByInstanceId(key, instanceId, tenantApiKey);
 export const getDashboardStats: typeof mock.getDashboardStats = (tenantApiKey) =>
   client().getDashboardStats(tenantApiKey);
 export const getRecentActivations: typeof mock.getRecentActivations = (limit, tenantApiKey) =>

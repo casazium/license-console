@@ -311,6 +311,18 @@ export async function reissueActivationToken(
   return { token: `reissued_${Math.random().toString(36).slice(2, 10)}` };
 }
 
+export async function deactivateByInstanceId(
+  key: string,
+  instanceId: string,
+  _tenantApiKey?: string
+): Promise<boolean | null> {
+  const activations = getStore().activations[key];
+  const index = activations?.findIndex((activation) => activation.instance_id === instanceId) ?? -1;
+  if (index === -1) return null;
+  activations!.splice(index, 1);
+  return true;
+}
+
 export async function getDashboardStats(_tenantApiKey?: string): Promise<DashboardStats> {
   const { licenses, activations } = getStore();
   return {
@@ -412,9 +424,13 @@ export async function getRecentlyIssuedLicenses(
 // billing page's look and feel, matching this file's own purpose - real
 // tenant billing state doesn't exist here, so a fixed demo value stands
 // in (an "active, pro plan" tenant is a more useful/representative demo
-// than an empty "no plan" one).
+// than an empty "no plan" one). licensesUsed derived from the real mock
+// store's own active-license count (BETA_LAUNCH_STATUS.md §4,
+// quota-visibility) rather than a second hardcoded number that could
+// drift from what the licenses list actually shows.
 export async function getBillingStatus(_tenantApiKey?: string): Promise<BillingStatus> {
-  return { status: 'active', plan: 'pro' };
+  const licensesUsed = getStore().licenses.filter((license) => license.status === 'active').length;
+  return { status: 'active', plan: 'pro', licensesUsed, licenseLimit: 100 };
 }
 
 export async function createCheckoutSession(
@@ -425,7 +441,8 @@ export async function createCheckoutSession(
 }
 
 export async function completeStubCheckout(plan: string, _tenantApiKey?: string): Promise<BillingStatus> {
-  return { status: 'active', plan };
+  const licensesUsed = getStore().licenses.filter((license) => license.status === 'active').length;
+  return { status: 'active', plan, licensesUsed, licenseLimit: plan === 'pro' ? 100 : 5 };
 }
 
 // Standalone/demo mode never runs against a real casazium/license
