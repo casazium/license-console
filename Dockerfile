@@ -60,6 +60,13 @@ COPY --from=builder --chown=node:node /app/scripts/restore-drill.mjs ./scripts/r
 COPY --from=builder --chown=node:node /app/scripts/restore-drill-from-b2.sh ./scripts/restore-drill-from-b2.sh
 RUN chmod +x ./scripts/restore-drill-from-b2.sh
 
+# scripts/check-db-integrity.mjs: same operational-script gap as the
+# three above - not part of the Next standalone trace, needs an
+# explicit copy. Ad hoc only (this repo has no CI to wire it into, see
+# the script's own header comment) - run it inside this container via a
+# real shell, not on a schedule.
+COPY --from=builder --chown=node:node /app/scripts/check-db-integrity.mjs ./scripts/check-db-integrity.mjs
+
 # rclone (off-box backup push, beta-readiness follow-up, same as
 # casazium/license's own Dockerfile): runs from inside this container via
 # a Coolify Scheduled Task. No config file baked in; the B2 key/secret are
