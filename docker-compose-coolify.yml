@@ -150,10 +150,15 @@ services:
     healthcheck:
       # node, not wget/curl - guaranteed present (it's the runtime) rather
       # than relying on an Alpine base image's busybox tools.
+      #
+      # /api/health/db (route.ts), not /login - /login never touched the
+      # database, so a locked/corrupted DB previously still reported
+      # healthy here (BETA_LAUNCH_STATUS.md §4). /api/health/db runs a
+      # real query and returns 503 on failure.
       test:
         [
           'CMD-SHELL',
-          "node -e \"require('http').get('http://127.0.0.1:3000/login', r => process.exit(r.statusCode===200?0:1)).on('error', () => process.exit(1))\"",
+          "node -e \"require('http').get('http://127.0.0.1:3000/api/health/db', r => process.exit(r.statusCode===200?0:1)).on('error', () => process.exit(1))\"",
         ]
       interval: 30s
       timeout: 5s

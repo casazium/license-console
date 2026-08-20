@@ -44,6 +44,17 @@ import { SESSION_COOKIE_NAME, verifySessionToken } from '@/lib/session';
 // unreachable dead code. This route's own check is what actually gates
 // it, exactly as intended - this list entry only stops a *different*
 // gate from shadowing it first.
+//
+// /api/health/db (BETA_LAUNCH_STATUS.md §4): the same recurring shape a
+// third time - Coolify's own container healthcheck (docker-compose-
+// coolify.yml) calls this route directly, with no session cookie at
+// all, and its own request has nothing to authenticate in the first
+// place (it just proves the database connection is alive, no
+// credential-gated data in the response). Found the same way as the two
+// entries above - live, not by inspection: curled this route right
+// after wiring it into the healthcheck and got a 307 to /login instead
+// of a health check response, which would have made every deploy report
+// unhealthy forever regardless of the database's real state.
 const PUBLIC_PATHS = [
   '/login',
   '/api/login',
@@ -56,6 +67,7 @@ const PUBLIC_PATHS = [
   '/api/reset-password',
   '/api/verify-email',
   '/api/admin/report-extract',
+  '/api/health/db',
 ];
 
 export async function proxy(request: NextRequest) {

@@ -1,7 +1,12 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-20 (§75: fixed a Dockerfile gap that left §72's
+Last updated: 2026-08-20 (§76: wired /api/health/db into the real
+Coolify healthcheck (was /login, never touched the database) - found
+and fixed a real proxy-auth bug live while verifying it, the same
+PUBLIC_PATHS gap already documented twice in proxy.ts. See §76 below
+for full detail.)
+2026-08-20 (§75: fixed a Dockerfile gap that left §72's
 check-db-integrity.mjs out of the runtime image, then verified it live
 in production - a clean pass against the real deployed database,
 alongside casazium/license's own equivalent check. See §75 below for
@@ -4544,4 +4549,69 @@ equivalent check on its side (see that repo's §156). Confirms the real
 production database has no structural corruption and no dangling
 foreign keys, including specifically after §71's account-deletion
 feature has actually been exercised against it in production.
+
+## 76. /api/health/db wired into the real Coolify healthcheck - and a real proxy bug found catching it live (BETA_LAUNCH_STATUS.md §4) (2026-08-20)
+
+Companion to `casazium/license`'s own §157, same operator conversation
+(what's involved in real monitoring/alerting, then Coolify's built-in
+notification/Sentinel research, then narrowing the actual code gap to
+"the healthcheck never touches the database"). This repo's own
+`GET /api/health/db` already existed (SaaS-B1a) but was explicitly never
+wired into `docker-compose-coolify.yml`'s healthcheck, which pointed at
+`/login` instead - a real page render, but not a DB check.
+
+**The route**: extended with `db.prepare('SELECT 1 FROM sqlite_master LIMIT 1').get()`
+alongside its existing `journal_mode`/`foreign_keys` pragma reads, all
+inside a try/catch that now returns `503 { ok: false, error: ... }` on
+failure - same reasoning `casazium/license`'s new `GET /health` route
+documents for its own equivalent query (a bare `SELECT 1` never touches
+the file at all). `docker-compose-coolify.yml`'s healthcheck now points
+at `/api/health/db` instead of `/login`.
+
+**A real bug found live, not by inspection**: the first `curl` against
+the wired-up route, right after starting a local server to verify it,
+came back `307` to `/login` instead of a health response - `proxy.ts`'s
+own session-check middleware was redirecting the healthcheck's
+unauthenticated request before the route ever ran. This is the exact
+same shape of bug this file's own `proxy.ts` already documents twice
+(`/api/verify-email`, `/api/admin/report-extract` - both previously
+missing from `PUBLIC_PATHS` for the identical reason: a caller with no
+session cookie, whose own request has nothing this proxy should be
+gating). Fixed by adding `/api/health/db` to `PUBLIC_PATHS`, with a
+comment recording the third occurrence of the pattern for whoever hits
+it a fourth time. Re-verified live after the fix: `200 { ok: true,
+journalMode: "wal", foreignKeys: 1 }`.
+
+**Forced-failure verification, and a genuinely useful limit found while
+attempting it**: corrupted `data/console.db` on disk (overwrote it with
+garbage bytes) and restarted the dev server to see whether
+`/api/health/db` would report `503` - instead, the whole process failed
+to boot: `instrumentation.ts` calls `getDb()` at Next's own startup
+hook, and `openDatabase()`'s `database.exec(schemaSql)` throws
+uncaught, uncatchable by this route's own try/catch, since the route
+handler never gets a chance to run at all. This is not a gap needing a
+second fix, though - a crashed process refusing connections already
+correctly fails Docker's `CMD-SHELL` healthcheck (confirmed: the same
+`curl` returned connection-refused, and the real healthcheck's own
+`node -e ... .on('error', ...)` treats that identically to a non-200).
+A corrupted-at-boot database was already covered by existing behavior
+one layer up; this route's own try/catch is for the narrower, harder-
+to-force case of a database that goes bad *after* a successful boot
+(mid-flight lock contention, disk failure) while the process keeps
+running on an already-open handle - not independently reproducible from
+outside the process in this repo (no test runner here to close the
+real connection programmatically, the way `casazium/license`'s own
+Vitest suite does for its equivalent route in that repo's §157; WAL
+mode's reader/writer independence also means an external file-level
+lock doesn't reliably block a plain read the way it would in
+rollback-journal mode). Documented honestly as a verified-different-
+layer finding, not a false claim of having tested the exact scenario
+the route's own try/catch exists for.
+
+`tsc --noEmit`, `eslint .`, and `npm run build` all clean.
+
+**Alerting itself is not code** - same as `casazium/license`'s own
+§157: turning on Coolify's built-in notifications for these two
+resources' container-status-change events is an operator-side Coolify
+settings change, not something either repo's own code can provide.
 
