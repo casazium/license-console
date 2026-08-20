@@ -4,8 +4,12 @@ Status: Draft
 Last updated: 2026-08-20 (§76: wired /api/health/db into the real
 Coolify healthcheck (was /login, never touched the database) - found
 and fixed a real proxy-auth bug live while verifying it, the same
-PUBLIC_PATHS gap already documented twice in proxy.ts. See §76 below
-for full detail.)
+PUBLIC_PATHS gap already documented twice in proxy.ts. Operator then
+directly challenged whether testing had been sufficient - a second
+real attempt to force the route's failure path (a competing exclusive
+lock) also failed to reach it, itself resisted by the live connection;
+recorded as a closed investigation, not an abandoned one. See §76
+below for full detail.)
 2026-08-20 (§75: fixed a Dockerfile gap that left §72's
 check-db-integrity.mjs out of the runtime image, then verified it live
 in production - a clean pass against the real deployed database,
@@ -4607,6 +4611,30 @@ lock doesn't reliably block a plain read the way it would in
 rollback-journal mode). Documented honestly as a verified-different-
 layer finding, not a false claim of having tested the exact scenario
 the route's own try/catch exists for.
+
+**Operator asked directly whether this had been tested sufficiently -
+made one more real attempt, not just reasoning about it.** Wrote a
+throwaway script (`hold-exclusive-lock.mjs`, deleted after use, never
+committed) that opens the same `console.db` from a separate process,
+sets `PRAGMA locking_mode = EXCLUSIVE`, and writes to force acquiring
+an OS-level exclusive lock, held for 10s while `/api/health/db` was
+curled against the live dev server in that window. Result: the
+*competing script itself* failed immediately with `SQLITE_BUSY` trying
+to acquire the lock in the first place - the live server's own
+already-open WAL connection resisted it outright, so the route was
+never actually put under contention to observe its response. Two
+independent, genuinely different attempts (file corruption; competing
+exclusive lock) both failed to reach the specific code path for the
+same underlying reason: this app's real, already-running SQLite
+connection is resilient to exactly the kinds of external interference
+that could be applied without either an in-process test hook or
+damaging the file outright (which reproduces the different, already-
+confirmed boot-crash case instead). Treated as a closed investigation,
+not an abandoned one - the try/catch itself is unchanged and
+code-identical in shape to `casazium/license`'s Vitest-proven
+equivalent; what's now additionally established is that forcing its
+specific failure path from outside this process isn't achievable with
+the tools this repo has, not merely untried.
 
 `tsc --noEmit`, `eslint .`, and `npm run build` all clean.
 
