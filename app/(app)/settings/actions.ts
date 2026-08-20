@@ -1,5 +1,6 @@
 'use server';
 
+import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
 import { deleteAccount as deleteAccountOnServer } from '@/lib/license-client';
 import { verifyAccountPassword } from '@/lib/auth';
@@ -8,7 +9,23 @@ import { SESSION_COOKIE_NAME } from '@/lib/session';
 import { requireSessionWithTenantKey, markIfTenantRejected } from '@/lib/tenant-context';
 import { isRateLimited } from '@/lib/errors';
 
-type DeleteAccountResult = { ok: true } | { ok: false; reason: 'rate-limited' | 'invalid-password' };
+// No `ok: true` case - a resolved promise always means the delete
+// didn't happen. On success this redirects (below) instead of
+// returning, specifically to avoid a real bug: a client component that
+// gets a plain return value back from a Server Action makes Next
+// implicitly re-render the current route's Server Component tree
+// afterward (normal behavior, so the page reflects whatever the action
+// changed) - but by then the accounts row is gone and the session
+// cookie is cleared, so /settings's own layout (requireSession())
+// throws Unauthorized and its error boundary flashes on screen for a
+// moment before the client's own navigation away takes over. Confirmed
+// live (this is what that flash was) - reported directly by the
+// operator testing the real deployed app, not caught by this session's
+// own earlier verification pass, which saw the same console error and
+// wrongly wrote it off as harmless noise. redirect() inside the action
+// itself sidesteps this: it resolves to a navigation response directly,
+// without Next ever attempting that in-between re-render.
+type DeleteAccountFailure = { reason: 'rate-limited' | 'invalid-password' };
 
 /**
  * Self-service hard account deletion (BETA_LAUNCH_STATUS.md §4).
@@ -39,7 +56,7 @@ type DeleteAccountResult = { ok: true } | { ok: false; reason: 'rate-limited' | 
  * sending a token for an account that's gone, not because the session
  * would otherwise still work.
  */
-export async function deleteAccountAction(password: string): Promise<DeleteAccountResult> {
+export async function deleteAccountAction(password: string): Promise<DeleteAccountFailure> {
   const { identity, tenantApiKey } = await requireSessionWithTenantKey();
 
   if (!identity.tenantId || !tenantApiKey) {
@@ -51,13 +68,13 @@ export async function deleteAccountAction(password: string): Promise<DeleteAccou
 
   const passwordOk = await verifyAccountPassword(identity.id, password);
   if (!passwordOk) {
-    return { ok: false, reason: 'invalid-password' };
+    return { reason: 'invalid-password' };
   }
 
   try {
     await deleteAccountOnServer(tenantApiKey);
   } catch (err) {
-    if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
+    if (isRateLimited(err)) return { reason: 'rate-limited' };
     markIfTenantRejected(err, identity.tenantId);
     throw err;
   }
@@ -77,5 +94,5 @@ export async function deleteAccountAction(password: string): Promise<DeleteAccou
   const store = await cookies();
   store.delete(SESSION_COOKIE_NAME);
 
-  return { ok: true };
+  redirect('/login');
 }

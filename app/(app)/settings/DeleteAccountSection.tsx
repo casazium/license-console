@@ -32,23 +32,22 @@ export function DeleteAccountSection() {
     setError(null);
     setBusy(true);
     try {
+      // A resolved promise here always means the delete did NOT happen -
+      // on success, the action itself calls redirect('/login') rather
+      // than returning a value, specifically so this code never runs on
+      // that path (see actions.ts's own comment for why: a client
+      // component receiving a plain return value from a Server Action
+      // makes Next re-render the current route afterward, which briefly
+      // flashed an "Unauthorized" error boundary here, since by then the
+      // account and session were already gone - confirmed live, reported
+      // directly by the operator testing the real deployed app).
       const result = await deleteAccountAction(password);
-      if (!result.ok) {
-        if (result.reason === 'invalid-password') {
-          setError('Incorrect password');
-        } else {
-          notifyRateLimited();
-        }
-        setBusy(false);
-        return;
+      if (result.reason === 'invalid-password') {
+        setError('Incorrect password');
+      } else {
+        notifyRateLimited();
       }
-      // A full navigation, not next/navigation's router - calling
-      // router.push() immediately after an awaited Server Action call
-      // reliably gets dropped (the same issue documented in
-      // StubCheckoutConfirm.tsx's identical comment), and the session
-      // cookie this action just cleared makes a hard reload the right
-      // call anyway.
-      window.location.assign('/login');
+      setBusy(false);
     } catch {
       notifications.show({
         color: 'red',

@@ -1,7 +1,11 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-20 (§72: database integrity check script added -
+Last updated: 2026-08-20 (§73: fixed a real UX bug in §71's account
+deletion - a brief "Unauthorized" error-boundary flash right before
+landing on /login, reported directly by the operator testing the real
+deployed app. See §73 below for full detail.)
+2026-08-20 (§72: database integrity check script added -
 PRAGMA integrity_check + foreign_key_check, ad hoc only (no test suite
 in this repo). See §72 below for full detail.)
 2026-08-20 (§71: self-service hard account deletion -
@@ -4414,4 +4418,50 @@ the script passes clean; then, separately, injected a real dangling
 foreign key (`foreign_keys = OFF`, a `password_reset_tokens` row
 pointing at a nonexistent `account_id`) and confirmed the script
 correctly fails, reporting the exact violation.
+
+## 73. Fixed a real UX flash in §71's account-deletion flow (2026-08-20)
+
+Operator reported testing the real deployed app: clicking Delete,
+confirming, and entering the password briefly flashed something that
+looked like an error before flipping to the login page - "disturbing"
+enough that a tenant might wonder whether it actually worked. This
+session's own earlier live-verification pass (§71) had seen the exact
+underlying symptom - a console-logged `Error: Unauthorized` at
+`requireSession`/`AppLayout` during the delete - and wrongly wrote it
+off as harmless noise instead of investigating.
+
+**Root cause**: `deleteAccountAction` returned a plain `{ ok: true }`
+value on success, and the client then called
+`window.location.assign('/login')`. But calling a Server Action from a
+client component makes Next implicitly re-render the current route's
+Server Component tree once the action resolves (normal, expected
+behavior, so the page reflects whatever server state the action
+changed) - and by the time that re-render fired, the action had
+already deleted the `accounts` row and cleared the session cookie, so
+`/settings`'s own layout (`requireSession()`) threw Unauthorized and
+its error boundary rendered for a moment before the client's
+`window.location.assign` call took over.
+
+**Fix**: `deleteAccountAction` now calls `redirect('/login')` (from
+`next/navigation`) directly, after the local cleanup, instead of
+returning a value for the client to act on. `redirect()` inside a
+Server Action resolves straight to a navigation response - Next never
+attempts the in-between re-render of the now-sessionless page. The
+return type narrowed to `{ reason: 'rate-limited' | 'invalid-password'
+}` - a resolved promise now only ever means the delete didn't happen;
+success terminates via the redirect and never returns to the caller.
+`DeleteAccountSection.tsx` simplified to match (no more `ok` check, no
+more client-side `window.location.assign`).
+
+`tsc --noEmit`, `eslint .`, and `next build` all clean.
+
+**Verified live** the flash is actually gone, not just reasoned about:
+signed up a real tenant, drove the full delete flow with Playwright
+against the real local stack, and captured a screenshot every 30ms
+through the entire confirm-click-to-redirect transition (12 frames) -
+none show any error content, only the modal → loading spinner
+sequence, and zero console errors/pageerrors fired this run (versus
+the explicit `Error: Unauthorized` logged before the fix, on an
+otherwise identical run). Confirmed the delete itself still works
+correctly throughout (lands on `/login`).
 
