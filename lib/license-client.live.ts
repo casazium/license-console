@@ -531,6 +531,23 @@ export async function deleteAccount(tenantApiKey?: string): Promise<void> {
   }
 }
 
+// BETA_LAUNCH_STATUS.md §4, API-key-rotation gap: mints a fresh tenant
+// key and retires the old one in the same operation (hard cutover, no
+// overlap window - operator decision). Authenticated with the *current*
+// key, same as every other tenant-scoped call - the caller
+// (rotateApiKeyAction) is responsible for re-encrypting the returned key
+// into this console's own accounts.tenant_api_key_encrypted afterward,
+// or the console's own stored copy goes stale the instant this succeeds.
+export async function rotateApiKey(tenantApiKey?: string): Promise<{ apiKey: string }> {
+  // Empty string, not omitted - same liveFetch()/empty-body-schema gotcha
+  // as deleteAccount() above.
+  const res = await liveFetch('/rotate-api-key', { method: 'POST', body: '{}' }, tenantApiKey);
+  if (!res.ok) {
+    await throwForFailedResponse(res, 'Failed to rotate API key');
+  }
+  return res.json();
+}
+
 // Beta-testing visibility indicator - GET /v1/self-license/status
 // (casazium/license's src/routes/self-license-status.js). Whole-instance
 // state, not tenant-scoped data, but keeps the same trailing

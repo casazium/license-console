@@ -1,7 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { AppShell, Burger, Button, Group, NavLink, Text } from '@mantine/core';
+import { AppShell, Anchor, Burger, Button, Group, NavLink, Text } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -101,6 +101,16 @@ export function AppShellClient({
             </>
           )}
           <VersionStamp {...appVersion} />
+          {branding.supportEmail && (
+            <>
+              <Text size="xs" c="dimmed">
+                &middot;
+              </Text>
+              <Anchor href={`mailto:${branding.supportEmail}`} size="xs" c="dimmed">
+                Contact support
+              </Anchor>
+            </>
+          )}
         </Group>
       </AppShell.Footer>
     </AppShell>

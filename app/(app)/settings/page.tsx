@@ -1,7 +1,9 @@
 import { notFound } from 'next/navigation';
 import { Anchor, Code, Stack, Text, Title } from '@mantine/core';
 import { requireSessionWithTenantKey } from '@/lib/tenant-context';
+import { getBranding } from '@/lib/branding';
 import { ApiKeyReveal } from './ApiKeyReveal';
+import { RotateApiKeySection } from './RotateApiKeySection';
 import { DeleteAccountSection } from './DeleteAccountSection';
 
 // Beta-readiness finding: nothing in this console ever showed a hosted
@@ -15,7 +17,7 @@ import { DeleteAccountSection } from './DeleteAccountSection';
 export const dynamic = 'force-dynamic';
 
 export default async function SettingsPage() {
-  const { tenantApiKey } = await requireSessionWithTenantKey();
+  const { identity, tenantApiKey } = await requireSessionWithTenantKey();
 
   // Self-hosted has no per-tenant key concept - the operator already
   // configured their own ADMIN_API_KEY and knows it. Only reachable via
@@ -26,6 +28,7 @@ export default async function SettingsPage() {
   }
 
   const apiBaseUrl = (process.env.LICENSE_API_URL ?? '').replace(/\/+$/, '');
+  const { supportEmail } = getBranding(identity.tenantId ?? undefined);
 
   return (
     <Stack maw={640}>
@@ -42,7 +45,18 @@ export default async function SettingsPage() {
         <Text size="sm" fw={700} mb={4}>
           API base URL
         </Text>
-        <Code block>{apiBaseUrl || 'Not configured - contact support'}</Code>
+        <Code block>
+          {apiBaseUrl || (
+            <>
+              Not configured -{' '}
+              {supportEmail ? (
+                <Anchor href={`mailto:${supportEmail}`}>contact support</Anchor>
+              ) : (
+                'contact support'
+              )}
+            </>
+          )}
+        </Code>
       </div>
 
       <Text size="sm" c="dimmed">
@@ -65,6 +79,7 @@ export default async function SettingsPage() {
         to activate/verify licenses from your licensed application.
       </Text>
 
+      <RotateApiKeySection />
       <DeleteAccountSection />
     </Stack>
   );

@@ -2,8 +2,9 @@
 
 import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
-import { deleteAccount as deleteAccountOnServer } from '@/lib/license-client';
+import { deleteAccount as deleteAccountOnServer, rotateApiKey as rotateApiKeyOnServer } from '@/lib/license-client';
 import { verifyAccountPassword } from '@/lib/auth';
+import { encrypt } from '@/lib/crypto';
 import { getDb } from '@/lib/db';
 import { SESSION_COOKIE_NAME } from '@/lib/session';
 import { requireSessionWithTenantKey, markIfTenantRejected } from '@/lib/tenant-context';
@@ -95,4 +96,95 @@ export async function deleteAccountAction(password: string): Promise<DeleteAccou
   store.delete(SESSION_COOKIE_NAME);
 
   redirect('/login');
+}
+
+// BETA_LAUNCH_STATUS.md §4, API-key-rotation gap: no self-service
+// recovery existed for a leaked tenant key - the only options were
+// asking the operator to intervene manually, or deleting the whole
+// account via deleteAccountAction above and re-issuing every license
+// from scratch.
+// localSyncFailed is set only on the success path - the license-server
+// rotation itself succeeded (the caller has a real, working new key),
+// but this console's own local copy could not be persisted (see the
+// try/catch around the UPDATE below). Kept a separate flag rather than
+// folded into the failure union, since this is not a failure the caller
+// should retry - retrying would just rotate again.
+type RotateApiKeyResult =
+  | { apiKey: string; localSyncFailed?: boolean }
+  | { reason: 'rate-limited' | 'invalid-password' };
+
+/**
+ * Rotates the tenant's own API key on casazium/license (hard cutover -
+ * the old key stops authenticating immediately, see that repo's
+ * rotate-own-api-key.js), then re-encrypts the returned plaintext key
+ * into this console's own accounts.tenant_api_key_encrypted - without
+ * this second step, the console's own stored copy (every Server Action
+ * in this app that calls the license server, plus the Settings page's
+ * own ApiKeyReveal display) would go stale the instant rotation
+ * succeeds, since nothing else keeps the two databases' copies in sync.
+ *
+ * Password re-entry, same reasoning as deleteAccountAction above: a
+ * left-open or hijacked session shouldn't be enough on its own to
+ * invalidate every credential this tenant's own backend is currently
+ * using. Checked server-side via verifyAccountPassword(), not trusted
+ * from the client.
+ *
+ * Returns the new plaintext key directly (rather than relying on the
+ * Settings page re-rendering) so the UI can show a clear "here's your
+ * new key, update your systems now" moment - the same one-time-reveal
+ * framing signup already uses, even though this console does persist a
+ * decryptable copy afterward (ApiKeyReveal on Settings can show it
+ * again later, unlike a true show-once secret).
+ *
+ * Security review finding: the license-server rotation and this
+ * console's own local persist are two separate steps, not one
+ * transaction - if the local UPDATE below fails after the
+ * license-server side already succeeded, the caller must still get the
+ * new key back (it's the only real, working credential at that point;
+ * losing it here would mean a successful rotation the tenant can never
+ * see, with every other Server Action in this app then silently
+ * breaking against the console's now-stale stored copy). The UPDATE is
+ * therefore in its own try/catch, not the outer one - a failure there
+ * sets localSyncFailed instead of throwing.
+ */
+export async function rotateApiKeyAction(password: string): Promise<RotateApiKeyResult> {
+  const { identity, tenantApiKey } = await requireSessionWithTenantKey();
+
+  if (!identity.tenantId || !tenantApiKey) {
+    // Unreachable via the UI - the rotate-key section only renders under
+    // MULTI_TENANT with a resolved tenant key (see the Settings page).
+    // Defense in depth, not a real self-hosted path.
+    throw new Error('API key rotation is only available for hosted accounts');
+  }
+
+  const passwordOk = await verifyAccountPassword(identity.id, password);
+  if (!passwordOk) {
+    return { reason: 'invalid-password' };
+  }
+
+  let newApiKey: string;
+  try {
+    ({ apiKey: newApiKey } = await rotateApiKeyOnServer(tenantApiKey));
+  } catch (err) {
+    if (isRateLimited(err)) return { reason: 'rate-limited' };
+    markIfTenantRejected(err, identity.tenantId);
+    throw err;
+  }
+
+  // The license-server side has already rotated at this point - this
+  // local update is a best-effort sync, not part of that transaction.
+  // A failure here must not lose the key: it's returned to the caller
+  // either way (see the function's own doc comment above).
+  try {
+    const db = getDb();
+    db.prepare('UPDATE accounts SET tenant_api_key_encrypted = ? WHERE id = ?').run(
+      encrypt(newApiKey),
+      identity.id
+    );
+  } catch (err) {
+    console.error('Failed to persist rotated API key locally after a successful rotation:', err);
+    return { apiKey: newApiKey, localSyncFailed: true };
+  }
+
+  return { apiKey: newApiKey };
 }

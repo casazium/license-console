@@ -389,6 +389,13 @@ export async function deleteAccount(_tenantApiKey?: string): Promise<void> {
   }
 }
 
+// Mock counterpart to the live client's rotateApiKey(). Not reachable
+// through the UI in standalone mode either, same reasoning as
+// deleteAccount() above - kept for type parity.
+export async function rotateApiKey(_tenantApiKey?: string): Promise<{ apiKey: string }> {
+  return { apiKey: `mock-${crypto.randomUUID()}` };
+}
+
 export async function getDashboardStats(_tenantApiKey?: string): Promise<DashboardStats> {
   const { licenses, activations } = getStore();
   return {

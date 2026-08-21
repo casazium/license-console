@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Box, Group, Stack, Text } from '@mantine/core';
+import { Anchor, Box, Group, Stack, Text } from '@mantine/core';
 import { isMultiTenant } from '@/lib/config';
 import { getBranding } from '@/lib/branding';
 import { getAppVersion } from '@/lib/version';
@@ -66,6 +66,16 @@ export default function LoginPage() {
             </>
           )}
           <VersionStamp {...appVersion} />
+          {branding.supportEmail && (
+            <>
+              <Text size="xs" c="dimmed">
+                &middot;
+              </Text>
+              <Anchor href={`mailto:${branding.supportEmail}`} size="xs" c="dimmed">
+                Contact support
+              </Anchor>
+            </>
+          )}
         </Group>
       </Box>
     </Box>

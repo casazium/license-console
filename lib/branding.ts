@@ -16,6 +16,11 @@ export type Branding = {
   // a link with no logo is meaningless, so BrandLogo.tsx only ever renders
   // this when logoUrl is also set.
   logoLinkUrl: string | null;
+  // Support-channel gap (BETA_LAUNCH_STATUS.md §4): there was no listed
+  // way for a tenant to contact the operator at all. Optional on
+  // purpose - an operator who hasn't set one up yet shouldn't have a
+  // broken/fake contact link rendered for them.
+  supportEmail: string | null;
   titleHtml: string;
   // Security review finding L3: true only for the platform/env-var
   // source (BRANDING_TITLE_HTML) - genuinely operator-trusted config,
@@ -65,6 +70,7 @@ function getPlatformBranding(): Branding {
   return {
     logoUrl: process.env.BRANDING_LOGO_URL?.trim() || null,
     logoLinkUrl: process.env.BRANDING_LOGO_LINK_URL?.trim() || null,
+    supportEmail: process.env.SUPPORT_EMAIL?.trim() || null,
     titleHtml: process.env.BRANDING_TITLE_HTML?.trim() || DEFAULT_TITLE_HTML,
     titleIsHtml: true,
     copyrightHolder: process.env.BRANDING_COPYRIGHT_HOLDER?.trim() || null,
@@ -121,6 +127,9 @@ export function getBranding(tenantId?: string): Branding {
     // ever set it would be dead plumbing; add a logo_link_url column
     // alongside a real settings-UI write path if that's ever built.
     logoLinkUrl: platform.logoLinkUrl,
+    // Same reasoning as logoLinkUrl above - no tenant_branding column,
+    // always the platform/env-var value.
+    supportEmail: platform.supportEmail,
     titleHtml: tenantTitle || platform.titleHtml,
     // false whenever the tenant's own value is actually used - see the
     // Branding type's own comment above. Falls back to the platform

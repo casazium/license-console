@@ -109,6 +109,8 @@ export const deactivateByInstanceId: typeof mock.deactivateByInstanceId = (key, 
   client().deactivateByInstanceId(key, instanceId, tenantApiKey);
 export const deleteAccount: typeof mock.deleteAccount = (tenantApiKey) =>
   client().deleteAccount(tenantApiKey);
+export const rotateApiKey: typeof mock.rotateApiKey = (tenantApiKey) =>
+  client().rotateApiKey(tenantApiKey);
 export const getDashboardStats: typeof mock.getDashboardStats = (tenantApiKey) =>
   client().getDashboardStats(tenantApiKey);
 export const getRecentActivations: typeof mock.getRecentActivations = (limit, tenantApiKey) =>
