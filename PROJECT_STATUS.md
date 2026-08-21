@@ -1,7 +1,11 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-21 (§83: renamed the "API access" page/nav
+Last updated: 2026-08-21 (§84: grouped the Settings page into "API"
+and "Account" clusters, following an independent Opus naming check
+that confirmed "Settings" over "Profile" and suggested the grouping.
+See §84 below for full detail.)
+2026-08-21 (§83: renamed the "API access" page/nav
 item to "Settings", now that the page covers rotation, email/password
 change, and account deletion too - operator asked directly whether the
 old name still fit. See §83 below for full detail.)
@@ -4997,4 +5001,31 @@ user-facing reference to the old name -
 account's own API key" pointer, now "See Settings".
 
 `tsc --noEmit`, `eslint`, and `next build` all clean.
+
+## 84. Grouped the Settings page into "API" and "Account" clusters (2026-08-21)
+
+Follow-up to §83's rename. Operator asked what Opus thought "Settings"
+vs. "Profile" for the page's own name - an independent Opus check
+(grounded in real dev-tool conventions: Stripe/GitHub/Vercel/Resend all
+give credentials their own home while email/password/delete live under
+account settings) confirmed "Settings" was right and "Profile" would be
+actively misleading (it conventionally means identity presentation, not
+API keys or account deletion). Opus's one concrete suggestion, adopted
+here: add explicit "API" and "Account" groupings inside the page so a
+developer scanning for their key still finds it fast, the way the old
+"API access" name gave for free.
+
+Two small uppercase eyebrow labels (`Text` `tt="uppercase"`, no new
+component) added directly in `page.tsx`: "API" above the API-key/base-
+URL/rotate cluster, "Account" above email/password/delete-account.
+Deliberately a caption, not another full `Title`, so it doesn't compete
+visually with the actual section headings one level below it.
+
+Verified live, not just built: a real signup on a real running
+`casazium/license` + `casazium/license-console` pair, screenshotted via
+Playwright at both full-page and scrolled-to-the-rotate-button framing
+- confirmed the grouping renders as intended and the "Rotate API key"
+button (which looked cut off in the full-page capture) was a full-page
+screenshot stitching artifact around a sticky footer, not a real layout
+bug. `tsc --noEmit`, `eslint`, `next build` all clean.
 

@@ -61,6 +61,9 @@ export default async function SettingsPage({
 
       <Title order={2}>Settings</Title>
 
+      <Text size="xs" fw={700} tt="uppercase" c="dimmed" style={{ letterSpacing: '0.05em' }}>
+        API
+      </Text>
       <Title order={3}>API access</Title>
       <Text size="sm" c="dimmed">
         Use this API key and base URL to call the License Server directly from your own
@@ -109,6 +112,10 @@ export default async function SettingsPage({
       </Text>
 
       <RotateApiKeySection />
+
+      <Text size="xs" fw={700} tt="uppercase" c="dimmed" mt="xl" style={{ letterSpacing: '0.05em' }}>
+        Account
+      </Text>
       {currentEmail && <ChangeEmailSection currentEmail={currentEmail} />}
       <ChangePasswordSection />
       <DeleteAccountSection />
