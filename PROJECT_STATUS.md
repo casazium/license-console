@@ -1,7 +1,12 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-21 (§80: added license-key search and
+Last updated: 2026-08-21 (§81/§82: recorded, retroactively, API key
+rotation UI + a support-contact link (§81), then built account-settings
+password/email change (§82) - the first item on the operator's own
+priority-check shortlist that's entirely local to this console's own
+`accounts` table. See those sections below for full detail.)
+2026-08-21 (§80: added license-key search and
 server-side column sort to the Licenses list, closing
 BETA_LAUNCH_STATUS.md §4's "no search by license key" gap - the
 `casazium/license-console` half of a paired change, plan-reviewed and
@@ -4805,4 +4810,161 @@ that added the new params, since that file's `/list-licenses` block was
 already open.
 
 Committed `21080cc`, pushed on explicit instruction.
+
+## 81. API key rotation UI + a support-contact link (BETA_LAUNCH_STATUS.md §4) (2026-08-21)
+
+Recorded retroactively - built and pushed earlier in the same session
+as §80 above, but this file's own entry was missed at the time; caught
+while adding §82 below for password/email change and checking this
+file against the actual commit history rather than assuming it was
+current. See `casazium/license`'s own §159 for the full record of the
+paired backend route and the hard-cutover-vs-overlapping-keys design
+fork that was surfaced to the operator via `AskUserQuestion` before any
+code was written.
+
+**`RotateApiKeySection.tsx`/`actions.ts`**: mirrors
+`DeleteAccountSection.tsx`'s established password-re-entry-gated
+`Modal` pattern almost line-for-line - yellow/warning framing rather
+than red, since this is disruptive-but-recoverable (update your
+systems with the new key) rather than permanent. `rotateApiKeyAction`
+calls the new `POST /rotate-api-key` via `rotateApiKey()`
+(`lib/license-client.{live,mock}.ts`), then re-encrypts the returned
+plaintext key into this console's own
+`accounts.tenant_api_key_encrypted` - without that second step every
+other Server Action in this app that reads the tenant's key, plus this
+same Settings page's own `ApiKeyReveal`, would go stale the instant
+rotation succeeded server-side.
+
+**The one real bug a dedicated, independent Opus security review of
+the finished diff found** (explicitly instructed to distrust the
+implementer's own summary and read the real files): `rotateApiKeyAction`
+computed its success return value *after* attempting the local
+`tenant_api_key_encrypted` UPDATE, with a comment incorrectly claiming
+the key "was already returned to the caller above." A local DB write
+failure immediately after a successful server-side rotation would then
+throw, the UI would show a generic error, and the tenant would never
+see their new, real, working key - while this console's own stale
+stored copy then 403s on every subsequent call and self-locks the
+account via the existing `markTenantRejected()` mechanism, with no
+clean recovery short of operator intervention. Fixed by isolating only
+the local `UPDATE` in its own try/catch and always returning the new
+key regardless of whether that write succeeds, adding a
+`localSyncFailed` flag threaded to a UI warning `Alert` when it fires.
+No other blocking holes found; Next 16's own built-in Server Action
+Origin/Host CSRF protection covers this action, confirmed rather than
+assumed.
+
+**Support-contact link**: `SUPPORT_EMAIL` (`.env.example`, optional) -
+`getBranding()`'s existing platform-branding fallback gained a
+`supportEmail` field, rendered as a `mailto:` "Contact support" link in
+the console's footer (login page and the authenticated app shell) and,
+when set, replacing this Settings page's own plain-text "contact
+support" fallback on the API base URL block with a real link. Unset
+hides the link entirely rather than showing a broken one - closes the
+other BETA_LAUNCH_STATUS.md §4 item the operator and Opus both flagged
+as a cheap same-day companion to rotation.
+
+Verified live end-to-end against a real running server (real signup,
+real rotation, old key 403s, new key 200s), plus `tsc`/`eslint`/
+`next build` clean.
+
+Documented in `docs/docs/license-server/{getting-started/saas-tier.md,
+api-reference.md, getting-started/rate-limits.md}` (`casazium/casazium`).
+`BETA_LAUNCH_STATUS.md` v1.21 records the closure of both items.
+
+Committed `f75b5ff`, pushed on explicit instruction.
+
+## 82. Account-settings password and email change (BETA_LAUNCH_STATUS.md §4) (2026-08-21)
+
+Operator asked for an independent Opus priority check across §4's
+remaining backlog (branding self-service, teammates/invites,
+password/email change, data export, lifecycle notifications, a
+tenant-facing audit log, real bulk issuance) before picking what to
+build next - both the operator's own read and Opus's independent one,
+checked directly against the actual code rather than the doc's own
+wording, converged on this item as the strongest next pick: everything
+it needs already exists elsewhere in this codebase (`verifyAccountPassword()`,
+`hashPassword()`, `revokeAccountSessions()`, the existing
+email-verification-token/Resend flow), and unlike every other item on
+that list it's **entirely local to this console's own `accounts`
+table** - there's no `casazium/license` call involved at all, so none
+of it can hit the non-transactional dual-database partial-failure
+pattern that produced §81's real bug. The review also flagged the real,
+previously-uncovered risk this closes: `forgot-password` already makes
+a lost *password* recoverable, but a lost or changed *email address*
+had no self-service recovery path at all - the only "fix" was deleting
+the whole account via `deleteAccountAction`, which permanently purges
+every license the tenant's own customers are running on.
+
+Same review flagged branding self-service (the other item on the
+operator's own initial shortlist) as actually miscategorized rather
+than a build task - see `casazium/casazium`'s `BETA_LAUNCH_STATUS.md`
+v1.22 for that correction, made instead of building it.
+
+**Password change** (`changePasswordAction`, `actions.ts`): a new
+Server Action, mirroring `deleteAccountAction`/`rotateApiKeyAction`'s
+password-re-entry pattern exactly. On success, mirrors
+`app/api/reset-password/route.ts`'s own already-battle-tested
+revoke-then-reissue pattern precisely: `revokeAccountSessions()` signs
+out every other session on the account, then a fresh session token is
+issued and set on the browser completing the change - the acting
+session stays signed in, everyone else is signed out, same reasoning
+as password reset, just reached via proving the *current* password
+in an active session instead of a one-time emailed link. UI
+(`ChangePasswordSection.tsx`) is the same open-a-modal-then-confirm
+pattern as every other sensitive Settings action.
+
+**Email change** is two-step, not an immediate swap - a Route Handler
+(`app/api/change-email/route.ts`), not a Server Action, since it needs
+a real request object for `publicBaseUrl()` to build the confirmation
+link from (the same reason every other link-emailing flow in this repo -
+signup, forgot-password, verify-email/resend - is a Route Handler, not
+an action). Step 1 sends a confirmation link to the *requested new*
+address only; `accounts.email` doesn't change until that link is
+clicked. Reuses the existing `email_verification_tokens` table rather
+than a new one - `schema.sql` gained one nullable `new_email` column
+(plus a defensive `ALTER TABLE` migration in `lib/db.ts`, since the
+beta is live with real data - same pattern and reasoning as
+`casazium/license`'s own `src/app.js`), and `/api/verify-email`'s GET
+handler now branches on it: present, this is an email-change
+confirmation (swap `accounts.email`, notify the *old* address,
+redirect to `/settings` with a query-param outcome the page reads into
+an `Alert`); absent, unchanged signup-confirmation behavior. A typo'd
+new address just leaves an unredeemed token, never a locked-out
+account - deliberately not an immediate swap for that reason, and
+because an immediate change gives no proof the requester actually
+controls the new inbox at all.
+
+**A real injection gap caught and fixed while writing the old-address
+notice** (`sendEmailChangeNotice`, new on the `EmailProvider`
+interface): the requester's `newEmail` value is interpolated into an
+HTML email sent to a *different* recipient (the old address) than the
+one that supplied it - the one place in this whole feature where a
+user-controlled value crosses into someone else's inbox.
+`EMAIL_RE` (`app/api/change-email/route.ts`) only rejects whitespace
+and stray `@` characters, not `<`/`>`/`&`, so this was a real, not
+hypothetical, HTML-injection surface without escaping. Added a small
+local `escapeHtml()` in `resend-provider.ts` and applied it there - the
+only interpolation site in this file that isn't either our own token
+URL or an address that's also the send target.
+
+Verified live end-to-end against real running `casazium/license` +
+`casazium/license-console` instances, not just a mock: real signup,
+password change via a real Playwright-driven browser session (old
+password rejected afterward, new one works, the changing browser's own
+session stayed signed in, a second pre-existing session was confirmed
+revoked), email change via direct `curl` against the real Route
+Handlers (confirmation sent to the new address only; the link redeems
+and swaps `accounts.email`; the old address then 401s on login and the
+new one works; wrong password rejected; changing to an already-taken
+email correctly 409s; an unknown token falls back to the pre-existing
+generic `/dashboard` redirect rather than a settings-specific one,
+since an unrecognized token can't be attributed to either flow). `tsc
+--noEmit`, `eslint`, and `next build` all clean.
+
+`docs/docs/license-server/getting-started/saas-tier.md`
+(`casazium/casazium`) gained a "Changing your password or email"
+section - both are console-only settings, with no `POST /v1/...`
+equivalent, since neither field exists in `casazium/license`'s own
+`tenants` table.
 

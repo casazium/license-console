@@ -8,6 +8,23 @@ import type { EmailProvider } from './provider';
 
 const RESEND_API_URL = 'https://api.resend.com/emails';
 
+// sendEmailChangeNotice below interpolates a user-supplied value
+// (newEmail) into an HTML email body sent to a DIFFERENT address than
+// the one that supplied it (the OLD address, not the requester's new
+// one) - every other interpolated value in this file is either our own
+// token URL or an address that's also the send target, neither an
+// injection concern. EMAIL_RE (app/api/change-email/route.ts) only
+// rejects whitespace and stray '@' characters, not '<'/'>'/'&', so
+// this is a real, not hypothetical, gap without escaping.
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 export function createResendEmailProvider(): EmailProvider {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
@@ -70,6 +87,20 @@ export function createResendEmailProvider(): EmailProvider {
         to,
         'Reset your password',
         `<p>Click the link below to reset your password. If you didn't request this, you can safely ignore this email.</p><p><a href="${resetUrl}">${resetUrl}</a></p>`
+      );
+    },
+    async sendEmailChangeConfirmation(to, confirmUrl) {
+      await send(
+        to,
+        'Confirm your new email address',
+        `<p>Click the link below to confirm this address as your new account email. If you didn't request this, you can safely ignore this email - your account email won't change.</p><p><a href="${confirmUrl}">${confirmUrl}</a></p>`
+      );
+    },
+    async sendEmailChangeNotice(to, newEmail) {
+      await send(
+        to,
+        'Your account email was changed',
+        `<p>Your account's email address was changed to ${escapeHtml(newEmail)}. If you made this change, no action is needed. If you didn't, contact support right away.</p>`
       );
     },
   };

@@ -5,10 +5,24 @@ import { cookies } from 'next/headers';
 import { deleteAccount as deleteAccountOnServer, rotateApiKey as rotateApiKeyOnServer } from '@/lib/license-client';
 import { verifyAccountPassword } from '@/lib/auth';
 import { encrypt } from '@/lib/crypto';
+import { hashPassword } from '@/lib/password';
 import { getDb } from '@/lib/db';
-import { SESSION_COOKIE_NAME } from '@/lib/session';
+import {
+  SESSION_COOKIE_NAME,
+  createSessionToken,
+  revokeAccountSessions,
+  requireSession,
+  sessionCookieOptions,
+} from '@/lib/session';
 import { requireSessionWithTenantKey, markIfTenantRejected } from '@/lib/tenant-context';
 import { isRateLimited } from '@/lib/errors';
+
+// Same values and reasoning as signup/route.ts and reset-password/route.ts's
+// identical constants - no shared constants module in this codebase
+// (each of those two also redefines its own copy), so matching their
+// convention rather than introducing a new one here.
+const MIN_PASSWORD_LENGTH = 8;
+const MAX_PASSWORD_LENGTH = 256;
 
 // No `ok: true` case - a resolved promise always means the delete
 // didn't happen. On success this redirects (below) instead of
@@ -187,4 +201,69 @@ export async function rotateApiKeyAction(password: string): Promise<RotateApiKey
   }
 
   return { apiKey: newApiKey };
+}
+
+// BETA_LAUNCH_STATUS.md §4, account-settings gap: there was no way to
+// change a password while logged in at all - the only self-service path
+// to a new password was forgot-password, which requires being logged
+// OUT and proving control of the account's email first. This is the
+// ordinary in-session case (you know your current password and just
+// want a new one), and unlike deleteAccountAction/rotateApiKeyAction
+// above, it's entirely local to this console's own accounts table - no
+// casazium/license call, no dual-database non-atomicity to design
+// around, since a password only ever exists here.
+type ChangePasswordResult =
+  | { ok: true }
+  | { reason: 'incorrect-current-password' | 'invalid-new-password' };
+
+/**
+ * Password re-entry, same reasoning as deleteAccountAction/
+ * rotateApiKeyAction above: a left-open or hijacked session shouldn't
+ * be enough on its own to set a new password - the caller must still
+ * prove they know the current one.
+ *
+ * On success: revokes every other session for the account and reissues
+ * a fresh one for the browser completing this change, mirroring
+ * app/api/reset-password/route.ts's identical, already-battle-tested
+ * pattern exactly (that route's own comment: "a stolen or leaked
+ * session shouldn't survive a legitimate password reset"). The
+ * difference from that route is only how the person got here - proving
+ * they know the *current* password in an active session, vs. proving
+ * control of the account's email via a one-time link - the outcome and
+ * its reasoning are identical.
+ */
+export async function changePasswordAction(
+  currentPassword: string,
+  newPassword: string
+): Promise<ChangePasswordResult> {
+  const identity = await requireSession();
+
+  if (!identity.tenantId) {
+    // Unreachable via the UI - the change-password section only renders
+    // under MULTI_TENANT with a resolved tenant (see the Settings page).
+    // Defense in depth, not a real self-hosted path - self-hosted's
+    // single shared admin login has no accounts row to change a
+    // password on at all.
+    throw new Error('Password change is only available for hosted accounts');
+  }
+
+  if (newPassword.length < MIN_PASSWORD_LENGTH || newPassword.length > MAX_PASSWORD_LENGTH) {
+    return { reason: 'invalid-new-password' };
+  }
+
+  const passwordOk = await verifyAccountPassword(identity.id, currentPassword);
+  if (!passwordOk) {
+    return { reason: 'incorrect-current-password' };
+  }
+
+  const newPasswordHash = await hashPassword(newPassword);
+  const db = getDb();
+  db.prepare('UPDATE accounts SET password_hash = ? WHERE id = ?').run(newPasswordHash, identity.id);
+
+  revokeAccountSessions(identity.id);
+  const sessionToken = await createSessionToken({ id: identity.id, role: 'admin', mode: 'saas' });
+  const store = await cookies();
+  store.set(SESSION_COOKIE_NAME, sessionToken, sessionCookieOptions);
+
+  return { ok: true };
 }

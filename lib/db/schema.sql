@@ -116,10 +116,20 @@ CREATE INDEX IF NOT EXISTS idx_accounts_tenant_id ON accounts(tenant_id);
 -- database entirely) - account_id is in this same database, so the
 -- guarantee can be enforced at the DB level rather than left to
 -- app-level discipline.
+-- new_email (account-settings email change): NULL means this row is an
+-- ordinary signup-confirmation link (the original, only use this table
+-- had). Set, it means the row is instead an email-CHANGE confirmation -
+-- /api/change-email writes it, and /api/verify-email's GET handler
+-- branches on it: present -> update accounts.email to this value on
+-- redemption; NULL -> the original "just mark email_verified_at"
+-- behavior. Reusing this table rather than a new one - the shape
+-- (hashed one-time token, account_id, expiry) is identical, and both
+-- flows already share the same redemption route.
 CREATE TABLE IF NOT EXISTS email_verification_tokens (
   token_hash TEXT PRIMARY KEY,
   account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
   expires_at DATETIME NOT NULL,
+  new_email TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

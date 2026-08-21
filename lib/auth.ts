@@ -114,3 +114,17 @@ export async function verifyAccountPassword(accountId: string, password: string)
 
   return verifyPassword(password, account?.password_hash ?? DUMMY_PASSWORD_HASH);
 }
+
+/**
+ * Account-settings email display (BETA_LAUNCH_STATUS.md §4) - the
+ * Identity a session carries (lib/session.ts) never included email at
+ * all (nothing needed it before the Settings page's new email-change
+ * section), so this is a small, separate lookup rather than a field
+ * threaded through every session everywhere else in this app.
+ */
+export function getAccountEmail(accountId: string): string | null {
+  const account = getDb().prepare('SELECT email FROM accounts WHERE id = ?').get(accountId) as
+    | { email: string }
+    | undefined;
+  return account?.email ?? null;
+}

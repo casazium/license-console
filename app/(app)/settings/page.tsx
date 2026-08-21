@@ -1,9 +1,12 @@
 import { notFound } from 'next/navigation';
-import { Anchor, Code, Stack, Text, Title } from '@mantine/core';
+import { Alert, Anchor, Code, Stack, Text, Title } from '@mantine/core';
 import { requireSessionWithTenantKey } from '@/lib/tenant-context';
 import { getBranding } from '@/lib/branding';
+import { getAccountEmail } from '@/lib/auth';
 import { ApiKeyReveal } from './ApiKeyReveal';
 import { RotateApiKeySection } from './RotateApiKeySection';
+import { ChangePasswordSection } from './ChangePasswordSection';
+import { ChangeEmailSection } from './ChangeEmailSection';
 import { DeleteAccountSection } from './DeleteAccountSection';
 
 // Beta-readiness finding: nothing in this console ever showed a hosted
@@ -16,7 +19,11 @@ import { DeleteAccountSection } from './DeleteAccountSection';
 // the API" at all.
 export const dynamic = 'force-dynamic';
 
-export default async function SettingsPage() {
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ emailChanged?: string; emailChangeError?: string }>;
+}) {
   const { identity, tenantApiKey } = await requireSessionWithTenantKey();
 
   // Self-hosted has no per-tenant key concept - the operator already
@@ -29,9 +36,29 @@ export default async function SettingsPage() {
 
   const apiBaseUrl = (process.env.LICENSE_API_URL ?? '').replace(/\/+$/, '');
   const { supportEmail } = getBranding(identity.tenantId ?? undefined);
+  const currentEmail = getAccountEmail(identity.id);
+
+  // Email-change confirmation (app/api/verify-email/route.ts's new_email
+  // branch) has no always-on banner to fall back on the way signup
+  // verification does (AppShellClient) - this page is the one place
+  // that outcome needs to actually reach the person who clicked the
+  // link, so it's carried as a one-time query param instead.
+  const { emailChanged, emailChangeError } = await searchParams;
 
   return (
     <Stack maw={640}>
+      {emailChanged && (
+        <Alert color="teal" variant="light" title="Email changed">
+          Your account email is now {currentEmail}.
+        </Alert>
+      )}
+      {emailChangeError && (
+        <Alert color="red" variant="light" title="Couldn't change email">
+          That confirmation link was invalid, expired, or the address was already taken. Start
+          over from the Email section below.
+        </Alert>
+      )}
+
       <Title order={2}>API access</Title>
       <Text size="sm" c="dimmed">
         Use this API key and base URL to call the License Server directly from your own
@@ -80,6 +107,8 @@ export default async function SettingsPage() {
       </Text>
 
       <RotateApiKeySection />
+      {currentEmail && <ChangeEmailSection currentEmail={currentEmail} />}
+      <ChangePasswordSection />
       <DeleteAccountSection />
     </Stack>
   );

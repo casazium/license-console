@@ -74,6 +74,19 @@ function openDatabase(): Database.Database {
   const schemaSql = readFileSync(schemaPath, 'utf-8');
   database.exec(schemaSql);
 
+  // Defensive migration, same pattern and reasoning as casazium/license's
+  // own src/app.js (that repo's identical comment): CREATE TABLE IF NOT
+  // EXISTS above is a no-op against a database file that already has the
+  // table, so an existing deployment - the beta is live - needs the new
+  // account-settings email-change column (schema.sql's own comment on
+  // new_email) added explicitly rather than picked up for free.
+  const emailVerificationTokenColumns = database.prepare('PRAGMA table_info(email_verification_tokens)').all() as {
+    name: string;
+  }[];
+  if (!emailVerificationTokenColumns.some((col) => col.name === 'new_email')) {
+    database.exec('ALTER TABLE email_verification_tokens ADD COLUMN new_email TEXT');
+  }
+
   // Fail loud, not fail open (security review finding, fresh
   // pre-deployment audit, mirrors casazium/license's own equivalent
   // guard in that repo's src/app.js): if MULTI_TENANT is off but the
