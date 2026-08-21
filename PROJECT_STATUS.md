@@ -1,7 +1,16 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-20 (§78: added an optional
+Last updated: 2026-08-21 (§80: added license-key search and
+server-side column sort to the Licenses list, closing
+BETA_LAUNCH_STATUS.md §4's "no search by license key" gap - the
+`casazium/license-console` half of a paired change, plan-reviewed and
+then implementation-validated by two separate Opus subagent passes.
+See §80 below for full detail.)
+2026-08-20 (§79: recorded a real, previously-unrecorded
+commit - an iOS/iPadOS Safari overscroll fix, already pushed to `main`
+but never written up here. See §79 below for full detail.)
+2026-08-20 (§78: added an optional
 BRANDING_LOGO_LINK_URL env var so the logo can open a URL when
 clicked - operator request. See §78 below for full detail.)
 2026-08-20 (§77: added app/(app)/loading.tsx, closing
@@ -4709,4 +4718,91 @@ URL, curled `/login`, confirmed the response contains a real
 `BRANDING_LOGO_LINK_URL` unset, confirmed the logo renders as a bare
 `<img>` again with no anchor anywhere - the unset default is unchanged,
 no regression. `tsc --noEmit` and `eslint .` clean.
+
+## 79. iOS/iPadOS Safari header hiding under toolbar during pull-down overscroll (2026-08-20)
+
+Real, previously-pushed commit (`a055398`) recorded here for the first
+time - this file's own "last entry" pointer had drifted a step behind
+`main`. Operator reported on a real iPad: the header (Mantine
+`AppShell`'s own `position: fixed` header) briefly renders underneath
+Safari's dynamic toolbar while pulling down past the top of the page,
+snapping back into place on release. A documented WebKit rendering
+glitch, not specific to this app's own CSS - a rubber-band overscroll
+gesture animates Safari's toolbar, and fixed-position elements near the
+top of the viewport don't always repaint in sync with that animation.
+
+`app/globals.css`: `overscroll-behavior-y: none` on `html`/`body`,
+disabling exactly the rubber-band gesture that triggers the glitch
+without changing normal scroll behavior otherwise - the same fix
+`casazium/casazium` applied to its own `docs/` site for the identical
+symptom (that site's custom navbar is also `position: fixed`).
+
+The commit's own message is explicit that this was **not independently
+verified on a real device from this environment** (no iOS Safari access
+here) at the time it was written - flagged for the operator's own
+confirmation after deploy, not claimed as tested. Recorded as-is rather
+than retroactively upgraded to "verified," since no separate real-device
+confirmation of this specific console deployment (as opposed to the
+docs-site instance of the same fix) has been logged here.
+
+## 80. License-key search + server-side column sort in the Licenses list (BETA_LAUNCH_STATUS.md §4) (2026-08-21)
+
+Paired frontend half of `casazium/license`'s own §158 - see that entry
+for the full backend account (the `Map`-based sortable-column lookup,
+NULLs-last `expires_at`, the `id ASC` tiebreaker, and why
+`activations_count` stayed sortable). This repo's own part:
+
+**`LicensesFilters.tsx`** gains a "License key" field, wired through
+the same URL-search-param `updateParam()` pattern the existing
+"Customer" (`issued_to`) field already uses.
+
+**`LicensesTable.tsx`** no longer sorts client-side over just the
+current page's 10 rows (its own prior comment documented this as a
+known limitation, since the backend had no `sort` parameter at all
+before §158/this entry). It's now a thin display + URL-param control,
+matching `LicensesFilters`'s own shape - `licenses` arrives already
+sorted by the server, and clicking a column header just navigates with
+new `sort`/`order` params. Renamed its internal "seats" sort key to
+`activations_count`, the real backend's own correlated-subquery SELECT
+alias.
+
+**A real React footgun caught while wiring this up**: the new
+license-key value is named `licenseKey` as a component prop, not `key`
+- a prop literally named `key` is intercepted by React's own list-
+reconciliation machinery and never actually reaches the component. The
+wire/query-param name stays `key` (matching the backend exactly); only
+the internal React prop name had to differ.
+
+**A genuine pre-existing bug fixed in `license-client.mock.ts`'s sort
+comparator** while rewriting it to mirror the backend's new sort
+options: the old comparator (`(a.issued_at < b.issued_at ? 1 : -1)`)
+never returned `0`, so it wasn't a valid three-way comparator at all -
+harmless before now only because the mock was never actually sorted by
+anything but a single hardcoded column. The new comparator handles
+every sortable column, including the same NULLs-last `expires_at`
+semantics as the real backend, and relies on `Array.prototype.sort`'s
+guaranteed-stable-since-ES2019 behavior plus the mock store's own
+insertion order to mirror the backend's explicit `id ASC` tiebreaker
+without needing to invent an `id` field on mock data.
+
+**Verified**: `tsc --noEmit`, `eslint` on the touched files, and
+`next build` all clean. A live Playwright smoke test against a real
+running dev server in standalone/mock mode - not just the network
+response - confirmed key search actually filters the rendered table,
+clicking "Key" sorts ascending then descending, sorting by "Seats"
+(`activations_count`) orders correctly, and a status filter composed
+with a sort still returns the right rows. Plan reviewed by an Opus
+subagent before any code was written (per explicit operator
+instruction); the finished implementation independently re-validated by
+a second Opus pass afterward, which re-ran the full backend suite and
+this repo's own `tsc`/`eslint`/`next build` itself rather than trusting
+the claimed results, and checked specifically for behavior divergence
+between this mock client and the real backend - none found. One real,
+pre-existing gap the validation pass caught along the way: `openapi.yaml`
+never documented `issued_to` despite it being real and tested since
+before this session - closed in the same `casazium/license` commit
+that added the new params, since that file's `/list-licenses` block was
+already open.
+
+Committed `21080cc`, pushed on explicit instruction.
 
