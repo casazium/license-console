@@ -4968,3 +4968,5 @@ section - both are console-only settings, with no `POST /v1/...`
 equivalent, since neither field exists in `casazium/license`'s own
 `tenants` table.
 
+Committed `3c99679`, pushed on explicit instruction.
+
