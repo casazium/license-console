@@ -1,65 +1,53 @@
 'use client';
 
-import { useMemo, useState } from 'react';
 import { Anchor, Badge, Group, Stack, Table, Text, UnstyledButton } from '@mantine/core';
 import Link from 'next/link';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import type { LicenseSortColumn } from '@/lib/license-types';
 import type { LicenseListItem } from '@/lib/license-client';
 import { formatDate } from '@/lib/format';
 
-type SortColumn = 'key' | 'product_id' | 'tier' | 'status' | 'issued_to' | 'expires_at' | 'seats';
 type SortDirection = 'asc' | 'desc';
 
-// Sorts only the currently-loaded page, not the full dataset: the real
-// GET /list-licenses has no sort parameter at all (hardcoded
-// ORDER BY issued_at DESC), so a true full-dataset sort isn't possible
-// without a backend change. See PROJECT_STATUS.md §11.
-const COLUMNS: { key: SortColumn; label: string }[] = [
+// Server-side sort (BETA_LAUNCH_STATUS.md §4): this table used to sort
+// only the currently-loaded page client-side, since GET /list-licenses
+// had no sort parameter at all. It's now purely a display + URL-param
+// control, like LicensesFilters - `licenses` arrives already sorted by
+// the server, and clicking a header just navigates with new sort/order
+// params rather than reordering anything locally. `activations_count`
+// (not `activations_used`, this row's own display field) is the wire
+// name - it's the real backend's correlated-subquery SELECT alias.
+const COLUMNS: { key: LicenseSortColumn; label: string }[] = [
   { key: 'key', label: 'Key' },
   { key: 'product_id', label: 'Product' },
   { key: 'tier', label: 'Tier' },
   { key: 'status', label: 'Status' },
   { key: 'issued_to', label: 'Issued to' },
   { key: 'expires_at', label: 'Expires' },
-  { key: 'seats', label: 'Seats' },
+  { key: 'activations_count', label: 'Seats' },
 ];
-
-function sortValue(license: LicenseListItem, column: SortColumn): string | number {
-  if (column === 'seats') return license.activations_used;
-  // Perpetual (expires_at: null) sorts after every real date - "never
-  // expires" is the furthest-out value, not the earliest.
-  if (column === 'expires_at') return license.expires_at ?? '9999-12-31T00:00:00.000Z';
-  return license[column];
-}
 
 export function LicensesTable({
   licenses,
   hasFilters,
+  sort,
+  order,
 }: {
   licenses: LicenseListItem[];
   hasFilters: boolean;
+  sort?: LicenseSortColumn;
+  order: SortDirection;
 }) {
-  const [sortColumn, setSortColumn] = useState<SortColumn | null>(null);
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
-  const sorted = useMemo(() => {
-    if (!sortColumn) return licenses;
-    const factor = sortDirection === 'asc' ? 1 : -1;
-    return [...licenses].sort((a, b) => {
-      const aValue = sortValue(a, sortColumn);
-      const bValue = sortValue(b, sortColumn);
-      if (aValue < bValue) return -1 * factor;
-      if (aValue > bValue) return 1 * factor;
-      return 0;
-    });
-  }, [licenses, sortColumn, sortDirection]);
-
-  function toggleSort(column: SortColumn) {
-    if (sortColumn === column) {
-      setSortDirection((direction) => (direction === 'asc' ? 'desc' : 'asc'));
-    } else {
-      setSortColumn(column);
-      setSortDirection('asc');
-    }
+  function toggleSort(column: LicenseSortColumn) {
+    const next = new URLSearchParams(searchParams.toString());
+    next.set('sort', column);
+    next.set('order', sort === column && order === 'asc' ? 'desc' : 'asc');
+    next.delete('page'); // changing sort invalidates the current page
+    router.push(`${pathname}?${next.toString()}`);
   }
 
   if (licenses.length === 0) {
@@ -87,7 +75,7 @@ export function LicensesTable({
                 <Group gap={4} wrap="nowrap">
                   {column.label}
                   <Text component="span" size="xs" c="dimmed">
-                    {sortColumn === column.key ? (sortDirection === 'asc' ? '↑' : '↓') : '↕'}
+                    {sort === column.key ? (order === 'asc' ? '↑' : '↓') : '↕'}
                   </Text>
                 </Group>
               </UnstyledButton>
@@ -96,7 +84,7 @@ export function LicensesTable({
         </Table.Tr>
       </Table.Thead>
       <Table.Tbody>
-        {sorted.map((license) => (
+        {licenses.map((license) => (
           <Table.Tr key={license.key}>
             <Table.Td>
               <Anchor component={Link} href={`/licenses/${license.key}`}>

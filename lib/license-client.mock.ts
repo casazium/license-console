@@ -11,6 +11,7 @@ import type {
   ExpiringLicense,
   IssueLicenseInput,
   License,
+  LicenseSortColumn,
   ListLicensesParams,
   ListLicensesResult,
   RecentActivation,
@@ -172,6 +173,53 @@ function generateKey(): string {
   return `CASZ-${segment()}-${segment()}-${segment()}`;
 }
 
+// 3-way comparator per sortable column, mirroring the real backend's
+// ORDER BY behavior (casazium/license's src/routes/list-licenses.js) as
+// closely as an in-memory JS sort can:
+// - Array.prototype.sort has been a *stable* sort since ES2019, so a
+//   comparator that correctly returns 0 on ties preserves this array's
+//   existing relative order for tied rows - the same role the real
+//   route's explicit `, id ASC` tiebreaker plays server-side (this
+//   store's licenses array is itself insertion-ordered, so relative
+//   order here already tracks "which was added first").
+// - expires_at is nullable (perpetual license) - sorts last regardless
+//   of direction, matching the server's explicit `(expires_at IS NULL)
+//   ASC` tiebreak-before-the-real-comparison, not a plain `<`/`>` on
+//   `null` (which JS coerces in ways that don't match SQL NULL
+//   semantics at all).
+// - Every other sortable column is plain ASCII-ish text (keys, emails,
+//   status/tier/product_id tokens) or a number, where JS's default `<`/
+//   `>` and SQLite's BINARY collation agree closely enough for admin
+//   tooling; not verified byte-for-byte equivalent for arbitrary
+//   Unicode.
+// 'issued_at' is the real backend's default sort target when no `sort`
+// param is given at all, but it isn't in LicenseSortColumn (the public
+// wire-facing enum) - not offered as an explicit `sort` value, matching
+// list-licenses.js's own SORTABLE_COLUMNS comment.
+type MockSortColumn = LicenseSortColumn | 'issued_at';
+
+function compareLicenses(
+  a: License & { activations_used: number },
+  b: License & { activations_used: number },
+  column: MockSortColumn,
+  direction: 'asc' | 'desc'
+): number {
+  const factor = direction === 'asc' ? 1 : -1;
+
+  if (column === 'expires_at') {
+    if (a.expires_at === null && b.expires_at === null) return 0;
+    if (a.expires_at === null) return 1;
+    if (b.expires_at === null) return -1;
+    return a.expires_at < b.expires_at ? -1 * factor : a.expires_at > b.expires_at ? 1 * factor : 0;
+  }
+
+  const aValue = column === 'activations_count' ? a.activations_used : a[column];
+  const bValue = column === 'activations_count' ? b.activations_used : b[column];
+  if (aValue < bValue) return -1 * factor;
+  if (aValue > bValue) return 1 * factor;
+  return 0;
+}
+
 export async function listLicenses(
   params: ListLicensesParams = {},
   // SaaS-B2: accepted for signature parity with license-client.live.ts
@@ -179,28 +227,31 @@ export async function listLicenses(
   // mock.xxx`) - unused here, mock mode has no real tenant concept.
   _tenantApiKey?: string
 ): Promise<ListLicensesResult> {
-  const { status, product_id, issued_to, limit = 10, offset = 0 } = params;
+  const { status, product_id, issued_to, key, sort, order = 'desc', limit = 10, offset = 0 } = params;
   const { licenses, activations } = getStore();
 
-  const filtered = licenses.filter((license) => {
+  const withUsage = licenses.map((license) => ({
+    ...license,
+    activations_used: activations[license.key]?.length ?? 0,
+  }));
+
+  const filtered = withUsage.filter((license) => {
     if (status && license.status !== status) return false;
     if (product_id && license.product_id !== product_id) return false;
     // Mirrors the real backend's case-insensitive substring match (see
     // casazium/license's src/routes/list-licenses.js) - no wildcard
     // escaping needed here since this is a plain substring check, not SQL.
     if (issued_to && !license.issued_to.toLowerCase().includes(issued_to.toLowerCase())) return false;
+    if (key && !license.key.toLowerCase().includes(key.toLowerCase())) return false;
     return true;
   });
 
-  // Matches the real GET /list-licenses's own ORDER BY issued_at DESC -
-  // that route has no sort parameter, so this is the only order the real
-  // API can return regardless of what page/filter is requested.
-  const sorted = [...filtered].sort((a, b) => (a.issued_at < b.issued_at ? 1 : -1));
+  // Matches the real GET /list-licenses's own default `ORDER BY
+  // issued_at DESC` when no sort is requested.
+  const sortColumn: MockSortColumn = sort ?? 'issued_at';
+  const sorted = [...filtered].sort((a, b) => compareLicenses(a, b, sortColumn, order));
 
-  const page = sorted.slice(offset, offset + limit).map((license) => ({
-    ...license,
-    activations_used: activations[license.key]?.length ?? 0,
-  }));
+  const page = sorted.slice(offset, offset + limit);
 
   return { licenses: page, total: sorted.length };
 }

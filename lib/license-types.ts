@@ -224,6 +224,19 @@ export type RawLicenseListRow = License & { activations_count: number };
 
 export type LicenseListItem = License & { activations_used: number };
 
+// Wire values match casazium/license's GET /list-licenses `sort` enum
+// exactly - 'activations_count' rather than this console's own
+// 'activations_used' field name, since that's the real correlated-subquery
+// SELECT alias the backend sorts by.
+export type LicenseSortColumn =
+  | 'key'
+  | 'product_id'
+  | 'tier'
+  | 'status'
+  | 'issued_to'
+  | 'expires_at'
+  | 'activations_count';
+
 export type ListLicensesParams = {
   status?: 'active' | 'revoked';
   product_id?: string;
@@ -231,6 +244,13 @@ export type ListLicensesParams = {
   // substring match against issued_to on the backend (see casazium/license's
   // src/routes/list-licenses.js).
   issued_to?: string;
+  // License-key search (BETA_LAUNCH_STATUS.md §4): same substring-match
+  // pattern as issued_to above.
+  key?: string;
+  // Server-side sort (BETA_LAUNCH_STATUS.md §4) - defaults to issued_at
+  // desc when omitted, matching this route's pre-existing behavior.
+  sort?: LicenseSortColumn;
+  order?: 'asc' | 'desc';
   limit?: number;
   offset?: number;
 };

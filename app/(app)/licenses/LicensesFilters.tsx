@@ -7,10 +7,15 @@ export function LicensesFilters({
   status,
   productId,
   issuedTo,
+  licenseKey,
 }: {
   status?: string;
   productId?: string;
   issuedTo?: string;
+  // Named licenseKey, not key - a JSX prop literally named `key` is
+  // intercepted by React as the reserved list-reconciliation key and
+  // never reaches the component as a real prop.
+  licenseKey?: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -46,6 +51,18 @@ export function LicensesFilters({
         placeholder="Search by email"
         defaultValue={issuedTo ?? ''}
         onBlur={(event) => updateParam('issued_to', event.currentTarget.value.trim() || null)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.currentTarget.blur();
+          }
+        }}
+        w={220}
+      />
+      <TextInput
+        label="License key"
+        placeholder="Search by key"
+        defaultValue={licenseKey ?? ''}
+        onBlur={(event) => updateParam('key', event.currentTarget.value.trim() || null)}
         onKeyDown={(event) => {
           if (event.key === 'Enter') {
             event.currentTarget.blur();

@@ -9,9 +9,13 @@
  * getLicensesNearSeatLimit have no backend equivalent at all - computed
  * here from a broad GET /list-licenses fetch (up to the backend's own
  * 1000-row max, deduped between the two via getBroadActiveLicenses since
- * both need the same data), since GET /list-licenses has no sort
- * parameter to do this server-side. Real cost at high license counts;
- * accepted for now, see PROJECT_STATUS.md §14.
+ * both need the same data). GET /list-licenses does now support a
+ * `sort` parameter (BETA_LAUNCH_STATUS.md §4), but only for a single
+ * real/aliased column at a time - not the derived "expiring within N
+ * days" / "seat usage above a ratio" predicates these two functions
+ * actually need, so both still page through everything client-side.
+ * Real cost at high license counts; accepted for now, see
+ * PROJECT_STATUS.md §14.
  *
  * activations_used (the Seats column) used to be the same kind of gap -
  * one GET /list-activations/:key call per license row - until
@@ -39,6 +43,7 @@ import type {
   ExpiringLicense,
   IssueLicenseInput,
   License,
+  LicenseSortColumn,
   ListLicensesParams,
   ListLicensesResult,
   RawLicenseListRow,
@@ -131,6 +136,9 @@ async function fetchRawLicenses(
     status?: 'active' | 'revoked';
     product_id?: string;
     issued_to?: string;
+    key?: string;
+    sort?: LicenseSortColumn;
+    order?: 'asc' | 'desc';
     limit: number;
     offset: number;
   },
@@ -140,6 +148,9 @@ async function fetchRawLicenses(
   if (params.status) query.set('status', params.status);
   if (params.product_id) query.set('product_id', params.product_id);
   if (params.issued_to) query.set('issued_to', params.issued_to);
+  if (params.key) query.set('key', params.key);
+  if (params.sort) query.set('sort', params.sort);
+  if (params.order) query.set('order', params.order);
   query.set('limit', String(params.limit));
   query.set('offset', String(params.offset));
 
@@ -178,9 +189,9 @@ export async function listLicenses(
   params: ListLicensesParams = {},
   tenantApiKey?: string
 ): Promise<ListLicensesResult> {
-  const { status, product_id, issued_to, limit = 10, offset = 0 } = params;
+  const { status, product_id, issued_to, key, sort, order, limit = 10, offset = 0 } = params;
   const { licenses, total } = await fetchRawLicenses(
-    { status, product_id, issued_to, limit, offset },
+    { status, product_id, issued_to, key, sort, order, limit, offset },
     tenantApiKey
   );
 
