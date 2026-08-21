@@ -1,7 +1,11 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-21 (§81/§82: recorded, retroactively, API key
+Last updated: 2026-08-21 (§83: renamed the "API access" page/nav
+item to "Settings", now that the page covers rotation, email/password
+change, and account deletion too - operator asked directly whether the
+old name still fit. See §83 below for full detail.)
+2026-08-21 (§81/§82: recorded, retroactively, API key
 rotation UI + a support-contact link (§81), then built account-settings
 password/email change (§82) - the first item on the operator's own
 priority-check shortlist that's entirely local to this console's own
@@ -4969,4 +4973,28 @@ equivalent, since neither field exists in `casazium/license`'s own
 `tenants` table.
 
 Committed `3c99679`, pushed on explicit instruction.
+
+## 83. Renamed the "API access" page/nav item to "Settings" (2026-08-21)
+
+Operator asked directly whether the Settings page (`/settings`) should
+really still be titled and nav-labeled "API access" - it was accurate
+when the page only showed the tenant's API key, but §71/§81/§82 (this
+session) added account deletion, key rotation, and email/password
+change to the same page, none of which are "API access" in any real
+sense.
+
+Renamed the page's own `<Title order={2}>` from "API access" to
+"Settings", and demoted the API-key content under its own
+`<Title order={3}>API access</Title>` sub-heading - matching every
+other section on the page (`RotateApiKeySection`, `ChangeEmailSection`,
+etc.), each already its own titled block. `AppShellClient.tsx`'s nav
+item label changed the same way. Renamed the boolean gating both
+(`showApiSettings` -> `showSettingsNav`, threaded from
+`app/(app)/layout.tsx`) so the name matches what it actually gates now,
+not what it gated when it was written. Also fixed the one other
+user-facing reference to the old name -
+`app/(app)/licenses/[key]/page.tsx`'s "See API access for your
+account's own API key" pointer, now "See Settings".
+
+`tsc --noEmit`, `eslint`, and `next build` all clean.
 

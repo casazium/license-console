@@ -29,7 +29,7 @@ export default async function SettingsPage({
   // Self-hosted has no per-tenant key concept - the operator already
   // configured their own ADMIN_API_KEY and knows it. Only reachable via
   // direct URL there anyway (AppShellClient only shows this nav item
-  // under MULTI_TENANT - see app/(app)/layout.tsx's showApiSettings).
+  // under MULTI_TENANT - see app/(app)/layout.tsx's showSettingsNav).
   if (!tenantApiKey) {
     notFound();
   }
@@ -59,7 +59,9 @@ export default async function SettingsPage({
         </Alert>
       )}
 
-      <Title order={2}>API access</Title>
+      <Title order={2}>Settings</Title>
+
+      <Title order={3}>API access</Title>
       <Text size="sm" c="dimmed">
         Use this API key and base URL to call the License Server directly from your own
         application - it&apos;s the same API a self-hosted deployment uses, scoped to your

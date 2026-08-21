@@ -164,7 +164,7 @@ Content-Type: application/json
       {tenantApiKey && (
         <Text size="xs" c="dimmed">
           This call is unauthenticated (public endpoint) - only the license key above is needed.
-          See <Anchor href="/settings">API access</Anchor>{' '}
+          See <Anchor href="/settings">Settings</Anchor>{' '}
           for your account&apos;s own API key, used for admin operations.
         </Text>
       )}

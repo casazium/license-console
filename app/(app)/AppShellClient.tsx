@@ -22,7 +22,7 @@ export function AppShellClient({
   branding,
   appVersion,
   showBilling,
-  showApiSettings,
+  showSettingsNav,
   showEmailVerificationBanner,
   children,
 }: {
@@ -33,9 +33,10 @@ export function AppShellClient({
   // reach one.
   showBilling: boolean;
   // Beta-readiness finding: only true under MULTI_TENANT - self-hosted
-  // operators already hold their own ADMIN_API_KEY and have no per-tenant
-  // key to view (see app/(app)/settings/page.tsx).
-  showApiSettings: boolean;
+  // operators already hold their own ADMIN_API_KEY and manage their one
+  // shared login via env vars, with nothing on this page for them (see
+  // app/(app)/settings/page.tsx).
+  showSettingsNav: boolean;
   // Only true under MULTI_TENANT with an unverified account (see
   // app/(app)/layout.tsx) - self-hosted has no email/verification
   // concept at all.
@@ -44,7 +45,7 @@ export function AppShellClient({
 }) {
   const navItems = [
     ...BASE_NAV_ITEMS,
-    ...(showApiSettings ? [{ href: '/settings', label: 'API access' }] : []),
+    ...(showSettingsNav ? [{ href: '/settings', label: 'Settings' }] : []),
     ...(showBilling ? [{ href: '/billing', label: 'Billing' }] : []),
   ];
   const [opened, { toggle }] = useDisclosure();
