@@ -78,6 +78,21 @@
 # other file's own comment for why an off-box push is still a separate,
 # manual step this compose file doesn't set up. See DEPLOYMENT.md's
 # Backups section for the restore procedure.
+#
+# Lifecycle email alerts (BETA_LAUNCH_STATUS.md §4): scripts/notify-expiring.mjs
+# emails a tenant when one of their licenses is about to expire, or
+# they're close to their plan's license quota - the counterpart pull
+# from casazium/license's own GET /admin/expiring-licenses (that repo's
+# own §159/API.md), gated by NOTIFICATIONS_EXTRACT_KEY above (must match
+# that server's own value - same "independent env vars, keeping them in
+# sync is a deployment choice" reasoning as LICENSE_API_URL/
+# LICENSE_ADMIN_API_KEY). Reuses this same service's own EMAIL_PROVIDER/
+# RESEND_API_KEY/EMAIL_FROM - nothing new to configure there. Schedule it
+# the same way as backup-db.mjs above (Coolify's own Scheduled Task
+# feature): a daily `node scripts/notify-expiring.mjs` run inside this
+# container. Standalone/self-hosted deployments (MULTI_TENANT unset) have
+# no accounts table and nothing for this script to notify - only
+# meaningful on a MULTI_TENANT=true resource.
 services:
   console:
     build:
@@ -105,6 +120,7 @@ services:
       - LICENSE_API_URL=${LICENSE_API_URL}
       - LICENSE_ADMIN_API_KEY=${LICENSE_ADMIN_API_KEY}
       - LICENSE_STANDALONE_MODE=${LICENSE_STANDALONE_MODE}
+      - NOTIFICATIONS_EXTRACT_KEY=${NOTIFICATIONS_EXTRACT_KEY}
       - EMAIL_PROVIDER=${EMAIL_PROVIDER}
       - RESEND_API_KEY=${RESEND_API_KEY}
       - EMAIL_FROM=${EMAIL_FROM}

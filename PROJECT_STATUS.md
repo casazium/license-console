@@ -1,7 +1,11 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-21 (§84: grouped the Settings page into "API"
+Last updated: 2026-08-21 (§85: added scripts/notify-expiring.mjs -
+lifecycle email alerts for expiring licenses and near-quota tenants,
+the highest-priority remaining BETA_LAUNCH_STATUS.md §4 item. See §85
+below for full detail.)
+2026-08-21 (§84: grouped the Settings page into "API"
 and "Account" clusters, following an independent Opus naming check
 that confirmed "Settings" over "Profile" and suggested the grouping.
 See §84 below for full detail.)
@@ -5028,4 +5032,81 @@ Playwright at both full-page and scrolled-to-the-rotate-button framing
 button (which looked cut off in the full-page capture) was a full-page
 screenshot stitching artifact around a sticky footer, not a real layout
 bug. `tsc --noEmit`, `eslint`, `next build` all clean.
+
+## 85. `scripts/notify-expiring.mjs` - lifecycle email alerts (BETA_LAUNCH_STATUS.md §4) (2026-08-21)
+
+Operator asked to build lifecycle email alerts, with an independent
+Opus review of the finished diff before calling it done. This closes
+the §4 item flagged as "the one gap where harm happens silently and
+lands on a third party" - a tenant's own customer gets locked out when
+a license they're using lapses and nobody happened to check the
+dashboard that week. Scoped to email alerts specifically (per that same
+earlier priority review), not a general webhook system - a scheduled
+script, mirroring `scripts/backup-db.mjs`'s own established Coolify
+"Scheduled Task" shape exactly (plain `.mjs`, no framework, reuses
+already-configured service env vars).
+
+**Cross-repo design, and why it's one HTTP call, not N**: this console
+owns `accounts` (which email a `tenant_id` maps to) and the only
+`EmailProvider` integration in either repo; `casazium/license` owns
+every `license_keys`/`tenants` row. The two are joined via one new call
+to that repo's own `GET /admin/expiring-licenses` (its own §161) -
+deliberately NOT per-tenant decrypt-and-call using each tenant's own
+`tenant_api_key_encrypted` (`lib/crypto.ts`), which was the first design
+considered and rejected: N round trips instead of one, and it would
+require this plain `.mjs` script to import TypeScript app code
+(`lib/crypto.ts`, `lib/email/*.ts`) that nothing in `scripts/` does
+today, on Node 22.16.0 (this repo's own pinned production version)
+without a confirmed way to do that without an experimental flag - not a
+risk worth taking in a production cron job. See `casazium/license`'s
+own §161 for the credential-scoping reasoning on that endpoint's side
+(a third, distinct admin-extract key, not a reuse of `REPORT_EXTRACT_KEY`).
+
+**Deliberately self-contained, no `lib/` import** - the email-sending
+logic in this script is a small, intentional duplicate of
+`resend-provider.ts`'s own `send()` shape (plain `fetch()` POST to
+Resend's API) and `stub-provider.ts`'s own log-instead-of-send
+fallback, for the same "no TS import from a plain script" reason above.
+Both paths are exercisable: `EMAIL_PROVIDER` unset/`stub` logs instead
+of sending.
+
+**A real injection gap caught and fixed while writing the expiring-
+license email template**: `issued_to` and `product_id` are both
+tenant-supplied values (via `POST /issue-license`) interpolated into an
+HTML email - the same class of gap already found and fixed once this
+session in the email-change notice (`resend-provider.ts`'s own
+`escapeHtml()`). This script gets its own local `escapeHtml()` rather
+than importing that one, for the same "no `lib/` import" reason as the
+email-sending logic above - duplicated deliberately, not by oversight.
+
+**A local, un-shared `notification_log` table** (`CREATE TABLE IF NOT
+EXISTS`, created by the script itself on every run, not in
+`schema.sql` - nothing else in this app reads or writes it) tracks
+what's already been sent: per-license, permanent (`expiring:{tenant_id}:{key}`
+- a given license only ever crosses the 7-day window once, so one email,
+full stop, not a recurring nag every day it stays inside the window),
+and per-tenant, time-windowed for quota (`quota:{tenant_id}`, re-sent at
+most once every 7 days while the tenant stays over threshold - sustained
+usage should still occasionally remind them, unlike a one-time expiry
+event).
+
+Verified live end-to-end against real running `casazium/license` +
+`casazium/license-console` instances, not just read: real signup, a
+real license issued 3 days out via `POST /issue-license`, the script run
+for real - `[stub-email] A license expires in 3 days for
+notify-smoke@example.com`, `1 sent, 0 skipped`. Re-run immediately
+after: `0 sent, 1 skipped (already notified)` - the idempotency guard
+confirmed working, not just present in the code. Three more licenses
+issued to cross the free-tier quota threshold (4/5 = 80%), re-run:
+`[stub-email] You're at 80% of your license quota`, confirmed via the
+raw `GET /admin/expiring-licenses` response too, not just the script's
+own summary line. `tsc --noEmit`, `eslint`, `next build` all clean (the
+script itself isn't part of the Next.js build surface, same as every
+other file in `scripts/`, but nothing else in the repo regressed).
+
+`.env.example` and `docker-compose-coolify.yml` both updated
+(`NOTIFICATIONS_EXTRACT_KEY`, plus a new Scheduled Task comment block
+mirroring `backup-db.mjs`'s own) - reuses this service's existing
+`LICENSE_API_URL`/`EMAIL_PROVIDER`/`RESEND_API_KEY`/`EMAIL_FROM`, one
+genuinely new var to configure.
 
