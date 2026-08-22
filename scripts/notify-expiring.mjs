@@ -187,13 +187,28 @@ async function main() {
   const db = openDb();
   let sent = 0;
   let skipped = 0;
+  let failed = 0;
 
   try {
-    // tenant_id -> email. Last row wins if a tenant somehow has more than
-    // one account (not possible today - one account per tenant, per
-    // signup/route.ts - but this doesn't assume that stays true forever).
+    // tenant_id -> email. Only verified, non-revoked accounts - an
+    // unverified signup email isn't confirmed to belong to whoever
+    // controls that tenant (security review finding: someone can sign up
+    // with a third party's address, never verify it, issue licenses, and
+    // this script would otherwise mail that address real license-key/
+    // issued_to PII with no proof they're entitled to see it). Excluding
+    // tenant_revoked_at IS NOT NULL too - a revoked tenant's own console
+    // access is already gone; there's nothing actionable a lifecycle
+    // email could tell them.
+    //
+    // Last row wins if a tenant somehow has more than one account (not
+    // possible today - one account per tenant, per signup/route.ts - but
+    // this doesn't assume that stays true forever).
     const accountsByTenant = new Map();
-    for (const row of db.prepare('SELECT tenant_id, email FROM accounts').all()) {
+    for (const row of db
+      .prepare(
+        'SELECT tenant_id, email FROM accounts WHERE email_verified_at IS NOT NULL AND tenant_revoked_at IS NULL'
+      )
+      .all()) {
       accountsByTenant.set(row.tenant_id, row.email);
     }
 
@@ -205,7 +220,7 @@ async function main() {
     for (const license of expiringLicenses) {
       const email = accountsByTenant.get(license.tenant_id);
       if (!email) {
-        console.warn(`No account found for tenant ${license.tenant_id} - skipping license ${license.key}`);
+        console.warn(`No verified account found for tenant ${license.tenant_id} - skipping license ${license.key}`);
         continue;
       }
       // Per-license, not time-windowed - a given license only ever
@@ -218,15 +233,30 @@ async function main() {
         continue;
       }
       const { subject, html } = expiringLicenseEmail(license);
-      await sendEmail(email, subject, html);
-      markSent.run(logId);
-      sent++;
+      // Security review finding: an unguarded throw here used to abort
+      // the whole run, and since `expiringLicenses` is returned in a
+      // deterministic order, one permanently-failing recipient (a bounced
+      // address, a Resend error) would sit at a fixed position and block
+      // every tenant after it on EVERY subsequent run, forever - already-
+      // written notification_log rows are durable (better-sqlite3
+      // autocommits per statement), so nothing upstream of the failure
+      // was actually lost, but nothing downstream ever got a chance to
+      // send either. One bad recipient should cost this script one
+      // notification, not the rest of the run.
+      try {
+        await sendEmail(email, subject, html);
+        markSent.run(logId);
+        sent++;
+      } catch (err) {
+        console.error(`Failed to send expiring-license notice for tenant ${license.tenant_id}:`, err);
+        failed++;
+      }
     }
 
     for (const warning of quotaWarnings) {
       const email = accountsByTenant.get(warning.tenant_id);
       if (!email) {
-        console.warn(`No account found for tenant ${warning.tenant_id} - skipping quota warning`);
+        console.warn(`No verified account found for tenant ${warning.tenant_id} - skipping quota warning`);
         continue;
       }
       const logId = `quota:${warning.tenant_id}`;
@@ -239,15 +269,27 @@ async function main() {
         }
       }
       const { subject, html } = quotaWarningEmail(warning);
-      await sendEmail(email, subject, html);
-      markSent.run(logId);
-      sent++;
+      try {
+        await sendEmail(email, subject, html);
+        markSent.run(logId);
+        sent++;
+      } catch (err) {
+        console.error(`Failed to send quota-warning notice for tenant ${warning.tenant_id}:`, err);
+        failed++;
+      }
     }
   } finally {
     db.close();
   }
 
-  console.log(`Lifecycle alerts: ${sent} sent, ${skipped} skipped (already notified).`);
+  console.log(`Lifecycle alerts: ${sent} sent, ${skipped} skipped (already notified), ${failed} failed.`);
+  // Non-zero exit on any individual failure - a scheduled task's own
+  // monitoring (Coolify's own run-history/alerting) should still surface
+  // a bad run, even though a single failed recipient no longer blocks
+  // everyone after them (see the try/catch above).
+  if (failed > 0) {
+    process.exitCode = 1;
+  }
 }
 
 main().catch((err) => {

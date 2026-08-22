@@ -5110,3 +5110,46 @@ mirroring `backup-db.mjs`'s own) - reuses this service's existing
 `LICENSE_API_URL`/`EMAIL_PROVIDER`/`RESEND_API_KEY`/`EMAIL_FROM`, one
 genuinely new var to configure.
 
+**A dedicated, independent Opus security review of the finished diff**
+(across both repos, explicitly instructed to distrust the implementer's
+own summary and re-verify everything - re-ran this repo's `tsc`/`eslint`,
+`casazium/license`'s full test suite, independently confirmed no cross-
+tenant leakage, confirmed the auth hook is a faithful copy with correct
+fail-closed/constant-time behavior, confirmed no watermark-ID collision
+is possible since `tenant_id`/license keys can never contain `:`) found
+no blocking security holes, but two real correctness bugs, both fixed
+in this same commit:
+
+1. **A poison-pill send could wedge every subsequent run, forever.**
+   `sendEmail()` had no try/catch around its call sites - any thrown
+   error (a malformed address, a transient Resend failure) propagated
+   straight to `main().catch` → `process.exit(1)`. Since
+   `expiringLicenses`/`quotaWarnings` are returned in a deterministic
+   order, one permanently-failing recipient at a fixed position would
+   block every tenant listed after them, on every future run, forever -
+   already-written `notification_log` rows for earlier recipients stay
+   durable (better-sqlite3 autocommits per statement), but nothing past
+   the failure point ever got a chance to send. Fixed: each send is now
+   individually wrapped, logs and continues on failure, and the script
+   exits non-zero only at the very end if anything failed - so Coolify's
+   own run-history still surfaces a bad run, but one bad recipient no
+   longer costs every tenant after them their own notification.
+2. **Emailed unverified addresses.** The `accounts` query had no filter
+   at all - console login isn't gated on email verification
+   (`lib/session.ts` only ever surfaces `emailVerified` as a UI banner
+   flag), so someone could sign up with a third party's address, never
+   click the confirmation link, issue licenses, and this script would
+   still mail that unverified address real per-license PII
+   (`issued_to`, the license key). Fixed: the query now requires
+   `email_verified_at IS NOT NULL AND tenant_revoked_at IS NULL`.
+
+Both fixes re-verified live, not just re-read: a fresh signup's
+still-unverified account correctly produces a "No verified account
+found" skip and zero sends; clicking the real confirmation link and
+re-running correctly sends; forcing `EMAIL_PROVIDER=resend` with no
+`RESEND_API_KEY` set correctly logs one failure, finishes the run
+without crashing, and exits `1`; a follow-up run with the (simulated)
+fixed config correctly picks up and sends the previously-failed
+notification, proving nothing was silently lost. `tsc --noEmit`,
+`eslint` clean.
+
