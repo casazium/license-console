@@ -1,15 +1,47 @@
 import { NextResponse } from 'next/server';
 import { requireSession } from '@/lib/session';
-import { getTenantApiKey, getTenantName } from '@/lib/tenant-context';
+import { getTenantApiKey, getTenantName, markIfTenantRejected } from '@/lib/tenant-context';
 import { getAccountEmail } from '@/lib/auth';
 import { listLicenses, listActivations, getBillingStatus } from '@/lib/license-client';
+import { isRateLimited } from '@/lib/errors';
+import { checkExportCooldown } from '@/lib/export-rate-limit';
 
 // Same ceiling as license-client.live.ts's own BROAD_FETCH_LIMIT - the
-// backend's own GET /list-licenses max `limit`. Comfortably above either
-// plan's own quota (quota.js's PLAN_LIMITS: free=5, pro=100), so one call
-// covers every real tenant today; not a hard architectural ceiling (see
-// the truncation warning below).
+// backend's own GET /list-licenses max `limit`. NOT actually bounded by
+// either plan's quota in practice (independent Opus security review,
+// 2026-08-22): casazium/license's quota check only counts active,
+// unexpired licenses, so a tenant can hold far more than their plan's
+// quota in already-expired rows, all still exported here. MAX_LICENSES
+// is a real ceiling on this route's own worst case, not a "this never
+// happens" comment - see mapWithConcurrency and the cooldown below for
+// the two mitigations that make hitting it safe rather than a DoS.
 const MAX_LICENSES = 1000;
+
+// Independent Opus security review, 2026-08-22: the original version of
+// this route fanned out one GET /list-activations/:key call per license
+// via a single Promise.all - up to MAX_LICENSES (1000) concurrent
+// outbound fetches from one inbound request, from a single-replica Next
+// process shared by every tenant (docker-compose-coolify.yml: no
+// replica count set). Bounding concurrency here caps how much of that a
+// single request can do at once; the per-account cooldown in
+// lib/export-rate-limit.ts caps how often a tenant can trigger it at
+// all - see that file's own header for the full reasoning.
+const ACTIVATIONS_CONCURRENCY = 10;
+
+async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let nextIndex = 0;
+
+  async function worker(): Promise<void> {
+    while (nextIndex < items.length) {
+      const index = nextIndex++;
+      results[index] = await fn(items[index]);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
 
 /**
  * BETA_LAUNCH_STATUS.md §4, full data export - the last item operator
@@ -39,6 +71,11 @@ const MAX_LICENSES = 1000;
  * Licenses list/detail pages with no extra prompt, so adding one just
  * for the export would be an inconsistent, no-real-benefit extra step
  * rather than a genuine security boundary.
+ *
+ * Per-account cooldown (checkExportCooldown) and bounded activation-fetch
+ * concurrency (mapWithConcurrency, above) added after an independent
+ * Opus security review, 2026-08-22 - see both those symbols' own
+ * comments and PROJECT_STATUS.md for the full finding.
  */
 export async function GET() {
   const identity = await requireSession().catch(() => null);
@@ -53,19 +90,37 @@ export async function GET() {
     return NextResponse.json({ error: 'Data export is only available for hosted accounts' }, { status: 404 });
   }
 
+  const retryAfterSeconds = checkExportCooldown(identity.id);
+  if (retryAfterSeconds !== null) {
+    return NextResponse.json(
+      { error: 'Please wait before requesting another export.' },
+      { status: 429, headers: { 'Retry-After': String(retryAfterSeconds) } }
+    );
+  }
+
   const tenantApiKey = getTenantApiKey(identity.id);
   const email = getAccountEmail(identity.id);
   const tenantName = getTenantName(identity.id);
 
-  const [{ licenses, total }, billing] = await Promise.all([
-    listLicenses({ limit: MAX_LICENSES, offset: 0 }, tenantApiKey),
-    getBillingStatus(tenantApiKey),
-  ]);
+  let listResult, billing;
+  try {
+    [listResult, billing] = await Promise.all([
+      listLicenses({ limit: MAX_LICENSES, offset: 0 }, tenantApiKey),
+      getBillingStatus(tenantApiKey),
+    ]);
+  } catch (err) {
+    if (isRateLimited(err)) {
+      return NextResponse.json({ error: 'Too many requests to the license server. Try again shortly.' }, { status: 503 });
+    }
+    markIfTenantRejected(err, identity.tenantId);
+    throw err;
+  }
+  const { licenses, total } = listResult;
 
-  // No silent truncation - if this ever fires for a real tenant (it
-  // can't today, given current plan limits), the export still succeeds
-  // with what fit rather than erroring, but says so loudly server-side
-  // rather than quietly shipping an incomplete "full" export.
+  // No silent truncation - if this ever fires for a real tenant, the
+  // export still succeeds with what fit rather than erroring, but says
+  // so loudly server-side rather than quietly shipping an incomplete
+  // "full" export.
   if (total > licenses.length) {
     console.warn(
       `Data export for tenant ${identity.tenantId} truncated: ${total} licenses, only ${licenses.length} exported (MAX_LICENSES=${MAX_LICENSES}).`
@@ -75,12 +130,13 @@ export async function GET() {
   // One GET /list-activations/:key call per license - N+1, not a single
   // bulk call (no such endpoint exists). Accepted the same way
   // admin-report-extract.js's own aggregate query accepts its own cost:
-  // cheap at today's real plan-limit scale (at most 100 licenses on the
-  // pro tier), and this is a one-time, tenant-initiated click, not a
-  // background job serving every tenant on a schedule - revisit if a
-  // future plan tier's limit makes this slow.
-  const licensesWithActivations = await Promise.all(
-    licenses.map(async (license) => ({
+  // a one-time, tenant-initiated click, not a background job serving
+  // every tenant on a schedule. Concurrency-bounded (ACTIVATIONS_CONCURRENCY)
+  // and cooldown-gated (checkExportCooldown above), not left as a single
+  // unbounded Promise.all - see this file's own header comment on why.
+  let licensesWithActivations;
+  try {
+    licensesWithActivations = await mapWithConcurrency(licenses, ACTIVATIONS_CONCURRENCY, async (license) => ({
       key: license.key,
       product_id: license.product_id,
       tier: license.tier,
@@ -93,8 +149,14 @@ export async function GET() {
       max_activations: license.max_activations,
       revoked_at: license.revoked_at,
       activations: await listActivations(license.key, tenantApiKey),
-    }))
-  );
+    }));
+  } catch (err) {
+    if (isRateLimited(err)) {
+      return NextResponse.json({ error: 'Too many requests to the license server. Try again shortly.' }, { status: 503 });
+    }
+    markIfTenantRejected(err, identity.tenantId);
+    throw err;
+  }
 
   const exportPayload = {
     exported_at: new Date().toISOString(),
@@ -115,6 +177,14 @@ export async function GET() {
     headers: {
       'Content-Type': 'application/json',
       'Content-Disposition': `attachment; filename="${filename}"`,
+      // Independent Opus security review, 2026-08-22: this was the only
+      // authenticated response in the app with no Cache-Control at all -
+      // Next adds one automatically to dynamic pages but not to a plain
+      // NextResponse from a Route Handler. No live exploit today (no CDN
+      // sits in front of this console), but a full per-tenant data dump
+      // is exactly the response a future caching layer must never be
+      // allowed to share across tenants.
+      'Cache-Control': 'private, no-store',
     },
   });
 }

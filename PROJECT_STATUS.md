@@ -1,7 +1,12 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-22 (§88: addressed all 6 findings from an
+Last updated: 2026-08-22 (§89: fixed 2 real findings from an
+independent Opus security review of §87's data export -
+concurrency-unbounded activation fan-out with no real ceiling, and a
+missing Cache-Control header on the response containing a tenant's full
+data dump. See §89 below for full detail.)
+2026-08-22 (§88: addressed all 6 findings from an
 independent Opus senior-UX-engineer review of the Settings page,
 requested by the operator off a screenshot mid-session - divider
 placement, spacing hierarchy, Rotate API key contrast, divider border
@@ -5383,4 +5388,91 @@ the live page text. `npm run build` (production Turbopack build)
 passes clean, one pre-existing unrelated warning
 (`instrumentation.ts`'s `process.exit` under the Edge Runtime, present
 before this change).
+
+## 89. Fixed 2 real findings from an independent Opus security review of §87's data export (2026-08-22)
+
+Operator asked for the same "have Opus check your work" pass on §87's
+`GET /api/export-data` that §85's lifecycle-email-alerts work already
+got. Ran it as a background subagent with instructions to distrust the
+implementer's own summary and re-verify everything itself - it read
+every file `route.ts` touches (`lib/session.ts`, `lib/tenant-context.ts`,
+`lib/auth.ts`, `lib/license-client.ts`, `proxy.ts`, `lib/config.ts`'s
+`isSameOrigin`) and ran a live standalone build against a seeded test
+account rather than taking the code's own comments at face value.
+Verdict: auth, tenant isolation, secret/PII leakage, CSRF/exfiltration
+risk, and header-injection risk all PASS - genuinely re-verified, not
+just asserted (the review confirmed live that `GET /api/verify-email`
+really does share the "no `isSameOrigin` check" posture the route's own
+comment claims, rather than trusting the comment). Two real CONCERN
+findings, both fixed.
+
+**Finding 1 - the N+1 activations fan-out's safety rested on a false
+premise.** `route.ts`'s own comment justified skipping a concurrency
+bound with "cheap... at most 100 licenses on the pro tier" - but
+`casazium/license`'s quota check (`quota.js`'s `countActiveLicenses`)
+only counts *active, unexpired* licenses. A tenant can issue licenses
+with `expires_at` already in the past (no future-date validation on
+that field) with no quota cost at all, while the export's own
+`listLicenses` call has no status filter and would still include them.
+The review's concrete exploit: loop-issue ~1000 backdated licenses
+under the license-management rate limit (~2.5h), then hit export - one
+request fans out via `Promise.all` to up to 1000 concurrent outbound
+fetches from the console's single Next process (no replica count set
+in `docker-compose-coolify.yml`), degrading it for every other tenant
+sharing that process; separately, `casazium/license`'s own
+`ADMIN_RATE_LIMIT_MAX` (300 req/15min per tenant) means an ordinary
+~100-license pro tenant could lock themselves out of their own
+dashboard by clicking "Download my data" three times in one window,
+and the original handler had no `try`/`catch` to turn that into a
+clean error instead of an uncaught 500.
+
+Fixed with two independent mitigations, not one - `route.ts`'s own new
+header comment covers the reasoning for pairing them: (a)
+`mapWithConcurrency`, a small bounded worker-pool helper
+(`ACTIVATIONS_CONCURRENCY = 10`) replacing the flat `Promise.all` over
+every license, so one request can never open more than 10 concurrent
+backend connections regardless of how many licenses a tenant holds;
+(b) `lib/export-rate-limit.ts`'s `checkExportCooldown` - a new,
+dedicated 60-second per-account cooldown, same bounded-`Map`-with-sweep
+shape as `login-rate-limit.ts` but a separate, smaller module (that
+file's own header explains why: this is a resource-cost throttle on an
+already-authenticated route, not a brute-force guard on an auth
+boundary, and has no need for that file's allowed/refund semantics).
+Both `Promise.all` call sites (license list + billing status; the
+activations fan-out) are now wrapped in `try`/`catch`: an upstream 429
+maps to a clean `503` instead of an uncaught `500`, and any other
+license-server rejection calls `markIfTenantRejected` before
+re-throwing - the same pattern every other license-server call site in
+this app already follows (`app/(app)/licenses/*`, `settings/actions.ts`,
+`billing/*`), which this route was the one exception to before this
+fix.
+
+Deliberately did not touch `casazium/license`'s quota-counting logic
+itself (redefining what counts against quota is a billing-behavior
+change with its own blast radius, well beyond this route) - the fix is
+scoped to bounding what this one route can do with however many
+licenses a tenant's account actually holds, regardless of how they got
+there.
+
+**Finding 2 - the export response had no `Cache-Control` header at
+all.** Verified live: every other authenticated page in this app
+(`/dashboard`, `/settings`) gets `Cache-Control: private, no-cache,
+no-store, max-age=0, must-revalidate` automatically from Next's own
+dynamic-page handling, but a plain `new NextResponse(...)` from a Route
+Handler doesn't inherit that - `GET /api/export-data` was the one
+authenticated response in the app with no caching directive at all, on
+the single response containing a tenant's complete data dump. No live
+exploit today (no CDN sits in front of this console), but it's exactly
+the kind of gap a routine "put a CDN in front of the console" ops
+change would turn into a cross-tenant leak. Fixed with one header:
+`Cache-Control: private, no-store` alongside the existing
+`Content-Disposition`.
+
+Both fixes verified live against real `casazium/license` +
+`casazium/license-console` dev servers (same throwaway-port/DB setup as
+§88): a fresh signup's first `GET /api/export-data` returned `200` with
+`Cache-Control: private, no-store` and the correct account payload; an
+immediate second request against the same session returned `429` with
+`Retry-After: 60`, confirming the cooldown. `tsc --noEmit` and `eslint`
+both clean on `route.ts` and the new `lib/export-rate-limit.ts`.
 
