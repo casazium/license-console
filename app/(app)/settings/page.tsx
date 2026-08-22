@@ -21,10 +21,22 @@ import { DeleteAccountSection } from './DeleteAccountSection';
 // the API" at all.
 export const dynamic = 'force-dynamic';
 
+// Fresh sweep, 2026-08-22: app/api/export-data/route.ts's own header
+// explains why its failure paths redirect here with one of these
+// values rather than returning a JSON error - its trigger is a plain
+// `<a href>` top-level navigation, so a JSON response left the browser
+// showing raw error text on a blank page instead of staying on
+// Settings.
+const EXPORT_ERROR_MESSAGES: Record<string, string> = {
+  cooldown: 'Please wait a minute before requesting another export.',
+  'rate-limited': 'Too many requests to the license server. Try again shortly.',
+  unavailable: 'Data export is only available for hosted accounts.',
+};
+
 export default async function SettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ emailChanged?: string; emailChangeError?: string }>;
+  searchParams: Promise<{ emailChanged?: string; emailChangeError?: string; exportError?: string }>;
 }) {
   const { identity, tenantApiKey } = await requireSessionWithTenantKey();
 
@@ -45,7 +57,8 @@ export default async function SettingsPage({
   // verification does (AppShellClient) - this page is the one place
   // that outcome needs to actually reach the person who clicked the
   // link, so it's carried as a one-time query param instead.
-  const { emailChanged, emailChangeError } = await searchParams;
+  const { emailChanged, emailChangeError, exportError } = await searchParams;
+  const exportErrorMessage = exportError ? EXPORT_ERROR_MESSAGES[exportError] : undefined;
 
   return (
     <Stack maw={640}>
@@ -58,6 +71,11 @@ export default async function SettingsPage({
         <Alert color="red" variant="light" title="Couldn't change email">
           That confirmation link was invalid, expired, or the address was already taken. Start
           over from the Email section below.
+        </Alert>
+      )}
+      {exportErrorMessage && (
+        <Alert color="red" variant="light" title="Couldn't export your data">
+          {exportErrorMessage}
         </Alert>
       )}
 

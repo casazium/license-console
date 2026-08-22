@@ -1,7 +1,12 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-22 (§89: fixed 2 real findings from an
+Last updated: 2026-08-22 (§90: fixed 2 findings from a fresh
+cross-repo sweep - `/api/reset-password` missing the `isSameOrigin()`
+CSRF check every sibling unauthenticated route already has, and a
+regression in §89's own export-cooldown fix that showed raw JSON on a
+blank page instead of an inline alert. See §90 below for full detail.)
+2026-08-22 (§89: fixed 2 real findings from an
 independent Opus security review of §87's data export -
 concurrency-unbounded activation fan-out with no real ceiling, and a
 missing Cache-Control header on the response containing a tenant's full
@@ -5475,4 +5480,65 @@ Both fixes verified live against real `casazium/license` +
 immediate second request against the same session returned `429` with
 `Retry-After: 60`, confirming the cooldown. `tsc --noEmit` and `eslint`
 both clean on `route.ts` and the new `lib/export-rate-limit.ts`.
+
+## 90. Fixed 2 findings from a fresh cross-repo sweep (2026-08-22)
+
+Operator asked for a fresh sweep for anything overlooked, after the
+beta-launch backlog and the marketing-site-rewrite plan (confirmed
+already shipped, unrelated to this repo) both closed out. Ran it as
+three parallel background agents, one per repo, each instructed to
+skip anything already recorded closed in that repo's own
+`PROJECT_STATUS.md` and to run real build/lint/test commands rather
+than just read code. This repo's sweep returned two real findings,
+both fixed; two more were confirmed still-open named follow-ups from
+earlier reviews (password-re-entry-oracle throttling, the mock
+client's `rotateApiKey()` no-op under a contrived config) - no new
+information, no action taken on those here.
+
+**Finding 1 - `/api/reset-password` was missing the `isSameOrigin()`
+CSRF/Origin check every other unauthenticated Route Handler in this
+app has** (`login`, `signup`, `logout`, `change-email`,
+`forgot-password`, `verify-email/resend`). Same shape as
+`forgot-password` - no session, IP-keyed `checkAndReserveAttempt` -
+and `forgot-password`'s own comment already documents exactly why this
+matters even with no ambient session to steal: a cross-origin page
+could burn the *victim's own* IP rate-limit bucket and trigger a real
+reset attempt through their browser without their knowledge. This
+route shared that identical exposure and simply never received the
+fix when it was applied to its siblings. Added the same
+`isSameOrigin()` gate, same first-line position, same error shape.
+Verified live: no `Origin` header and a cross-origin `Origin` both now
+403 with `{"error":"Invalid request origin"}`; a matching same-origin
+`Origin` passes the check through to the real token lookup (confirmed
+via a deliberately invalid token producing the expected 400, not a
+403).
+
+**Finding 2 - a real regression in §89's own export-cooldown fix,
+caught before it reached anyone.** `ExportDataSection.tsx` triggers
+`GET /api/export-data` via a plain `<a href>` top-level browser
+navigation, by design (no client JS, the route sets
+`Content-Disposition` itself). §89's cooldown and rate-limited error
+paths returned `NextResponse.json(...)`, so a second click within the
+60-second cooldown left the browser showing raw `{"error":"Please
+wait..."}` text on a blank page instead of staying on Settings -
+security-correct, UX-broken. Fixed by redirecting to
+`/settings?exportError=<reason>` on every failure path instead (login
+redirects to `/login` for the technically-unreachable
+no-session case, matching how every other defense-in-depth branch in
+this route already behaves) - the same pattern
+`verify-email/route.ts` already established for its own link-target
+failure cases (`emailChangeError`), including that route's own
+`publicBaseUrl()` fix for building the redirect's `Location` header
+correctly (not `request.nextUrl.origin`, which resolves to the
+server's own bind address, not the public host - see that route's own
+comment). `page.tsx` gained an `exportError` query-param handler
+mapping `cooldown`/`rate-limited`/`unavailable` to the same inline
+`Alert` treatment `emailChangeError` already uses.
+
+Verified live end-to-end: a real signup, a real first export
+downloading successfully via `page.request.get`/a real anchor click,
+an immediate second click landing back on `/settings?exportError=cooldown`
+with a visible "Couldn't export your data" alert and no raw JSON
+anywhere in the page body (confirmed via `page.locator('body').innerText()`)
+- screenshotted. `tsc --noEmit`, `eslint`, and `npm run build` all clean.
 

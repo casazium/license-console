@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isMultiTenant } from '@/lib/config';
+import { isMultiTenant, isSameOrigin } from '@/lib/config';
 import { getDb } from '@/lib/db';
 import { hashPassword } from '@/lib/password';
 import { hashOneTimeToken } from '@/lib/one-time-token';
@@ -36,6 +36,19 @@ const MAX_PASSWORD_LENGTH = 256;
  * other still-open session) is signed out.
  */
 export async function POST(request: NextRequest) {
+  // Fresh sweep, 2026-08-22: every other unauthenticated Route Handler
+  // in this app (login, signup, logout, change-email, forgot-password,
+  // verify-email/resend) has this check - this route shared the exact
+  // same shape (no session, IP-keyed checkAndReserveAttempt below) as
+  // forgot-password, whose own comment explains why it matters here
+  // too: a cross-origin page can't steal anything (no ambient session),
+  // but it could burn the *victim's own* IP rate-limit bucket through
+  // their browser without their knowledge. Same isSameOrigin() gate, in
+  // the same first-line position, for consistency.
+  if (!isSameOrigin(request)) {
+    return NextResponse.json({ error: 'Invalid request origin' }, { status: 403 });
+  }
+
   // IP-keyed, not account-keyed - the token's own 128 bits of entropy
   // already makes brute-forcing infeasible; this is defense-in-depth
   // against a caller hammering the endpoint, not the real protection.

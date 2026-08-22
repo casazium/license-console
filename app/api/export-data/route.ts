@@ -1,10 +1,11 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { requireSession } from '@/lib/session';
 import { getTenantApiKey, getTenantName, markIfTenantRejected } from '@/lib/tenant-context';
 import { getAccountEmail } from '@/lib/auth';
 import { listLicenses, listActivations, getBillingStatus } from '@/lib/license-client';
 import { isRateLimited } from '@/lib/errors';
 import { checkExportCooldown } from '@/lib/export-rate-limit';
+import { publicBaseUrl } from '@/lib/config';
 
 // Same ceiling as license-client.live.ts's own BROAD_FETCH_LIMIT - the
 // backend's own GET /list-licenses max `limit`. NOT actually bounded by
@@ -76,26 +77,38 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T)
  * concurrency (mapWithConcurrency, above) added after an independent
  * Opus security review, 2026-08-22 - see both those symbols' own
  * comments and PROJECT_STATUS.md for the full finding.
+ *
+ * Fresh sweep, 2026-08-22: that cooldown's own error responses were a
+ * real regression, caught before it shipped anywhere else - the trigger
+ * (ExportDataSection.tsx) is a plain `<a href>` top-level navigation, by
+ * design (see the Route Handler note above), so a JSON error response
+ * left the browser showing raw `{"error":...}` text on a blank page
+ * instead of staying on Settings. Every failure path here now redirects
+ * back to /settings with a query-param outcome instead - same pattern
+ * verify-email/route.ts already established for its own link-target
+ * failure cases (emailChangeError), and the same publicBaseUrl() fix
+ * (not request.nextUrl.origin - see that route's own comment) since
+ * this, too, builds a redirect Location header.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const baseUrl = publicBaseUrl(request);
+  const settingsUrl = (exportError: string) => new URL(`/settings?exportError=${exportError}`, baseUrl);
+
   const identity = await requireSession().catch(() => null);
   if (!identity) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return NextResponse.redirect(new URL('/login', baseUrl));
   }
   if (!identity.tenantId) {
     // Unreachable via the UI - the export section only renders under
     // MULTI_TENANT with a resolved tenant (see the Settings page).
     // Defense in depth, not a real self-hosted path - self-hosted's
     // single shared admin login has no accounts row to export.
-    return NextResponse.json({ error: 'Data export is only available for hosted accounts' }, { status: 404 });
+    return NextResponse.redirect(settingsUrl('unavailable'));
   }
 
   const retryAfterSeconds = checkExportCooldown(identity.id);
   if (retryAfterSeconds !== null) {
-    return NextResponse.json(
-      { error: 'Please wait before requesting another export.' },
-      { status: 429, headers: { 'Retry-After': String(retryAfterSeconds) } }
-    );
+    return NextResponse.redirect(settingsUrl('cooldown'));
   }
 
   const tenantApiKey = getTenantApiKey(identity.id);
@@ -110,7 +123,7 @@ export async function GET() {
     ]);
   } catch (err) {
     if (isRateLimited(err)) {
-      return NextResponse.json({ error: 'Too many requests to the license server. Try again shortly.' }, { status: 503 });
+      return NextResponse.redirect(settingsUrl('rate-limited'));
     }
     markIfTenantRejected(err, identity.tenantId);
     throw err;
@@ -152,7 +165,7 @@ export async function GET() {
     }));
   } catch (err) {
     if (isRateLimited(err)) {
-      return NextResponse.json({ error: 'Too many requests to the license server. Try again shortly.' }, { status: 503 });
+      return NextResponse.redirect(settingsUrl('rate-limited'));
     }
     markIfTenantRejected(err, identity.tenantId);
     throw err;
