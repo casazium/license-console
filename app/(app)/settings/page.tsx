@@ -7,6 +7,7 @@ import { ApiKeyReveal } from './ApiKeyReveal';
 import { RotateApiKeySection } from './RotateApiKeySection';
 import { ChangePasswordSection } from './ChangePasswordSection';
 import { ChangeEmailSection } from './ChangeEmailSection';
+import { ExportDataSection } from './ExportDataSection';
 import { DeleteAccountSection } from './DeleteAccountSection';
 
 // Beta-readiness finding: nothing in this console ever showed a hosted
@@ -118,6 +119,7 @@ export default async function SettingsPage({
       </Text>
       {currentEmail && <ChangeEmailSection currentEmail={currentEmail} />}
       <ChangePasswordSection />
+      <ExportDataSection />
       <DeleteAccountSection />
     </Stack>
   );

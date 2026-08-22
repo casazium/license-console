@@ -1,7 +1,17 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-21 (§85: added scripts/notify-expiring.mjs -
+Last updated: 2026-08-22 (§87: added self-service data export - the
+one item operator kept proactive after deciding everything else left
+in BETA_LAUNCH_STATUS.md §4 (teammates, an audit log, branding
+self-service) is now explicitly demand-driven. See §87 below for full
+detail.)
+2026-08-22 (§86: recorded, retroactively - this file's own
+header wasn't updated when that commit landed - bumped the Settings
+page's "API"/"ACCOUNT" eyebrow labels from too-small to match the
+page's own body text, after the operator caught it live. See §86 below
+for full detail.)
+2026-08-21 (§85: added scripts/notify-expiring.mjs -
 lifecycle email alerts for expiring licenses and near-quota tenants,
 the highest-priority remaining BETA_LAUNCH_STATUS.md §4 item. See §85
 below for full detail.)
@@ -5194,4 +5204,75 @@ rest of the page's own caption text instead of undercutting it.
 Verified live via a real signup + Playwright screenshot against a
 running dev server, same as §84's own verification. `tsc --noEmit`,
 `eslint` clean.
+
+## 87. Self-service data export (BETA_LAUNCH_STATUS.md §4) (2026-08-22)
+
+Operator's final call on the remaining §4 backlog: everything else left
+open (teammates/invites, a tenant-facing audit log, per-tenant branding
+self-service) is explicitly demand-driven now - build once a real
+customer asks, not speculatively. Data export was the one exception
+kept proactive, since its case doesn't depend on demand: cheap,
+low-risk, and matters for trust regardless of whether anyone's asked -
+a beta tester should be able to get their own data out without
+deleting the whole account first, the same reasoning that already
+motivated hard-delete itself. Until now the only way to get a copy of
+your own data was the docs telling you to manually call
+`GET /v1/list-licenses` and "the per-license activation endpoints"
+yourself before deleting.
+
+**`app/api/export-data/route.ts`**: a new Route Handler, not a Server
+Action - the same reason every other link-emailing/file-producing flow
+in this repo is a Route Handler (a Server Action can't set response
+headers or stream a file). Session-authenticated (`requireSession()`),
+gated a second time upstream by `proxy.ts`'s own middleware (confirmed
+live - an unauthenticated request 307s to `/login` before the route's
+own check ever runs). No `isSameOrigin()` CSRF check, unlike this
+repo's POST-mutating Route Handlers - this is a pure read with no state
+change, matching `GET /api/verify-email`'s identical posture. No
+password re-entry gate either - the data here is already fully visible
+to any valid session via the Licenses pages with no extra prompt, so
+gating only the export would be an inconsistent extra step with no real
+security benefit, not a genuine boundary.
+
+Scoped exactly to what the old doc wording already promised, not
+expanded: `GET /list-licenses` (one call, `limit=1000` - the backend's
+own max, comfortably above either plan's real quota of 5/100, with a
+loud (not silent) server-side warning if a future tenant ever exceeds
+it) plus one `GET /list-activations/:key` call per license (N+1,
+accepted the same way `admin-report-extract.js`'s own aggregate query
+accepts its own cost - cheap at today's real scale, and this is a
+one-time tenant-initiated click, not a scheduled job serving every
+tenant), plus `GET /billing/status`. Account info included is `email`/
+`tenant_name`/`tenant_id` only - deliberately never `password_hash` or
+`tenant_api_key_encrypted`, confirmed absent from the real response
+below, not assumed.
+
+**`ExportDataSection.tsx`**: a plain Server Component, not a client
+one - unlike every other section on this page, there's no state or
+confirmation step, so a Mantine `Button` rendered as a real `<a href>`
+pointed at the route is enough; the browser handles the download
+natively via the route's own `Content-Disposition` header, no client
+JS at all. Placed after Change Password, before Danger zone - same
+ordering logic the docs already state ("if you want a copy of your
+data first... do that before confirming deletion").
+
+Verified live end-to-end against real running `casazium/license` +
+`casazium/license-console` instances, not just typed: a real signup,
+two real licenses issued (one activated, one not), a real
+`GET /api/export-data` call returning `Content-Disposition: attachment;
+filename="casazium-data-export-<date>.json"` and a body with the
+correct account/billing/license/activation data - the activated
+license's real `instance_id` present, the unactivated one's
+`activations` correctly empty, no `token_hash` (the backend's own
+`list-activations` route already withholds it), no password hash or
+encrypted API key anywhere in the payload. Unauthenticated access
+confirmed rejected at two independent layers (`proxy.ts` 307s to
+`/login` before the route is even reached; the route's own
+`requireSession()` is the second, defense-in-depth layer behind it).
+`tsc --noEmit`, `eslint` clean.
+
+Public docs (`docs/docs/license-server/getting-started/saas-tier.md`,
+`casazium/casazium`) gained a new "Exporting your data" section, and
+the account-deletion section's stale "there's currently no self-service
+data export" line was rewritten to point at it instead.
 
