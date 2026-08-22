@@ -41,6 +41,13 @@ COPY --from=builder --chown=node:node /app/.next/static ./.next/static
 # subset above - lib/db.ts imports it at runtime, so Next's tracer already
 # includes it.
 COPY --from=builder --chown=node:node /app/scripts/backup-db.mjs ./scripts/backup-db.mjs
+# scripts/notify-expiring.mjs (BETA_LAUNCH_STATUS.md §4, lifecycle email
+# alerts): same "not part of the Next standalone trace" gap as
+# backup-db.mjs immediately above - it's a plain script the app itself
+# never imports, so Next's own tracer has no reason to include it.
+# Deliberately not chmod +x'd, same as backup-db.mjs - invoked as
+# `node scripts/notify-expiring.mjs`, never executed directly.
+COPY --from=builder --chown=node:node /app/scripts/notify-expiring.mjs ./scripts/notify-expiring.mjs
 # scripts/backup-and-push.sh: chained backup + off-box B2 push, invoked
 # as a single file (not an inline Coolify Scheduled Task command) since
 # Coolify's command field did not reliably execute a `&&`-chained,

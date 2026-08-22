@@ -5153,3 +5153,25 @@ fixed config correctly picks up and sends the previously-failed
 notification, proving nothing was silently lost. `tsc --noEmit`,
 `eslint` clean.
 
+**A real deployability gap found while walking the operator through
+setting this up for a real deploy, not caught by any review pass
+before this**: `Dockerfile`'s runtime stage never copied
+`scripts/notify-expiring.mjs` into the image at all - it only copies
+each operational script individually (`backup-db.mjs`,
+`backup-and-push.sh`, `restore-drill.mjs`, `restore-drill-from-b2.sh`,
+`check-db-integrity.mjs`), the same "not part of the Next standalone
+trace" gap every one of those scripts' own comments already documents,
+and this one was simply never added to that list when it was written.
+As shipped up to this point, a Coolify Scheduled Task running `node
+scripts/notify-expiring.mjs` would have failed with "file not found" -
+the feature was code-complete and locally verified, but not actually
+deployable. Fixed with the same `COPY --from=builder` line every
+sibling script already uses. No Docker daemon available in this
+environment to build and confirm directly (unlike §171's earlier real
+`docker build` verification of the base image) - confirmed instead by
+checking `.dockerignore` doesn't exclude `scripts/*.mjs` and that the
+builder stage's own `COPY . .` puts the file at the expected
+`/app/scripts/notify-expiring.mjs` path this new line reads from,
+structurally identical to the already-proven `backup-db.mjs` line
+immediately above it.
+
