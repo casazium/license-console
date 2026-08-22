@@ -69,7 +69,7 @@ export function DeleteAccountSection() {
   }
 
   return (
-    <Box mt="xl" pt="lg" style={{ borderTop: '1px solid var(--mantine-color-red-3)' }}>
+    <Box mt="xl" pt="lg" style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>
       <Title order={3} c="red">
         Danger zone
       </Title>
@@ -83,7 +83,7 @@ export function DeleteAccountSection() {
       <Modal opened={opened} onClose={handleClose} title="Delete account" centered>
         <Stack>
           <Alert color="red" variant="light" title="This cannot be undone">
-            Deleting your account is immediate and permanent - there is no grace period and no way to
+            Deleting your account is immediate and permanent — there is no grace period and no way to
             recover it afterward. This will:
             <List size="sm" mt="xs">
               <List.Item>

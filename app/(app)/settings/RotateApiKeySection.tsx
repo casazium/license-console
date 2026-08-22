@@ -76,12 +76,10 @@ export function RotateApiKeySection() {
   }
 
   return (
-    <Box mt="xl" pt="lg" style={{ borderTop: '1px solid var(--mantine-color-yellow-4)' }}>
-      <Title order={3} c="yellow.8">
-        Rotate API key
-      </Title>
+    <Box mt="xl" pt="lg" style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>
+      <Title order={3}>Rotate API key</Title>
       <Text size="sm" c="dimmed" mt={4} mb="md">
-        Mint a new API key and immediately retire the current one - use this if your key is ever
+        Mint a new API key and immediately retire the current one — use this if your key is ever
         exposed.
       </Text>
       <Button color="yellow.8" variant="outline" onClick={open}>
@@ -114,7 +112,7 @@ export function RotateApiKeySection() {
               Rotating your API key:
               <List size="sm" mt="xs">
                 <List.Item>
-                  Stops your current API key from working right away - there is no overlap window
+                  Stops your current API key from working right away — there is no overlap window
                 </List.Item>
                 <List.Item>
                   Breaks any of your own systems still using the old key, until you update them

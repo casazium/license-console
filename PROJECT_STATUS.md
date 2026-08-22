@@ -1,7 +1,13 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-22 (§87: added self-service data export - the
+Last updated: 2026-08-22 (§88: addressed all 6 findings from an
+independent Opus senior-UX-engineer review of the Settings page,
+requested by the operator off a screenshot mid-session - divider
+placement, spacing hierarchy, Rotate API key contrast, divider border
+color, a missing Copy button on the API base URL, and em-dash
+consistency in visible copy. See §88 below for full detail.)
+2026-08-22 (§87: added self-service data export - the
 one item operator kept proactive after deciding everything else left
 in BETA_LAUNCH_STATUS.md §4 (teammates, an audit log, branding
 self-service) is now explicitly demand-driven. See §87 below for full
@@ -5275,4 +5281,106 @@ Public docs (`docs/docs/license-server/getting-started/saas-tier.md`,
 `casazium/casazium`) gained a new "Exporting your data" section, and
 the account-deletion section's stale "there's currently no self-service
 data export" line was rewritten to point at it instead.
+
+## 88. Settings page: addressed all 6 findings from an independent Opus UX review (2026-08-22)
+
+Mid-turn during §87's build, the operator interrupted with a screenshot
+of the live Settings page and asked for an independent review "from a
+look and feel perspective as a senior UX engineer." Ran that review as
+a background Opus subagent while finishing §87, then applied all 6
+findings it returned once the operator confirmed. This section covers
+process/UX fixes only - no behavior change to any of the flows §80-§87
+already built and verified.
+
+**Finding 1 - group-boundary divider on the wrong side.** The "Account"
+eyebrow's top-border divider used to live inside `ChangeEmailSection.tsx`
+itself, which visually grouped it with "Rotate API key" above it rather
+than with "Email"/"Password"/"Export"/"Delete" below it - the divider
+was marking the wrong boundary. Moved the divider to wrap the "Account"
+eyebrow directly in `page.tsx` (`<Box mt="xl" pt="lg" style={{borderTop:
+...}}>`), and reduced `ChangeEmailSection.tsx` to a plain fragment - it
+no longer owns a divider of its own, since the group boundary now sits
+above it instead of inside it. `ChangePasswordSection.tsx`,
+`ExportDataSection.tsx`, and `DeleteAccountSection.tsx` keep their own
+existing divider `Box`es unchanged - those are legitimate
+within-group separators between sibling subsections, not the
+group-boundary divider finding 1 was about.
+
+**Finding 2 - spacing hierarchy.** The "Settings" H1 had the same
+visual weight as the spacing between its own sub-elements, so nothing
+signaled it as the page's title versus just another heading. Added
+`mb="lg"` to the H1. Also tightened the "API" eyebrow and "API access"
+H3 into their own `<Stack gap={4}>` so the label and the heading it
+labels read as one paired unit rather than two independently-spaced
+elements - matching how a caption should sit close to what it
+captions. The "Account" eyebrow has no heading of its own to pair with
+in `page.tsx` (its "Email" heading lives inside `ChangeEmailSection.tsx`,
+a separate component) - left its spacing to the wrapping `Box`'s own
+`pt="lg"` rather than force an equivalent nested `Stack` across a
+component boundary for a purely cosmetic match.
+
+**Finding 3 - Rotate API key's amber wash.** `RotateApiKeySection.tsx`'s
+`Title` was `c="yellow.8"`, which on white background measures roughly
+2.4:1 contrast - below the WCAG 3:1 floor even for large bold text, a
+real accessibility defect, not just a stylistic quibble. Removed
+`c="yellow.8"` from the `Title`; the button itself keeps its amber
+color, since that's the one place on the page an "irreversible-ish,
+pay attention" affordance is warranted, and it's not a body-text
+contrast case (large filled + outlined UI elements aren't held to the
+same ratio as sentence text).
+
+**Finding 4 - divider border colors that don't mean anything.**
+`RotateApiKeySection.tsx`'s divider used `yellow-4` and
+`DeleteAccountSection.tsx`'s used `red-3` - both implied semantic
+danger/warning on a divider whose only job is visual separation
+between sections, not a warning of its own (the actual warning, where
+one exists, is carried by the heading color and button color already).
+Changed both to `var(--mantine-color-default-border)`, the same
+neutral border every other divider on this page already uses.
+`DeleteAccountSection.tsx`'s red `Title` color was left unchanged -
+not flagged by the review, and unlike the divider, the heading color
+on a literal "Danger zone" section is doing real, deliberate semantic
+work.
+
+**Finding 5 - API base URL had no way to copy it.** The API key right
+above it (`ApiKeyReveal.tsx`) got a `CopyButton` when it was built; the
+base URL sat in a bare `<Code block>` with nothing to click, despite
+being the other value a developer actually needs to paste to call the
+API. New `ApiBaseUrlDisplay.tsx` - a client component (the same
+"CopyButton needs client interactivity" reasoning `ApiKeyReveal.tsx`
+already established, not inlined into `page.tsx` since that's an async
+Server Component) - mirrors `ApiKeyReveal.tsx`'s exact
+`Group`/`CopyButton`/`Button` pattern. The not-configured fallback
+(no `LICENSE_API_URL` set) keeps rendering as a plain `<Code block>`
+with the "contact support" message - nothing to copy there, so no
+button.
+
+**Finding 6 - inconsistent dash usage.** Visible `Text`/`Alert`/
+notification-message strings mixed plain hyphens where an em dash was
+the correct read (parenthetical asides, not compound words or ranges).
+Fixed one or two occurrences each across `page.tsx`,
+`RotateApiKeySection.tsx`, `DeleteAccountSection.tsx`,
+`ChangeEmailSection.tsx`, `ChangePasswordSection.tsx`, and
+`ApiKeyReveal.tsx`. Scoped deliberately to user-visible copy only -
+left every code comment's existing " - " style untouched, since the
+review's finding was about what a user reads, not about this
+codebase's own comment convention.
+
+Verified live: `tsc --noEmit` and `eslint` both clean. Booted real
+`casazium/license` (multi-tenant, `CASAZIUM_UNLICENSED_EVAL=1` -
+Tier-A's own local activation-license boot gate, added since this
+session's earlier work, otherwise refuses to start outside a real
+signed license) and `casazium/license-console` dev servers on
+throwaway ports/DBs, signed up a fresh test tenant, and screenshotted
+the resulting Settings page end to end. Confirmed directly against the
+screenshot: the divider now sits above "Account" rather than below it;
+"Settings" reads as a distinct title with the API eyebrow/heading
+tightly paired beneath it; "Rotate API key"'s heading is neutral text
+color while its button stays amber; both dividers render the same
+neutral gray as the rest of the page; the API base URL row has a
+working Copy button beside it; the em-dash fixes render correctly in
+the live page text. `npm run build` (production Turbopack build)
+passes clean, one pre-existing unrelated warning
+(`instrumentation.ts`'s `process.exit` under the Edge Runtime, present
+before this change).
 

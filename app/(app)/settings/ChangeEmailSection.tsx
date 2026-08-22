@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Alert, Box, Button, Group, Modal, PasswordInput, Stack, Text, TextInput, Title } from '@mantine/core';
+import { Alert, Button, Group, Modal, PasswordInput, Stack, Text, TextInput, Title } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 
 /**
@@ -57,7 +57,7 @@ export function ChangeEmailSection({ currentEmail }: { currentEmail: string }) {
   }
 
   return (
-    <Box mt="xl" pt="lg" style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>
+    <>
       <Title order={3}>Email</Title>
       <Text size="sm" c="dimmed" mt={4} mb="md">
         Signed in as <strong>{currentEmail}</strong>.
@@ -71,7 +71,7 @@ export function ChangeEmailSection({ currentEmail }: { currentEmail: string }) {
           <Stack>
             <Alert color="teal" variant="light" title="Check your new inbox">
               We sent a confirmation link to {sentTo}. Your account email won&apos;t change until you
-              click it - this link expires in 24 hours, and {currentEmail} keeps working until then.
+              click it — this link expires in 24 hours, and {currentEmail} keeps working until then.
             </Alert>
             <Group justify="flex-end">
               <Button onClick={handleClose}>Done</Button>
@@ -80,7 +80,7 @@ export function ChangeEmailSection({ currentEmail }: { currentEmail: string }) {
         ) : (
           <Stack>
             <Text size="sm" c="dimmed">
-              We&apos;ll send a confirmation link to your new address - your account email
+              We&apos;ll send a confirmation link to your new address — your account email
               won&apos;t change until you click it.
             </Text>
             <PasswordInput
@@ -112,6 +112,6 @@ export function ChangeEmailSection({ currentEmail }: { currentEmail: string }) {
           </Stack>
         )}
       </Modal>
-    </Box>
+    </>
   );
 }

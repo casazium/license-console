@@ -17,7 +17,7 @@ export function ExportDataSection() {
       <Title order={3}>Export your data</Title>
       <Text size="sm" c="dimmed" mt={4} mb="md">
         Download a copy of every license and activation your account owns, plus your current
-        billing status - useful before deleting your account, or just to keep your own record.
+        billing status — useful before deleting your account, or just to keep your own record.
       </Text>
       <Button component="a" href="/api/export-data" variant="outline">
         Download my data

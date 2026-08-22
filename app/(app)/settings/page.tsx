@@ -1,9 +1,10 @@
 import { notFound } from 'next/navigation';
-import { Alert, Anchor, Code, Stack, Text, Title } from '@mantine/core';
+import { Alert, Anchor, Box, Stack, Text, Title } from '@mantine/core';
 import { requireSessionWithTenantKey } from '@/lib/tenant-context';
 import { getBranding } from '@/lib/branding';
 import { getAccountEmail } from '@/lib/auth';
 import { ApiKeyReveal } from './ApiKeyReveal';
+import { ApiBaseUrlDisplay } from './ApiBaseUrlDisplay';
 import { RotateApiKeySection } from './RotateApiKeySection';
 import { ChangePasswordSection } from './ChangePasswordSection';
 import { ChangeEmailSection } from './ChangeEmailSection';
@@ -60,15 +61,19 @@ export default async function SettingsPage({
         </Alert>
       )}
 
-      <Title order={2}>Settings</Title>
+      <Title order={2} mb="lg">
+        Settings
+      </Title>
 
-      <Text size="sm" fw={700} tt="uppercase" c="dimmed" style={{ letterSpacing: '0.05em' }}>
-        API
-      </Text>
-      <Title order={3}>API access</Title>
+      <Stack gap={4}>
+        <Text size="sm" fw={700} tt="uppercase" c="dimmed" style={{ letterSpacing: '0.05em' }}>
+          API
+        </Text>
+        <Title order={3}>API access</Title>
+      </Stack>
       <Text size="sm" c="dimmed">
         Use this API key and base URL to call the License Server directly from your own
-        application - it&apos;s the same API a self-hosted deployment uses, scoped to your
+        application — it&apos;s the same API a self-hosted deployment uses, scoped to your
         account.
       </Text>
 
@@ -78,18 +83,19 @@ export default async function SettingsPage({
         <Text size="sm" fw={700} mb={4}>
           API base URL
         </Text>
-        <Code block>
-          {apiBaseUrl || (
+        <ApiBaseUrlDisplay
+          apiBaseUrl={apiBaseUrl}
+          fallback={
             <>
-              Not configured -{' '}
+              Not configured —{' '}
               {supportEmail ? (
                 <Anchor href={`mailto:${supportEmail}`}>contact support</Anchor>
               ) : (
                 'contact support'
               )}
             </>
-          )}
-        </Code>
+          }
+        />
       </div>
 
       <Text size="sm" c="dimmed">
@@ -114,9 +120,11 @@ export default async function SettingsPage({
 
       <RotateApiKeySection />
 
-      <Text size="sm" fw={700} tt="uppercase" c="dimmed" mt="xl" style={{ letterSpacing: '0.05em' }}>
-        Account
-      </Text>
+      <Box mt="xl" pt="lg" style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>
+        <Text size="sm" fw={700} tt="uppercase" c="dimmed" style={{ letterSpacing: '0.05em' }}>
+          Account
+        </Text>
+      </Box>
       {currentEmail && <ChangeEmailSection currentEmail={currentEmail} />}
       <ChangePasswordSection />
       <ExportDataSection />

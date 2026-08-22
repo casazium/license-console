@@ -62,7 +62,7 @@ export function ChangePasswordSection() {
         notifications.show({
           color: 'teal',
           title: 'Password changed',
-          message: "Your password was updated. Any other signed-in sessions were signed out - you're still signed in here.",
+          message: "Your password was updated. Any other signed-in sessions were signed out — you're still signed in here.",
         });
         handleClose();
       }
@@ -109,7 +109,7 @@ export function ChangePasswordSection() {
             error={newPasswordError}
           />
           <Alert color="blue" variant="light">
-            Changing your password signs out every other session on this account - you&apos;ll stay
+            Changing your password signs out every other session on this account — you&apos;ll stay
             signed in here.
           </Alert>
           <Group justify="flex-end">

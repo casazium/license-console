@@ -16,7 +16,7 @@ export function ApiKeyReveal({ apiKey }: { apiKey: string }) {
     <Group gap="xs" wrap="nowrap" align="flex-end">
       <PasswordInput
         label="Your API key"
-        description="Server-side use only - never embed this in client-side/browser code"
+        description="Server-side use only — never embed this in client-side/browser code"
         value={apiKey}
         readOnly
         visible={visible}
