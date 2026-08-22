@@ -5175,3 +5175,23 @@ builder stage's own `COPY . .` puts the file at the expected
 structurally identical to the already-proven `backup-db.mjs` line
 immediately above it.
 
+## 86. Settings page: bumped the "API"/"ACCOUNT" eyebrow labels from `size="xs"` to `size="sm"` (2026-08-22)
+
+Operator, looking at the real deployed page while setting up §85's
+NOTIFICATIONS_EXTRACT_KEY, asked directly for an honest read on the
+§84 eyebrow labels' size, explicitly inviting pushback rather than
+agreement either way. Real issue, not just an opinion: `size="xs"`
+(12px) was smaller than every other caption on the page - the
+`size="sm"` (14px) description text under "API access", "Your API
+key", and "Signed in as" were all bigger than the labels meant to mark
+the sections containing them. An eyebrow being smaller than the body
+text it's grouping reads as an unfinished caption, not a deliberate
+section marker, undercutting the whole reason §84 added it (fast
+scanning for a developer looking for their key). Kept the uppercase/
+bold/letter-spaced treatment; only the size changed, to match the
+rest of the page's own caption text instead of undercutting it.
+
+Verified live via a real signup + Playwright screenshot against a
+running dev server, same as §84's own verification. `tsc --noEmit`,
+`eslint` clean.
+

@@ -61,7 +61,7 @@ export default async function SettingsPage({
 
       <Title order={2}>Settings</Title>
 
-      <Text size="xs" fw={700} tt="uppercase" c="dimmed" style={{ letterSpacing: '0.05em' }}>
+      <Text size="sm" fw={700} tt="uppercase" c="dimmed" style={{ letterSpacing: '0.05em' }}>
         API
       </Text>
       <Title order={3}>API access</Title>
@@ -113,7 +113,7 @@ export default async function SettingsPage({
 
       <RotateApiKeySection />
 
-      <Text size="xs" fw={700} tt="uppercase" c="dimmed" mt="xl" style={{ letterSpacing: '0.05em' }}>
+      <Text size="sm" fw={700} tt="uppercase" c="dimmed" mt="xl" style={{ letterSpacing: '0.05em' }}>
         Account
       </Text>
       {currentEmail && <ChangeEmailSection currentEmail={currentEmail} />}
