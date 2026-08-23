@@ -63,3 +63,44 @@ export function notifyReservedProductId() {
     message: 'That product ID uses a reserved prefix and cannot be used. Pick a different one.',
   });
 }
+
+// Round-5 independent review, finding F5-6: registerReleaseAction fell
+// through to a generic "Something went wrong" for artifact_url/
+// release_notes rejections, a duplicate registration, and a bucket
+// hitting its release cap - none of these are transient, so a generic
+// "please try again" message is actively misleading (retrying the exact
+// same input either can never succeed, or needs a different action
+// first).
+export function notifyInvalidArtifactUrl() {
+  notifications.show({
+    color: 'red',
+    title: 'Invalid artifact URL',
+    message: 'artifact_url must be a valid http:// or https:// URL.',
+  });
+}
+
+export function notifyReleaseNotesTooLong() {
+  notifications.show({
+    color: 'red',
+    title: 'Release notes too long',
+    message: 'Release notes can be at most 10,000 characters.',
+  });
+}
+
+export function notifyDuplicateRelease() {
+  notifications.show({
+    color: 'red',
+    title: 'Release already exists',
+    message:
+      'A published release already exists for this product ID, version, channel, and platform. Unpublish it first if you need to replace it.',
+  });
+}
+
+export function notifyReleaseLimitReached() {
+  notifications.show({
+    color: 'red',
+    title: 'Release limit reached',
+    message:
+      'This product/channel/platform has reached its release limit. Unpublish an old release before registering a new one.',
+  });
+}

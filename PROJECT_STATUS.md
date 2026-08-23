@@ -1,7 +1,30 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-23 (§94: round-4 independent review of the §93
+Last updated: 2026-08-23 (§95: round-5 independent review (separately
+dispatched Opus agent) of the §94 commit (`9638a26`) - operator said
+directly they were "not happy with" round 4 and asked for a fresh
+review, told to distrust prior summaries and live-verify claims. This
+app's own finding (F5-6): four backend rejections that accumulated
+across rounds 3-5 (artifact_url validation, release_notes length,
+round 4's own `409` duplicate-release rejection, round 5's own new
+`403` per-bucket release-limit rejection) all fell through
+`registerReleaseAction`'s catch chain to a generic "Something went
+wrong" - misleading for three of the four, since retrying the same
+input can never succeed. Fixed: `throwForFailedResponse()` now
+preserves `409` bodies too (only `403`/`400` before); added
+`isInvalidArtifactUrl()`/`isReleaseNotesTooLong()`/
+`isDuplicateRelease()`/`isReleaseLimitReached()` to `lib/errors.ts`,
+wired through the action and form with per-case notifications and
+field errors, plus client-side URL/length validation ahead of the
+round trip. 5 new tests (a `409`-preservation case plus one direct
+unit test per new classifier), confirmed to fail against the pre-fix
+code via `git stash`. Full verification: `vitest run` (6 files/36
+tests), `tsc --noEmit`, `eslint .`, `npm run build` all clean. The rest
+of round 5's findings (F5-1 through F5-5, F5-7 through F5-15) were in
+`casazium/license`; see that repo's own `PROJECT_STATUS.md` §169 for
+the full picture. See §95 below for detail.)
+2026-08-23 (§94: round-4 independent review of the §93
 commit (`52b3d89`) - operator asked for one last independent review,
 run by both the primary session and a separately dispatched Opus
 agent. This app's own finding (F4): `throwForFailedResponse()`
@@ -5866,4 +5889,76 @@ full suite: 6 files / 31 tests passing (28 existing + 3 new). `tsc
 --noEmit`, `eslint .`, and `npm run build` all clean. Nothing pushed,
 per the operator's standing instruction; committing is pending explicit
 instruction, same as every prior round.
+
+## 95. Round-5 independent review (separately dispatched Opus agent) of the §94 commit - console error-classification gap closed, F5-6 (2026-08-23)
+
+Operator said directly they were "not happy with" round 4's quality and
+asked for a fresh review by a separately dispatched Opus agent, told
+not to trust any prior round's summary. This is a review of `9638a26` -
+the commit §94 itself produced. Most of round 5's findings landed in
+`casazium/license` (two blocking migration bugs plus nine lower-severity
+ones - see that repo's own `PROJECT_STATUS.md` §169); this app had one.
+
+**F5-6 (MEDIUM) - four backend rejections had accumulated across three
+rounds with no matching console classifier, UI copy, or client-side
+validation.** `register-release.js` (in `casazium/license`) can reject
+a registration for `artifact_url` shape (round 3), `release_notes`
+length (round 3), a duplicate `{product_id, version, channel, platform}`
+tuple (round 4's own F5 fix, a `409`), or - new in round 5 - a
+`{product_id, channel, platform}` bucket hitting its 500-release cap
+(round 5's own F5-5 fix, a `403`). None of these four had a matching
+classifier in `lib/errors.ts`, and `throwForFailedResponse()`
+(`lib/license-client.live.ts`) didn't even preserve `409` response
+bodies at all until this round - it only special-cased `403`/`400`
+(the `400` case itself only fixed in round 4's own F4). All four fell
+through `registerReleaseAction`'s catch chain to a generic "Something
+went wrong. Please try again" - actively misleading for three of the
+four, since retrying the exact same input can never succeed (the
+fourth, the release-limit case, needs a different action first -
+unpublish an old release - not a retry either).
+
+**Reproduction** (live drive of `registerRelease()` against every
+failure body `register-release.js` can actually emit, matching round
+4's own F4 verification style): confirmed each of the four produced the
+generic fallback message pre-fix, with the real server-provided detail
+discarded.
+
+Fixed:
+- `throwForFailedResponse()` extended to preserve the body for `409`
+  as well as `403`/`400` (unpublishRelease's own `409` - "already
+  unpublished," treated as a success - never reaches this function, so
+  widening the set doesn't change that route's behavior).
+- Four new classifiers in `lib/errors.ts`: `isInvalidArtifactUrl()`,
+  `isReleaseNotesTooLong()` (matches Fastify's own schema-validation
+  text, so it's coupled to the exact 10,000-character limit - noted
+  inline), `isDuplicateRelease()`, `isReleaseLimitReached()` (matches
+  on a message prefix, since the exact cap number is embedded in the
+  server's text).
+- All four wired through `registerReleaseAction`'s `ActionResult` union
+  and catch chain, and through `RegisterReleaseForm.tsx` with their own
+  notification (`lib/notify.ts` gained four matching functions) and,
+  where a specific field is at fault, a `form.setFieldError()` call.
+- Client-side validation added to the form itself for the two
+  input-shape cases (`artifact_url` scheme, `release_notes` length) -
+  mirrors the server's own checks so the common case is caught before a
+  round trip, though the server remains the actual enforcement point.
+
+**Verification**: 5 new tests in
+`tests/lib/license-client-errors.test.ts` - one exercises the `409`
+path through the real `registerRelease()` call (mirroring the existing
+`400`/`403` tests in the same file), four are direct unit tests of the
+new classifiers (positive and negative cases each, including that
+`isDuplicateRelease` doesn't match the same message on a different
+status code, and that `isReleaseLimitReached`'s prefix match doesn't
+false-positive on an unrelated `403`). Confirmed these are real
+regression tests, not tautologies, by temporarily reverting
+`lib/license-client.live.ts` and `lib/errors.ts` via `git stash` and
+re-running: all 5 new/changed tests failed as expected (`5 failed | 3
+passed (8)` - the 3 passes were the pre-existing 400/403/500 cases,
+unaffected by this round's changes). Restored the fixes and re-ran the
+full suite: 6
+files / 36 tests passing (31 + 5 new). `tsc --noEmit`, `eslint .`, and
+`npm run build` all clean. Nothing pushed, per the operator's standing
+instruction; committing is pending explicit instruction, same as every
+prior round.
 

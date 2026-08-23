@@ -12,6 +12,10 @@ import {
   notifyProductIdTaken,
   notifyReleasePaymentFailed,
   notifyReservedProductId,
+  notifyInvalidArtifactUrl,
+  notifyReleaseNotesTooLong,
+  notifyDuplicateRelease,
+  notifyReleaseLimitReached,
 } from '@/lib/notify';
 
 type RegisterReleaseValues = {
@@ -43,8 +47,27 @@ export function RegisterReleaseForm() {
       version: (value) => (value.trim() ? null : 'Required'),
       channel: (value) => (value.trim() ? null : 'Required'),
       platform: (value) => (value.trim() ? null : 'Required'),
-      artifact_url: (value) => (value.trim() ? null : 'Required'),
+      // Client-side mirror of register-release.js's own checks (round-5
+      // independent review, finding F5-6) - catches the common case
+      // before a round trip, though the server remains the real
+      // enforcement point (isInvalidArtifactUrl/isReleaseNotesTooLong
+      // below still handle whatever this misses, e.g. a URL that's
+      // syntactically valid but not http(s)).
+      artifact_url: (value) => {
+        if (!value.trim()) return 'Required';
+        try {
+          const scheme = new URL(value).protocol;
+          if (scheme !== 'http:' && scheme !== 'https:') {
+            return 'Must be a valid http:// or https:// URL';
+          }
+        } catch {
+          return 'Must be a valid http:// or https:// URL';
+        }
+        return null;
+      },
       checksum: (value) => (value.trim() ? null : 'Required'),
+      release_notes: (value) =>
+        value.length > 10000 ? `Must be 10,000 characters or fewer (currently ${value.length})` : null,
     },
   });
 
@@ -76,6 +99,17 @@ export function RegisterReleaseForm() {
           form.setFieldError('product_id', 'This product ID is reserved - pick a different one');
         } else if (result.reason === 'payment-failed') {
           notifyReleasePaymentFailed();
+        } else if (result.reason === 'invalid-artifact-url') {
+          notifyInvalidArtifactUrl();
+          form.setFieldError('artifact_url', 'Must be a valid http:// or https:// URL');
+        } else if (result.reason === 'release-notes-too-long') {
+          notifyReleaseNotesTooLong();
+          form.setFieldError('release_notes', 'Must be 10,000 characters or fewer');
+        } else if (result.reason === 'duplicate-release') {
+          notifyDuplicateRelease();
+          form.setFieldError('version', 'A published release already exists for this version/channel/platform');
+        } else if (result.reason === 'release-limit-reached') {
+          notifyReleaseLimitReached();
         } else {
           notifyRateLimited();
         }

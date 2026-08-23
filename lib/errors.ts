@@ -102,3 +102,68 @@ export function isReservedProductId(error: unknown): boolean {
     error.message === 'product_id uses a reserved prefix'
   );
 }
+
+// The exact 400 message casazium/license's register-release.js returns
+// when artifact_url isn't a valid http(s) URL (round-3 independent
+// review, finding B-5's companion) - round-5 independent review, finding
+// F5-6: this classifier didn't exist at all, so a rejected artifact_url
+// fell all the way through to the generic "Something went wrong" catch,
+// even though the underlying 400 detail had been reachable since round
+// 4's own throwForFailedResponse fix. Retrying the same URL can never
+// succeed, same as isReservedProductId above.
+export function isInvalidArtifactUrl(error: unknown): boolean {
+  return (
+    error instanceof LicenseApiError &&
+    error.status === 400 &&
+    error.message === 'artifact_url must be a valid http(s) URL'
+  );
+}
+
+// Fastify's own schema-validation error text for register-release.js's
+// release_notes maxLength: 10000 (round-3 independent review, finding
+// B-4) - not a hand-written message, so this couples to that exact
+// limit; if the limit in register-release.js's schema ever changes,
+// update this string to match (round-5 independent review, finding
+// F5-6, same "classifier never existed" gap as isInvalidArtifactUrl
+// above).
+export function isReleaseNotesTooLong(error: unknown): boolean {
+  return (
+    error instanceof LicenseApiError &&
+    error.status === 400 &&
+    error.message === 'Release_notes must NOT have more than 10000 characters'
+  );
+}
+
+// The exact 409 message casazium/license's register-release.js returns
+// when a *published* release already exists for the exact
+// {product_id, version, channel, platform} tuple (round-4 independent
+// review, finding F5). Round-5 independent review, finding F5-6: the
+// classifier existed nowhere and throwForFailedResponse didn't even
+// preserve 409 bodies at all until this same round - a duplicate
+// registration fell through to "Something went wrong. Please try
+// again," which is actively misleading here, since retrying the exact
+// same input can never succeed (unpublishing the existing release
+// first, then retrying, does - see saas-tier.md's Software
+// Distribution section).
+export function isDuplicateRelease(error: unknown): boolean {
+  return (
+    error instanceof LicenseApiError &&
+    error.status === 409 &&
+    error.message === 'A release already exists for this product_id/version/channel/platform'
+  );
+}
+
+// The exact 403 message casazium/license's register-release.js returns
+// when a {product_id, channel, platform} bucket has reached its
+// 500-published-release cap (round-5 independent review, finding F5-5).
+// Distinct from isPaymentFailed/isProductIdTaken above - retrying the
+// same input can succeed once an old release in that same bucket is
+// unpublished, so the UI copy for this case should say that, not just
+// "something went wrong."
+export function isReleaseLimitReached(error: unknown): boolean {
+  return (
+    error instanceof LicenseApiError &&
+    error.status === 403 &&
+    error.message.startsWith('Release limit reached')
+  );
+}
