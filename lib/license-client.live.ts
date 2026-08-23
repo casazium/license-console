@@ -53,6 +53,7 @@ import type {
   RecentlyIssuedLicense,
   RegisterReleaseInput,
   RegisterReleaseResult,
+  ReleaseDetail,
   SeatUtilization,
   SelfLicenseStatus,
   TierAStatus,
@@ -640,4 +641,23 @@ export async function unpublishRelease(id: number, tenantApiKey?: string): Promi
   if (!res.ok && res.status !== 409) {
     await throwForFailedResponse(res, 'Failed to unpublish release');
   }
+}
+
+// GET /v1/release/:id (casazium/license's src/routes/admin-release.js,
+// added round-3 independent review finding C-2). list-releases.js's own
+// per-row payload already includes artifact_url/checksum/release_notes
+// (only `signature` is list-only-omitted) - this route exists for the
+// same reason getLicense() exists alongside listLicenses(): a stable,
+// single-row fetch by id for a detail page/route, not a substitute for
+// paging/filtering the list. null on a 404, mirroring getLicense()'s own
+// convention - the caller can't tell "never existed" from "belongs to a
+// different tenant" anyway, matching unpublish-release.js's own
+// information-hiding behavior.
+export async function getRelease(id: number, tenantApiKey?: string): Promise<ReleaseDetail | null> {
+  const res = await liveFetch(`/release/${id}`, {}, tenantApiKey);
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    await throwForFailedResponse(res, 'Failed to get release');
+  }
+  return res.json();
 }

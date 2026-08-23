@@ -87,3 +87,18 @@ export function isProductIdTaken(error: unknown): boolean {
     error.message === 'product_id is owned by a different tenant'
   );
 }
+
+// The exact 400 message casazium/license's register-release.js returns
+// when the submitted product_id starts with the reserved `_casazium_`
+// prefix (round-3 independent review, console finding C-1's companion -
+// registerReleaseAction fell through this, and the payment-failed 403
+// below, to a generic "something went wrong" that gave the tenant no way
+// to know their own input was the problem). Like isProductIdTaken above,
+// retrying the same input can never succeed.
+export function isReservedProductId(error: unknown): boolean {
+  return (
+    error instanceof LicenseApiError &&
+    error.status === 400 &&
+    error.message === 'product_id uses a reserved prefix'
+  );
+}

@@ -8,14 +8,21 @@ import { getBackendMode } from '@/lib/license-client';
 // data (see the function's own comment on why bare unset-in-production
 // isn't allowed to silently mean mock).
 //
-// vi.stubEnv (not direct process.env assignment) - NODE_ENV is typed
-// readonly by Next's own ambient types, and vi.unstubAllEnvs() restores
-// everything this suite touches automatically.
+// vi.stubEnv (not direct process.env assignment/delete) - NODE_ENV is
+// typed readonly by Next's own ambient types, and vi.unstubAllEnvs()
+// restores everything this suite touches back to its exact pre-stub
+// value automatically. Stubbing to '' rather than `delete`-ing (round-3
+// independent review, test-hygiene finding T-3) matters specifically
+// because unstubAllEnvs() can only restore what it stubbed - a bare
+// `delete process.env.X` permanently removes any ambient value for the
+// rest of the process, since there's nothing for unstub to put back.
+// '' is equivalent to unset for getBackendMode()'s own
+// `Boolean(x?.trim())` checks, so behavior here is unchanged.
 describe('getBackendMode (lib/license-client.ts)', () => {
   beforeEach(() => {
-    delete process.env.LICENSE_API_URL;
-    delete process.env.LICENSE_ADMIN_API_KEY;
-    delete process.env.LICENSE_STANDALONE_MODE;
+    vi.stubEnv('LICENSE_API_URL', '');
+    vi.stubEnv('LICENSE_ADMIN_API_KEY', '');
+    vi.stubEnv('LICENSE_STANDALONE_MODE', '');
     vi.stubEnv('NODE_ENV', 'test');
   });
 

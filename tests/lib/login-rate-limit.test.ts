@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { checkAndReserveAttempt, getAccountOnlyKey, getClientKey, refundAttempt } from '@/lib/login-rate-limit';
 
 // Each test uses its own unique key (the module keeps one process-wide
@@ -45,6 +45,14 @@ describe('checkAndReserveAttempt (lib/login-rate-limit.ts)', () => {
 });
 
 describe('getClientKey (lib/login-rate-limit.ts)', () => {
+  // beforeEach added (round-3 independent review, test-hygiene finding
+  // T-3): the afterEach alone left the first test in this block running
+  // against whatever TRUSTED_PROXY_COUNT happened to be set in the
+  // ambient environment, rather than this suite's own known-clean state.
+  beforeEach(() => {
+    delete process.env.TRUSTED_PROXY_COUNT;
+  });
+
   afterEach(() => {
     delete process.env.TRUSTED_PROXY_COUNT;
   });

@@ -306,6 +306,14 @@ export type ListReleasesResult = {
   total: number;
 };
 
+// GET /release/:id (casazium/license's src/routes/admin-release.js,
+// added round-3 independent review finding C-2) - the fields
+// GET /list-releases deliberately omits per row (Release above), plus
+// `signature`, for a release detail view.
+export type ReleaseDetail = Release & {
+  signature: string;
+};
+
 // Mirrors casazium/license's own BillingProvider.getSubscriptionStatus
 // return shape exactly (src/lib/billing/provider.js) - SaaS-B4.
 // licensesUsed/licenseLimit added for BETA_LAUNCH_STATUS.md §4's

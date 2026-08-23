@@ -33,6 +33,7 @@ export type {
   RegisterReleaseInput,
   RegisterReleaseResult,
   Release,
+  ReleaseDetail,
   SeatUtilization,
   SelfLicenseStatus,
   TierAStatus,
@@ -140,5 +141,7 @@ export const registerRelease: typeof mock.registerRelease = (input, tenantApiKey
   client().registerRelease(input, tenantApiKey);
 export const unpublishRelease: typeof mock.unpublishRelease = (id, tenantApiKey) =>
   client().unpublishRelease(id, tenantApiKey);
+export const getRelease: typeof mock.getRelease = (id, tenantApiKey) =>
+  client().getRelease(id, tenantApiKey);
 export const getTierAStatus: typeof mock.getTierAStatus = (tenantApiKey) =>
   client().getTierAStatus(tenantApiKey);

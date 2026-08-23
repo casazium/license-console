@@ -21,6 +21,7 @@ import type {
   RegisterReleaseInput,
   RegisterReleaseResult,
   Release,
+  ReleaseDetail,
   SeatUtilization,
   SelfLicenseStatus,
   TierAStatus,
@@ -625,4 +626,15 @@ export async function unpublishRelease(id: number, _tenantApiKey?: string): Prom
     throw new Error('Release not found');
   }
   release.status = 'unpublished';
+}
+
+// Added round-3 independent review, console finding C-2 (Releases detail
+// page). `signature` isn't part of the mock store's own Release records
+// (nothing in standalone mode ever verifies it) - a fixed placeholder
+// string is enough to exercise the detail page's layout without
+// pretending to be real cryptographic output.
+export async function getRelease(id: number, _tenantApiKey?: string): Promise<ReleaseDetail | null> {
+  const release = getStore().releases.find((entry) => entry.id === id);
+  if (!release) return null;
+  return { ...release, signature: 'mock-signature-not-cryptographically-real' };
 }

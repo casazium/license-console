@@ -7,7 +7,12 @@ import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { registerReleaseAction } from './actions';
 import { brandButtonStyle } from '@/components/brandButtonStyle';
-import { notifyRateLimited, notifyProductIdTaken } from '@/lib/notify';
+import {
+  notifyRateLimited,
+  notifyProductIdTaken,
+  notifyReleasePaymentFailed,
+  notifyReservedProductId,
+} from '@/lib/notify';
 
 type RegisterReleaseValues = {
   product_id: string;
@@ -59,9 +64,18 @@ export function RegisterReleaseForm() {
         // Mirrors IssueLicenseForm.tsx's own mapping - product_id
         // ownership is bound to whichever tenant claims it first, so a
         // collision here can't be fixed by retrying the same input.
+        // 'payment-failed'/'reserved-product-id' added (round-3
+        // independent review, finding C-1): both used to fall through to
+        // the generic notifyRateLimited() call below, misleading a
+        // billing-blocked tenant into thinking a retry would help.
         if (result.reason === 'product-id-taken') {
           notifyProductIdTaken();
           form.setFieldError('product_id', 'Already in use - pick a different product ID');
+        } else if (result.reason === 'reserved-product-id') {
+          notifyReservedProductId();
+          form.setFieldError('product_id', 'This product ID is reserved - pick a different one');
+        } else if (result.reason === 'payment-failed') {
+          notifyReleasePaymentFailed();
         } else {
           notifyRateLimited();
         }

@@ -16,7 +16,7 @@ import { notifyRateLimited } from '@/lib/notify';
 // <Alert> naming the actual consequence before confirming) - unpublishing
 // is disruptive to live end-user traffic (their apps stop seeing this
 // version as an update), not a bare toggle that deserves no confirmation.
-function UnpublishButton({ release }: { release: Release }) {
+export function UnpublishButton({ release }: { release: Release }) {
   const router = useRouter();
   const [opened, { open, close }] = useDisclosure(false);
   const [busy, setBusy] = useState(false);
@@ -36,6 +36,11 @@ function UnpublishButton({ release }: { release: Release }) {
         message: `${release.product_id} ${release.version} (${release.channel}/${release.platform})`,
       });
       close();
+      // Round-3 independent review, finding C-4: setBusy(false) was
+      // never called on this path - masked in the table view (where the
+      // unmounting row hides it) but real on the detail page, which
+      // re-renders the same button in place after router.refresh().
+      setBusy(false);
       router.refresh();
     } catch {
       notifications.show({
@@ -106,7 +111,11 @@ export function ReleasesTable({ releases, hasFilters }: { releases: Release[]; h
       <Table.Tbody>
         {releases.map((release) => (
           <Table.Tr key={release.id}>
-            <Table.Td>{release.product_id}</Table.Td>
+            <Table.Td>
+              <Anchor component={Link} href={`/releases/${release.id}`}>
+                {release.product_id}
+              </Anchor>
+            </Table.Td>
             <Table.Td>{release.version}</Table.Td>
             <Table.Td>{release.channel}</Table.Td>
             <Table.Td>{release.platform}</Table.Td>

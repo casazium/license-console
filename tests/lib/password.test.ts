@@ -13,10 +13,24 @@ describe('password hashing (lib/password.ts)', () => {
   });
 
   it('encodes N/r/p cost parameters into the stored hash', async () => {
+    // Strengthened (round-3 independent review, test-hygiene finding
+    // T-3): the original version only checked the tag and field count,
+    // which would pass even with garbage in the N/r/p/salt/hash fields.
+    // Checks the actual shape each field must have per password.ts's own
+    // encodeHash()/decodeHash() - N/r/p as positive integers, salt as
+    // SALT_LENGTH*2 hex chars, hash as KEY_LENGTH*2 hex chars - without
+    // depending on those private constants' exact values, so this
+    // doesn't need updating if the cost parameters are ever retuned.
     const stored = await hashPassword('anything');
     const parts = stored.split('$');
     expect(parts[0]).toBe('scrypt');
     expect(parts).toHaveLength(6);
+    const [, nStr, rStr, pStr, salt, hashHex] = parts;
+    expect(Number.parseInt(nStr, 10)).toBeGreaterThan(0);
+    expect(Number.parseInt(rStr, 10)).toBeGreaterThan(0);
+    expect(Number.parseInt(pStr, 10)).toBeGreaterThan(0);
+    expect(salt).toMatch(/^[0-9a-f]{32}$/);
+    expect(hashHex).toMatch(/^[0-9a-f]{128}$/);
   });
 
   it('rejects a malformed/legacy-format stored hash instead of throwing', async () => {

@@ -42,3 +42,24 @@ export function notifyProductIdTaken() {
     message: 'That product ID is already registered to a different account. Pick a different one for this license.',
   });
 }
+
+// Round-3 independent review, console finding C-1: registerReleaseAction
+// previously fell through to a generic "Failed to register release"
+// message for both of these - reusing notifyPaymentFailed() above would
+// be inaccurate here (its wording says "issue new licenses," not
+// releases).
+export function notifyReleasePaymentFailed() {
+  notifications.show({
+    color: 'red',
+    title: 'Subscription inactive',
+    message: 'Your subscription is not active. Update your billing to register new releases.',
+  });
+}
+
+export function notifyReservedProductId() {
+  notifications.show({
+    color: 'red',
+    title: 'Reserved product ID',
+    message: 'That product ID uses a reserved prefix and cannot be used. Pick a different one.',
+  });
+}

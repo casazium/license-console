@@ -1,7 +1,21 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-22 (§91: Releases UI, the console
+Last updated: 2026-08-23 (§93: round-3 independent Opus review of the
+committed Software Distribution work - operator explicitly requested
+"another round" covering all three repos' committed diffs. Found the
+Releases UI (§91) genuinely clean on security (correct auth pattern, no
+XSS sink, a real confirm-gate) but materially thinner than its own
+"mirrors Licenses file-for-file" commit message claimed - no detail
+view, no real pagination/filtering despite the list page parsing filter
+params nobody could ever set, and registerReleaseAction silently
+swallowing the new payment-failed/reserved-prefix rejections into a
+generic error. Also found this app's test suite (§92) had zero CI
+running it, and its own `npm test` was watch-mode (never terminates
+non-interactively). Operator chose to build out the UI gaps in full
+(detail page, real filters/pagination) and add a CI workflow, not just
+patch the misleading bits. See §93 below for full detail.)
+2026-08-22 (§91: Releases UI, the console
 side of `casazium/license` §164's new Software Distribution feature -
 new `app/(app)/releases/` route (list/register/unpublish), mirroring
 the existing Licenses feature file-for-file. Verified live end-to-end
@@ -5663,4 +5677,128 @@ for a first pass whose goal was the harness, not the number.
 clean (a pre-existing, unrelated Turbopack warning about
 `instrumentation.ts`'s `process.exit()` not being Edge-Runtime-safe
 appears in every build regardless of this change).
+
+## 93. Round-3 independent review findings, all addressed - Releases UI built out, CI added (2026-08-23)
+
+Operator asked for "another round" of independent Opus review, covering
+the actual committed diffs across all three repos rather than a fresh
+implementation pass. The reviewer found this app's own §91/§92 work
+genuinely clean on security, but flagged real functional/process gaps:
+
+**Console findings (C-1 through C-4) - all fixed:**
+
+1. **C-1 - `registerReleaseAction` silently swallowed the new billing/
+   reserved-prefix rejections.** `casazium/license`'s round-2 fix-up
+   (§166 there) added a `Subscription is not active` 403 and a
+   `product_id uses a reserved prefix` 400 to `POST /register-release`,
+   after this action was first written - it only checked
+   `isRateLimited`/`isProductIdTaken`, so both new cases fell through to
+   a generic "Failed to register release" message with no way for the
+   tenant to know their own input/account standing, not a transient
+   failure, was the problem. Fixed: `lib/errors.ts` gained
+   `isReservedProductId()` (`isPaymentFailed()` already existed, added
+   for `issueLicenseAction` back in §-earlier work but never wired up
+   here); `lib/notify.ts` gained `notifyReleasePaymentFailed()`/
+   `notifyReservedProductId()` (not a reuse of the existing
+   `notifyPaymentFailed()` - its wording says "issue new licenses,"
+   inaccurate for a release-registration context);
+   `RegisterReleaseForm.tsx` maps both to field-level errors/toasts, the
+   same pattern `IssueLicenseForm.tsx` already uses for its own
+   over-quota/payment-failed cases.
+2. **C-2 - no way to see or verify `artifact_url`/`checksum`/
+   `release_notes`/`signature` after registering a release** - the two
+   fields that actually determine what a tenant's own customers
+   download, with no way back to check them. Fixed with a real detail
+   page: `casazium/license` gained `GET /release/:id` (mirrors
+   `admin-license.js`'s own single-record-fetch pattern exactly, same
+   tenant-scoped 404-not-403 information hiding as `unpublish-release.js`),
+   this app gained `getRelease()` (live/mock/dispatcher, `ReleaseDetail`
+   type), and `app/(app)/releases/[id]/page.tsx` - a Server Component
+   mirroring `licenses/[key]/page.tsx`'s own shape, with a Copy-to-
+   clipboard control for the artifact URL and the existing
+   `UnpublishButton` reused from the list view (exported from
+   `ReleasesTable.tsx` rather than duplicated).
+
+   **Real bug caught during live verification, not by `tsc`/`eslint`**:
+   the first draft rendered `<Anchor component={Link} href=...>` and a
+   `<CopyButton>` render-prop directly inside this Server Component -
+   both pass a *function* as a prop/children across the server/client
+   boundary, which Next rejects at runtime with "Functions cannot be
+   passed directly to Client Components." Confirmed live: the page
+   500'd with exactly that error the moment a real release existed to
+   render. Neither `tsc --noEmit` nor `eslint` catches this - it's a
+   runtime-only React Server Components constraint. Fixed by extracting
+   the copy button into its own `CopyUrlButton.tsx` (`'use client'`) and
+   switching every `Anchor` on this page to a plain `href` string
+   instead of `component={Link}` (full-page nav instead of client-side
+   routing for these simple back-links - the same tradeoff
+   `licenses/[key]/page.tsx`'s own `<Anchor href="/settings">` already
+   makes, for the identical reason). Re-verified live with real
+   Playwright after the fix - detail page renders, Copy button actually
+   copies, Unpublish confirm-modal works from the detail page too.
+3. **C-3 - "mirrors Licenses file-for-file" was inaccurate: dead filter-
+   parsing code, hardcoded to the first 50 releases with no way to reach
+   more.** `page.tsx` already parsed `product_id`/`channel`/`platform`/
+   `status` from `searchParams`, but no filter UI ever set them
+   (reachable only by hand-editing the URL); `offset: 0` was hardcoded
+   with `PAGE_SIZE = 50` and no pagination control, while still
+   rendering "Showing X of Y" whenever more existed. Fixed with real
+   `ReleasesFilters.tsx`/`ReleasesPagination.tsx`, mirroring
+   `LicensesFilters.tsx`/`LicensesPagination.tsx` exactly (minus the
+   license-key search field - releases have no equivalent single unique
+   identifier), `PAGE_SIZE` dropped to 10 to match Licenses. Verified
+   live: registered 12 additional releases, confirmed page 1 shows 10/
+   page 2 shows the remaining 4, and filtering by `product_id` correctly
+   narrows to exactly the matching row.
+4. **C-4 - `setBusy(false)` never called on `UnpublishButton`'s success
+   path.** Masked in the list view (the unmounting table row hides it)
+   but real on the new detail page, where the same button re-renders in
+   place after `router.refresh()`. Fixed - one added line.
+
+**Process finding (T-1) - fixed:** this app's Vitest suite (§92, added
+the same session) had no CI running it at all, and `npm test` was
+`vitest` (watch mode - never terminates non-interactively; every
+verification run this session had to pass `CI=true` by hand to work
+around it). Fixed: `package.json`'s `test` script is now `vitest run`
+(terminates), with a new `test:watch` script for interactive dev use;
+added `typecheck` script (`tsc --noEmit`) for CI's own use. New
+`.github/workflows/test.yml` - standard `ubuntu-latest` runner (unlike
+`casazium/license`'s own self-hosted-Mac `test.yml`; this app has no
+committed Playwright e2e suite needing that hardware) running typecheck
+→ lint → test → build on every push/PR to `main`.
+
+**Verified**: full `vitest run` (28 tests, unchanged from §92 - the new
+`isReservedProductId()`/notify additions didn't get their own tests,
+being thin wrappers over the existing, already-tested
+`LicenseApiError`/`notifications.show()` patterns; the Releases UI
+itself remains outside this suite's stated scope, same as §92's own
+"tooling + smoke coverage, not a full suite" framing), `tsc --noEmit`,
+`eslint .`, and `npm run build` all clean. Live end-to-end with real Playwright (not just built): login,
+Releases list with the new filters/pagination, registering releases to
+actually exercise pagination across two pages, filtering by product_id,
+navigating into a release's detail page, copying its artifact URL, and
+unpublishing from the detail page - all confirmed working, including
+the two failures Playwright itself hit along the way (a stale selector
+matching the trigger button instead of the modal's confirm button, and
+a `widget-pro` release that had rotated off page 1 by the time it ran -
+both test-script issues, not product bugs, and not the earlier
+render-crash this same live-testing pass did catch).
+
+**Addendum, same day** - the reviewer's own report also listed three
+LOW test-hygiene nits (T-3) in the §92 suite, missed in the first pass
+through this entry: `license-client-mode.test.ts`'s `beforeEach` used
+`delete process.env.X`, which `vi.unstubAllEnvs()` can't undo (nothing
+was stubbed to restore) - permanently removing any ambient value for
+the rest of the process; `login-rate-limit.test.ts`'s `getClientKey`
+block only cleared `TRUSTED_PROXY_COUNT` in `afterEach`, leaving the
+first test in that block running against whatever the ambient
+environment happened to have; and `password.test.ts`'s "encodes N/r/p"
+test only checked the tag and field count, which would pass even with
+garbage in the cost-parameter fields. Fixed: the first now uses
+`vi.stubEnv(..., '')` instead of `delete` (properly restored by
+`unstubAllEnvs()`); the second gained a matching `beforeEach`; the
+third now asserts N/r/p parse as positive integers and salt/hash match
+their expected hex-length patterns, without depending on `password.ts`'s
+private cost-parameter constants. All 28 tests still pass, `tsc
+--noEmit` and `eslint .` still clean.
 

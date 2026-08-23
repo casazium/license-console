@@ -1,0 +1,49 @@
+name: Test
+
+# Added round-3 independent review, finding T-1: this app's own Vitest
+# suite (added the same session as this workflow - see PROJECT_STATUS.md
+# §92) had no CI running it at all, and its own `npm test` was watch-mode
+# by default (never terminated non-interactively) until this same pass
+# fixed it to `vitest run`. Standard GitHub-hosted runner, unlike
+# casazium/license's own self-hosted-Mac test.yml - this app has no
+# Playwright e2e suite committed (only ad hoc manual smoke tests, never
+# checked in) and no build step needing that hardware, so a hosted runner
+# is the simpler, lower-privilege choice here.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        # Standalone/mock mode (no LICENSE_API_URL/LICENSE_ADMIN_API_KEY
+        # set) - see lib/license-client.ts's getBackendMode(). Confirms
+        # the app actually compiles and every route (including the new
+        # /releases ones) is reachable at build time, without needing a
+        # real casazium/license backend or any secrets in this job.
+        run: npm run build
