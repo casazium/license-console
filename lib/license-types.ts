@@ -260,6 +260,52 @@ export type ListLicensesResult = {
   total: number;
 };
 
+// Software Distribution (casazium/license's src/routes/register-release.js
+// et al.) - a tenant's registered software releases. artifact_url/checksum
+// point at bytes the tenant already hosts elsewhere - Casazium never
+// stores or proxies the artifact itself, so there's no upload field here.
+export type Release = {
+  id: number;
+  product_id: string;
+  version: string;
+  channel: string;
+  platform: string;
+  artifact_url: string;
+  checksum: string;
+  release_notes: string | null;
+  status: 'published' | 'unpublished';
+  created_at: string;
+};
+
+export type RegisterReleaseInput = {
+  product_id: string;
+  version: string;
+  channel?: string;
+  platform: string;
+  artifact_url: string;
+  checksum: string;
+  release_notes?: string;
+};
+
+export type RegisterReleaseResult = {
+  id: number;
+  status: 'published';
+};
+
+export type ListReleasesParams = {
+  product_id?: string;
+  channel?: string;
+  platform?: string;
+  status?: 'published' | 'unpublished';
+  limit?: number;
+  offset?: number;
+};
+
+export type ListReleasesResult = {
+  releases: Release[];
+  total: number;
+};
+
 // Mirrors casazium/license's own BillingProvider.getSubscriptionStatus
 // return shape exactly (src/lib/billing/provider.js) - SaaS-B4.
 // licensesUsed/licenseLimit added for BETA_LAUNCH_STATUS.md §4's

@@ -16,6 +16,7 @@ import { brandTextButtonStyle } from '@/components/brandButtonStyle';
 const BASE_NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/licenses', label: 'Licenses' },
+  { href: '/releases', label: 'Releases' },
 ];
 
 export function AppShellClient({

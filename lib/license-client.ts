@@ -26,8 +26,13 @@ export type {
   LicenseListItem,
   ListLicensesParams,
   ListLicensesResult,
+  ListReleasesParams,
+  ListReleasesResult,
   RecentActivation,
   RecentlyIssuedLicense,
+  RegisterReleaseInput,
+  RegisterReleaseResult,
+  Release,
   SeatUtilization,
   SelfLicenseStatus,
   TierAStatus,
@@ -129,5 +134,11 @@ export const completeStubCheckout: typeof mock.completeStubCheckout = (plan, ten
   client().completeStubCheckout(plan, tenantApiKey);
 export const getSelfLicenseStatus: typeof mock.getSelfLicenseStatus = (tenantApiKey) =>
   client().getSelfLicenseStatus(tenantApiKey);
+export const listReleases: typeof mock.listReleases = (params, tenantApiKey) =>
+  client().listReleases(params, tenantApiKey);
+export const registerRelease: typeof mock.registerRelease = (input, tenantApiKey) =>
+  client().registerRelease(input, tenantApiKey);
+export const unpublishRelease: typeof mock.unpublishRelease = (id, tenantApiKey) =>
+  client().unpublishRelease(id, tenantApiKey);
 export const getTierAStatus: typeof mock.getTierAStatus = (tenantApiKey) =>
   client().getTierAStatus(tenantApiKey);

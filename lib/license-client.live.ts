@@ -46,9 +46,13 @@ import type {
   LicenseSortColumn,
   ListLicensesParams,
   ListLicensesResult,
+  ListReleasesParams,
+  ListReleasesResult,
   RawLicenseListRow,
   RecentActivation,
   RecentlyIssuedLicense,
+  RegisterReleaseInput,
+  RegisterReleaseResult,
   SeatUtilization,
   SelfLicenseStatus,
   TierAStatus,
@@ -571,4 +575,69 @@ export async function getTierAStatus(tenantApiKey?: string): Promise<TierAStatus
     await throwForFailedResponse(res, 'Failed to get Tier-A license status');
   }
   return res.json();
+}
+
+// Software Distribution - GET /v1/list-releases (casazium/license's
+// src/routes/list-releases.js). Same tenant-scoped list shape as
+// listLicenses above; no client-side broad-fetch derivation needed since
+// this feature has no dashboard-summary use yet.
+export async function listReleases(
+  params: ListReleasesParams = {},
+  tenantApiKey?: string
+): Promise<ListReleasesResult> {
+  const { product_id, channel, platform, status, limit = 50, offset = 0 } = params;
+  const query = new URLSearchParams();
+  if (product_id) query.set('product_id', product_id);
+  if (channel) query.set('channel', channel);
+  if (platform) query.set('platform', platform);
+  if (status) query.set('status', status);
+  query.set('limit', String(limit));
+  query.set('offset', String(offset));
+
+  const res = await liveFetch(`/list-releases?${query.toString()}`, {}, tenantApiKey);
+  if (!res.ok) {
+    await throwForFailedResponse(res, 'Failed to list releases');
+  }
+  return res.json();
+}
+
+// POST /v1/register-release (casazium/license's
+// src/routes/register-release.js) - 403s with 'product_id is owned by a
+// different tenant' on a collision, surfaced via LicenseApiError the same
+// way issueLicense's own product_id conflict is (lib/errors.ts's
+// isProductIdTaken() matches this exact message text).
+export async function registerRelease(
+  input: RegisterReleaseInput,
+  tenantApiKey?: string
+): Promise<RegisterReleaseResult> {
+  const res = await liveFetch(
+    '/register-release',
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
+    tenantApiKey
+  );
+  if (!res.ok) {
+    await throwForFailedResponse(res, 'Failed to register release');
+  }
+  return res.json();
+}
+
+// POST /v1/unpublish-release (casazium/license's
+// src/routes/unpublish-release.js) - 409 means already unpublished,
+// treated as a successful no-op, same reasoning as setLicenseRevoked
+// above.
+export async function unpublishRelease(id: number, tenantApiKey?: string): Promise<void> {
+  const res = await liveFetch(
+    '/unpublish-release',
+    {
+      method: 'POST',
+      body: JSON.stringify({ id }),
+    },
+    tenantApiKey
+  );
+  if (!res.ok && res.status !== 409) {
+    await throwForFailedResponse(res, 'Failed to unpublish release');
+  }
 }

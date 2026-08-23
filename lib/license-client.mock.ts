@@ -14,8 +14,13 @@ import type {
   LicenseSortColumn,
   ListLicensesParams,
   ListLicensesResult,
+  ListReleasesParams,
+  ListReleasesResult,
   RecentActivation,
   RecentlyIssuedLicense,
+  RegisterReleaseInput,
+  RegisterReleaseResult,
+  Release,
   SeatUtilization,
   SelfLicenseStatus,
   TierAStatus,
@@ -26,6 +31,7 @@ import type {
 type Store = {
   licenses: License[];
   activations: Record<string, Activation[]>;
+  releases: Release[];
 };
 
 const globalForMockStore = globalThis as unknown as { __licenseMockStore?: Store };
@@ -108,6 +114,32 @@ function seedStore(): Store {
       ],
       ...synthetic.activations,
     },
+    releases: [
+      {
+        id: 1,
+        product_id: 'widget-pro',
+        version: '2.3.0',
+        channel: 'stable',
+        platform: 'darwin-arm64',
+        artifact_url: 'https://cdn.example.com/widget-pro/2.3.0/widget-pro-mac.dmg',
+        checksum: 'sha256:0000000000000000000000000000000000000000000000000000000000aa',
+        release_notes: 'Fixes a rare crash on startup.',
+        status: 'published',
+        created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      {
+        id: 2,
+        product_id: 'widget-pro',
+        version: '2.2.1',
+        channel: 'stable',
+        platform: 'darwin-arm64',
+        artifact_url: 'https://cdn.example.com/widget-pro/2.2.1/widget-pro-mac.dmg',
+        checksum: 'sha256:0000000000000000000000000000000000000000000000000000000000bb',
+        release_notes: null,
+        status: 'unpublished',
+        created_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+    ],
   };
 }
 
@@ -534,4 +566,63 @@ export async function getSelfLicenseStatus(_tenantApiKey?: string): Promise<Self
 // posture as getSelfLicenseStatus's own mock above.
 export async function getTierAStatus(_tenantApiKey?: string): Promise<TierAStatus> {
   return { applicable: false, reason: 'internal' };
+}
+
+export async function listReleases(
+  params: ListReleasesParams = {},
+  _tenantApiKey?: string
+): Promise<ListReleasesResult> {
+  const { product_id, channel, platform, status, limit = 50, offset = 0 } = params;
+  const { releases } = getStore();
+
+  const filtered = releases.filter((release) => {
+    if (product_id && release.product_id !== product_id) return false;
+    if (channel && release.channel !== channel) return false;
+    if (platform && release.platform !== platform) return false;
+    if (status && release.status !== status) return false;
+    return true;
+  });
+
+  // Matches the real GET /list-releases's own default `ORDER BY
+  // created_at DESC, id DESC` - this store's releases array is itself
+  // insertion-ordered, so a plain reverse-slice mirrors that without
+  // needing a real comparator.
+  const sorted = [...filtered].reverse();
+  const page = sorted.slice(offset, offset + limit);
+
+  return { releases: page, total: sorted.length };
+}
+
+// Mock mode has no real cross-tenant concept, so - unlike the live
+// client - this never throws a product_id-ownership conflict; every
+// registration in standalone mode is trivially "your own."
+export async function registerRelease(
+  input: RegisterReleaseInput,
+  _tenantApiKey?: string
+): Promise<RegisterReleaseResult> {
+  const { releases } = getStore();
+  const nextId = releases.reduce((max, r) => Math.max(max, r.id), 0) + 1;
+
+  const release: Release = {
+    id: nextId,
+    product_id: input.product_id,
+    version: input.version,
+    channel: input.channel || 'stable',
+    platform: input.platform,
+    artifact_url: input.artifact_url,
+    checksum: input.checksum,
+    release_notes: input.release_notes || null,
+    status: 'published',
+    created_at: new Date().toISOString(),
+  };
+  releases.push(release);
+  return { id: release.id, status: 'published' };
+}
+
+export async function unpublishRelease(id: number, _tenantApiKey?: string): Promise<void> {
+  const release = getStore().releases.find((entry) => entry.id === id);
+  if (!release) {
+    throw new Error('Release not found');
+  }
+  release.status = 'unpublished';
 }

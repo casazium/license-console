@@ -1,7 +1,12 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-22 (§90: fixed 2 findings from a fresh
+Last updated: 2026-08-22 (§91: Releases UI, the console
+side of `casazium/license` §164's new Software Distribution feature -
+new `app/(app)/releases/` route (list/register/unpublish), mirroring
+the existing Licenses feature file-for-file. Verified live end-to-end
+with real Playwright, not just built. See §91 below for full detail.)
+2026-08-22 (§90: fixed 2 findings from a fresh
 cross-repo sweep - `/api/reset-password` missing the `isSameOrigin()`
 CSRF check every sibling unauthenticated route already has, and a
 regression in §89's own export-cooldown fix that showed raw JSON on a
@@ -5541,4 +5546,121 @@ an immediate second click landing back on `/settings?exportError=cooldown`
 with a visible "Couldn't export your data" alert and no raw JSON
 anywhere in the page body (confirmed via `page.locator('body').innerText()`)
 - screenshotted. `tsc --noEmit`, `eslint`, and `npm run build` all clean.
+
+## 91. Releases UI - console side of Software Distribution (`casazium/license` §164) (2026-08-22)
+
+Companion console work for `casazium/license` §164's new license-gated
+software distribution feature (full reasoning/scope-boundary discussion
+there, not repeated here). New `app/(app)/releases/` route, built
+file-for-file mirroring the existing Licenses feature's own pattern
+rather than inventing a new one: `lib/license-types.ts` gained
+`Release`/`RegisterReleaseInput`/`ListReleasesParams`/`ListReleasesResult`
+types; `lib/license-client.ts` (+ `.live.ts`/`.mock.ts`) gained
+`listReleases`/`registerRelease`/`unpublishRelease`, following the exact
+`listLicenses` dispatcher pattern already established. `registerRelease`
+reuses `issueLicense`'s own product_id-conflict error string verbatim
+(`'product_id is owned by a different tenant'`) - confirmed directly
+against `lib/errors.ts`'s `isProductIdTaken()` before assuming it would
+classify correctly, rather than adding a second, redundant classifier.
+
+**UI**: `app/(app)/releases/page.tsx` (Server Component, mirrors
+`licenses/page.tsx`), `ReleasesTable.tsx` (Mantine table + a per-row
+Unpublish action gated by a confirm-modal, mirroring the danger-zone
+`useDisclosure`+`<Alert>` pattern in `settings/RotateApiKeySection.tsx`
+rather than a bare toggle - unpublishing is disruptive to live end-user
+traffic, not cosmetic), `RegisterReleaseForm.tsx` (mirrors
+`IssueLicenseForm.tsx`'s `useForm` + Server Action + notification-mapping
+pattern; plain `TextInput`s only for `artifact_url` - confirmed directly
+that no file-upload/`multipart`/`Dropzone` infrastructure exists
+anywhere in this codebase, and none was added, since Casazium never
+hosts the artifact bytes themselves). `AppShellClient.tsx`'s
+`BASE_NAV_ITEMS` gained a `/releases` entry after `/licenses`.
+
+Mock-mode store (`license-client.mock.ts`) gained two seeded demo
+releases (one published, one unpublished) so `/releases` renders real-
+looking data out of the box in standalone mode, same as every other
+list page in this app. One real mistake caught before it shipped: an
+early edit added the seed `releases` array to the wrong function's
+return statement (`generateSyntheticLicenses`'s, whose own declared
+return type doesn't include `releases` at all) instead of `seedStore`'s
+actual return - caught immediately by `tsc --noEmit` failing with two
+type errors pointing at exactly the mismatch, not discovered later.
+
+**Verified live**, not just built: booted the console in standalone/
+mock mode, logged in, and drove the full flow with real Playwright -
+the Releases list rendered both seeded rows with correct
+published/unpublished badges, registered a new release end-to-end
+(confirmed via a real success notification and the new row appearing in
+the table), and unpublished it via the confirm-modal (confirmed the
+badge flipped to `UNPUBLISHED` after confirming, not just that the
+modal closed). `tsc --noEmit`, `eslint`, and `npm run build` (including
+Turbopack's route-list output showing `/releases` and `/releases/new`)
+all clean.
+
+## 92. Test coverage tooling - this app's first test suite (2026-08-22)
+
+Operator asked how test coverage looked in both `casazium/license` and
+this app; `casazium/license` has 73 files/520 tests and v8 coverage
+reporting (`npm run coverage`) already wired up (`vitest.config.js`).
+This app had **none** - no test file, no Vitest/Jest config, no `test`
+script - confirmed by search, not assumption; `npm run build`/`lint`
+plus live Playwright smoke tests were the only verification this app
+has ever had. Operator chose a deliberately scoped first pass over a
+full suite: get the harness running with v8 coverage reporting, plus
+tests for the highest-risk pure logic, not exhaustive coverage of every
+route/component/server action - that's future work, now unblocked.
+
+**Tooling**: `vitest.config.mts` (v8 coverage provider, same reporter
+set as `casazium/license`'s own config - `text`/`html`/`lcov`),
+`@vitejs/plugin-react` + `jsdom` + `@testing-library/react`/`jest-dom`
+for component tests, default test environment `node` (most of what's
+covered here is pure logic, no DOM) with per-file
+`// @vitest-environment jsdom` opt-in for component tests. `globals:
+false` deliberately - tests import `describe`/`it`/`expect`/etc. from
+`vitest` explicitly rather than relying on injected globals, so
+`tests/setup.ts` registers React Testing Library's `afterEach(cleanup)`
+by hand (RTL's own auto-cleanup only self-registers when it detects a
+global `afterEach`, which isn't there under this config) and polyfills
+`window.matchMedia` (jsdom doesn't implement it; `MantineProvider`
+calls it on mount for OS color-scheme detection - any Mantine component
+test would otherwise crash on render). `package.json` gained
+`test`/`coverage` scripts mirroring `casazium/license`'s naming;
+`.gitignore` gained `/coverage/`; `eslint.config.mjs` gained an
+`ignores: ['coverage/**']` entry - without it, ESLint was linting the
+generated HTML coverage report itself and flagging its bundled
+prettify.js/sorter.js as having unused eslint-disable directives.
+
+**Tests** (28, all new): `lib/password.ts` (round-trip, wrong password,
+malformed/legacy-format hash rejected without throwing, `DUMMY_PASSWORD_HASH`
+never matches, salts differ between hashes of the same password) -
+`lib/auth.ts`'s self-hosted `verifyCredentials()` branch (right/wrong
+username, right/wrong password, throws when `ADMIN_UI_USERNAME`/
+`ADMIN_UI_PASSWORD` aren't configured; the SaaS/DB-backed branch is out
+of scope for this pass - it needs a real `accounts` table, not a unit
+test) plus `normalizeEmail()` - `lib/license-client.ts`'s
+`getBackendMode()` dispatcher (all 6 branches: mock/live/both-set/
+only-one-set-throws/production-unset-throws/production-standalone-mode)
+- `lib/login-rate-limit.ts` (`checkAndReserveAttempt` allow-then-block,
+custom `maxAttempts`, `refundAttempt` freeing a reservation, no-op on
+an unreserved key; `getClientKey`'s rightmost-X-Forwarded-For-hop
+reading and identifier normalization/hashing; `getAccountOnlyKey`
+normalization) - one `VersionStamp` component test (wrapped in a real
+`MantineProvider`) proving the jsdom/RTL harness itself works end to
+end, not a claim that component was a coverage risk on its own.
+
+**Explicitly out of scope for this pass** (operator's own framing,
+"tooling + smoke coverage" not "full suite"): Route Handlers
+(`/api/login`, `/api/signup`, etc.), Server Actions, the SaaS-mode
+DB-backed auth path, and every other component - all real gaps, not
+forgotten ones, left for a future, larger pass if the operator wants
+one.
+
+Coverage after this pass: `password.ts` 94%, `login-rate-limit.ts` 75%,
+`license-client.ts` dispatcher 57%, `auth.ts` 61% (self-hosted branch
+only) - overall app-wide statement coverage ~6%, expected and honest
+for a first pass whose goal was the harness, not the number.
+`vitest run`, `tsc --noEmit`, `eslint .`, and `npm run build` all
+clean (a pre-existing, unrelated Turbopack warning about
+`instrumentation.ts`'s `process.exit()` not being Edge-Runtime-safe
+appears in every build regardless of this change).
 

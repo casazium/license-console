@@ -31,6 +31,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# test coverage output (vitest run --coverage)
+/coverage/
+
 # local dev database (SaaS-B1a, lib/db.ts - DB_FILE)
 /data/
 *.db
