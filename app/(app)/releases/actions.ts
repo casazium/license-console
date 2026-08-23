@@ -14,6 +14,12 @@ import {
   isReservedProductId,
   isInvalidArtifactUrl,
   isReleaseNotesTooLong,
+  isProductIdTooLong,
+  isVersionTooLong,
+  isChannelTooLong,
+  isPlatformTooLong,
+  isChecksumTooLong,
+  isArtifactUrlTooLong,
   isDuplicateRelease,
   isReleaseLimitReached,
 } from '@/lib/errors';
@@ -41,6 +47,11 @@ import { requireSessionWithTenantKey, markIfTenantRejected } from '@/lib/tenant-
 // length, the round-4 duplicate-registration 409, and round-5's own
 // per-bucket release cap) without ever getting a matching branch here -
 // all four fell through to the generic catch-all too.
+//
+// '{field}-too-long' (product-id/version/channel/platform/artifact-url/
+// checksum) added (round-6 focused review, findings R6-3/R6-4): round
+// 5's own F5-4 bounded six more fields, but only release_notes ever got
+// a matching classifier - the other six fell through the same way.
 type ActionResult<T> =
   | { ok: true; data: T }
   | {
@@ -52,6 +63,12 @@ type ActionResult<T> =
         | 'reserved-product-id'
         | 'invalid-artifact-url'
         | 'release-notes-too-long'
+        | 'product-id-too-long'
+        | 'version-too-long'
+        | 'channel-too-long'
+        | 'platform-too-long'
+        | 'checksum-too-long'
+        | 'artifact-url-too-long'
         | 'duplicate-release'
         | 'release-limit-reached';
     };
@@ -71,6 +88,12 @@ export async function registerReleaseAction(
     if (isReservedProductId(err)) return { ok: false, reason: 'reserved-product-id' };
     if (isInvalidArtifactUrl(err)) return { ok: false, reason: 'invalid-artifact-url' };
     if (isReleaseNotesTooLong(err)) return { ok: false, reason: 'release-notes-too-long' };
+    if (isProductIdTooLong(err)) return { ok: false, reason: 'product-id-too-long' };
+    if (isVersionTooLong(err)) return { ok: false, reason: 'version-too-long' };
+    if (isChannelTooLong(err)) return { ok: false, reason: 'channel-too-long' };
+    if (isPlatformTooLong(err)) return { ok: false, reason: 'platform-too-long' };
+    if (isChecksumTooLong(err)) return { ok: false, reason: 'checksum-too-long' };
+    if (isArtifactUrlTooLong(err)) return { ok: false, reason: 'artifact-url-too-long' };
     if (isDuplicateRelease(err)) return { ok: false, reason: 'duplicate-release' };
     if (isReleaseLimitReached(err)) return { ok: false, reason: 'release-limit-reached' };
     markIfTenantRejected(err, identity.tenantId);

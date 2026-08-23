@@ -14,9 +14,25 @@ import {
   notifyReservedProductId,
   notifyInvalidArtifactUrl,
   notifyReleaseNotesTooLong,
+  notifyFieldTooLong,
   notifyDuplicateRelease,
   notifyReleaseLimitReached,
 } from '@/lib/notify';
+
+// Mirrors register-release.js's own maxLength values (round-6 focused
+// review, findings R6-3/R6-4) - kept as a single source for both the
+// client-side validators below and the notification copy, so a future
+// limit change only needs updating in one place here (the backend's own
+// schema is still the real enforcement point either way).
+const MAX_LENGTHS = {
+  product_id: 200,
+  version: 100,
+  channel: 100,
+  platform: 100,
+  artifact_url: 2048,
+  checksum: 256,
+  release_notes: 10000,
+} as const;
 
 type RegisterReleaseValues = {
   product_id: string;
@@ -43,10 +59,33 @@ export function RegisterReleaseForm() {
       release_notes: '',
     },
     validate: {
-      product_id: (value) => (value.trim() ? null : 'Required'),
-      version: (value) => (value.trim() ? null : 'Required'),
-      channel: (value) => (value.trim() ? null : 'Required'),
-      platform: (value) => (value.trim() ? null : 'Required'),
+      // Length checks added for all six previously-uncovered fields
+      // (round-6 focused review, finding R6-3) - only release_notes had
+      // one before, even though register-release.js bounds all seven.
+      product_id: (value) =>
+        !value.trim()
+          ? 'Required'
+          : value.length > MAX_LENGTHS.product_id
+            ? `Must be ${MAX_LENGTHS.product_id.toLocaleString()} characters or fewer (currently ${value.length})`
+            : null,
+      version: (value) =>
+        !value.trim()
+          ? 'Required'
+          : value.length > MAX_LENGTHS.version
+            ? `Must be ${MAX_LENGTHS.version.toLocaleString()} characters or fewer (currently ${value.length})`
+            : null,
+      channel: (value) =>
+        !value.trim()
+          ? 'Required'
+          : value.length > MAX_LENGTHS.channel
+            ? `Must be ${MAX_LENGTHS.channel.toLocaleString()} characters or fewer (currently ${value.length})`
+            : null,
+      platform: (value) =>
+        !value.trim()
+          ? 'Required'
+          : value.length > MAX_LENGTHS.platform
+            ? `Must be ${MAX_LENGTHS.platform.toLocaleString()} characters or fewer (currently ${value.length})`
+            : null,
       // Client-side mirror of register-release.js's own checks (round-5
       // independent review, finding F5-6) - catches the common case
       // before a round trip, though the server remains the real
@@ -55,6 +94,9 @@ export function RegisterReleaseForm() {
       // syntactically valid but not http(s)).
       artifact_url: (value) => {
         if (!value.trim()) return 'Required';
+        if (value.length > MAX_LENGTHS.artifact_url) {
+          return `Must be ${MAX_LENGTHS.artifact_url.toLocaleString()} characters or fewer (currently ${value.length})`;
+        }
         try {
           const scheme = new URL(value).protocol;
           if (scheme !== 'http:' && scheme !== 'https:') {
@@ -65,9 +107,16 @@ export function RegisterReleaseForm() {
         }
         return null;
       },
-      checksum: (value) => (value.trim() ? null : 'Required'),
+      checksum: (value) =>
+        !value.trim()
+          ? 'Required'
+          : value.length > MAX_LENGTHS.checksum
+            ? `Must be ${MAX_LENGTHS.checksum.toLocaleString()} characters or fewer (currently ${value.length})`
+            : null,
       release_notes: (value) =>
-        value.length > 10000 ? `Must be 10,000 characters or fewer (currently ${value.length})` : null,
+        value.length > MAX_LENGTHS.release_notes
+          ? `Must be ${MAX_LENGTHS.release_notes.toLocaleString()} characters or fewer (currently ${value.length})`
+          : null,
     },
   });
 
@@ -105,6 +154,27 @@ export function RegisterReleaseForm() {
         } else if (result.reason === 'release-notes-too-long') {
           notifyReleaseNotesTooLong();
           form.setFieldError('release_notes', 'Must be 10,000 characters or fewer');
+        } else if (result.reason === 'product-id-too-long') {
+          notifyFieldTooLong('Product ID', MAX_LENGTHS.product_id);
+          form.setFieldError('product_id', `Must be ${MAX_LENGTHS.product_id.toLocaleString()} characters or fewer`);
+        } else if (result.reason === 'version-too-long') {
+          notifyFieldTooLong('Version', MAX_LENGTHS.version);
+          form.setFieldError('version', `Must be ${MAX_LENGTHS.version.toLocaleString()} characters or fewer`);
+        } else if (result.reason === 'channel-too-long') {
+          notifyFieldTooLong('Channel', MAX_LENGTHS.channel);
+          form.setFieldError('channel', `Must be ${MAX_LENGTHS.channel.toLocaleString()} characters or fewer`);
+        } else if (result.reason === 'platform-too-long') {
+          notifyFieldTooLong('Platform', MAX_LENGTHS.platform);
+          form.setFieldError('platform', `Must be ${MAX_LENGTHS.platform.toLocaleString()} characters or fewer`);
+        } else if (result.reason === 'checksum-too-long') {
+          notifyFieldTooLong('Checksum', MAX_LENGTHS.checksum);
+          form.setFieldError('checksum', `Must be ${MAX_LENGTHS.checksum.toLocaleString()} characters or fewer`);
+        } else if (result.reason === 'artifact-url-too-long') {
+          notifyFieldTooLong('Artifact URL', MAX_LENGTHS.artifact_url);
+          form.setFieldError(
+            'artifact_url',
+            `Must be ${MAX_LENGTHS.artifact_url.toLocaleString()} characters or fewer`
+          );
         } else if (result.reason === 'duplicate-release') {
           notifyDuplicateRelease();
           form.setFieldError('version', 'A published release already exists for this version/channel/platform');

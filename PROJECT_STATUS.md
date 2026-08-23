@@ -1,7 +1,38 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-23 (§95: round-5 independent review (separately
+Last updated: 2026-08-23 (§96: round-6 focused review (separately
+dispatched Opus agent) of round 5's own diff (`9638a26`) - operator
+asked for a narrower, cheaper pass scoped to what round 5 actually
+changed, not a fresh full round, after confirming the core security
+model had already survived four independent adversarial passes. This
+app's own findings (R6-3/R6-4): six of round 5's own seven newly-
+bounded `register-release` fields (`product_id`/`version`/`channel`/
+`platform`/`artifact_url` length/`checksum` - only `release_notes` was
+covered) had no matching classifier in `lib/errors.ts`, so a rejection
+on any of them fell through to the generic "Something went wrong" -
+and the one classifier that did exist (`isReleaseNotesTooLong`) matched
+an exact string including the current 10,000-character limit,
+tautological against its own unit test (it fed the classifier the same
+literal it compared against), so a Fastify/ajv wording change or a
+future limit change would have silently broken it in production with
+the test staying green. Fixed with a single shared, regex-based
+`isTooLong()` helper matched against live-verified server response text
+(each of the six new backend bodies confirmed against the real server
+before writing the classifier), six new named classifiers built on it,
+client-side length validation added for all seven fields (previously
+only `artifact_url` scheme and `release_notes` length were checked),
+and a `notifyFieldTooLong()` helper replacing what would otherwise have
+been six near-identical notification functions. 6 new tests (one per
+new classifier; `isArtifactUrlTooLong`'s own test also confirms it
+doesn't collide with `isInvalidArtifactUrl` on the other's message),
+plus the existing `isReleaseNotesTooLong` test extended with a
+second, different-limit case to prove the shape match actually is
+limit-independent. The
+rest of round 6's findings (R6-1/R6-2, R6-6, R6-8) were in
+`casazium/license`; see that repo's own `PROJECT_STATUS.md` §170 for
+the full picture. See §96 below for detail.)
+2026-08-23 (§95: round-5 independent review (separately
 dispatched Opus agent) of the §94 commit (`9638a26`) - operator said
 directly they were "not happy with" round 4 and asked for a fresh
 review, told to distrust prior summaries and live-verify claims. This
@@ -5961,4 +5992,71 @@ files / 36 tests passing (31 + 5 new). `tsc --noEmit`, `eslint .`, and
 `npm run build` all clean. Nothing pushed, per the operator's standing
 instruction; committing is pending explicit instruction, same as every
 prior round.
+
+## 96. Round-6 focused review (separately dispatched Opus agent) of round 5's own diff - six missing field classifiers, one drift-fragile string match (2026-08-23)
+
+After round 5 closed, operator asked whether another full review round
+was needed. Given all four prior rounds had already independently
+re-verified the core security model with zero new findings, the
+recommendation was a narrower pass scoped to round 5's own diff only,
+not a fresh full round - operator agreed. This section is a review of
+`9638a26`, the commit round 5's own §95 produced.
+
+**R6-3/R6-4 (LOW) - six of `register-release`'s seven newly-bounded
+fields had no console classifier, and the one that did was tautological
+against its own test.** `casazium/license`'s own round-5 finding F5-4
+added `maxLength` to `product_id`/`version`/`channel`/`platform`/
+`artifact_url`/`checksum` (six fields, alongside the pre-existing
+`release_notes` bound from round 3). This app's own F5-6 fix only ever
+built a classifier for `release_notes` - the other six all fell through
+`registerReleaseAction`'s catch chain to the generic "Something went
+wrong. Please try again," identical to the failure mode F5-6 itself
+existed to close.
+
+Separately, and worse: `isReleaseNotesTooLong` matched the *exact*
+string `'Release_notes must NOT have more than 10000 characters'` -
+confirmed live against the real backend that this is still the correct
+text today, but the unit test for this classifier fed it that same
+literal string back, so it proved nothing about whether the classifier
+would keep working if the underlying text ever changed. The character
+limit is hand-authored in this codebase's own text (safe to hardcode),
+but the surrounding wording - `"{Field} must NOT have more than N
+characters"` - is Fastify/ajv's own auto-generated schema-validation
+format, not this repo's. A dependency bump changing that phrasing would
+have silently broken the classifier in production with the test still
+green.
+
+Fixed with a single shared `isTooLong(error, field)` helper matched by
+shape (`/^{field} must NOT have more than \d+ characters$/i`), not an
+exact string - robust to both a limit change and cosmetic wording
+drift on the parts of the message this repo doesn't own. Built
+`isReleaseNotesTooLong`, `isProductIdTooLong`, `isVersionTooLong`,
+`isChannelTooLong`, `isPlatformTooLong`, `isChecksumTooLong`, and
+`isArtifactUrlTooLong` on top of it - all seven now covered, all seven
+verified against real backend response text before writing the
+classifier (not assumed from the schema alone). Wired all six new
+reasons through `registerReleaseAction`'s `ActionResult` union and
+`RegisterReleaseForm.tsx`'s error branches, each with a field-level
+error and a shared `notifyFieldTooLong()` notification (replacing what
+would otherwise have been six near-identical single-purpose functions).
+Also added client-side `maxLength` validation to the form itself for
+all seven fields via a single `MAX_LENGTHS` constant shared between the
+validators and the notification copy - previously only `artifact_url`'s
+scheme and `release_notes`'s length were checked client-side, so a
+tenant typing an over-long `product_id`/`version`/`channel`/`platform`/
+`checksum` got no feedback until the round trip.
+
+**Verification**: 6 new tests, one per new classifier (`isArtifactUrlTooLong`'s
+own test also confirms it doesn't fire on `isInvalidArtifactUrl`'s
+message, and vice versa - the two classifiers match different 400
+bodies for the same field, so a collision would have been a real
+false-positive risk), plus the existing `isReleaseNotesTooLong` test
+extended with a second, different-limit case to prove the shape match
+is genuinely limit-independent now, not just re-testing the same
+literal. Full suite: 6 files / 42 tests passing (36 + 6 new). `tsc
+--noEmit`, `eslint .`, and `npm run build` all clean. The rest of round
+6's findings (R6-1, R6-2, R6-6, R6-8) were in `casazium/license`; see
+that repo's own `PROJECT_STATUS.md` §170. Nothing pushed, per the
+operator's standing instruction; committing is pending explicit
+instruction, same as every prior round.
 

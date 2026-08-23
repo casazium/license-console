@@ -5,6 +5,12 @@ import {
   isDuplicateRelease,
   isInvalidArtifactUrl,
   isReleaseNotesTooLong,
+  isProductIdTooLong,
+  isVersionTooLong,
+  isChannelTooLong,
+  isPlatformTooLong,
+  isChecksumTooLong,
+  isArtifactUrlTooLong,
   isReleaseLimitReached,
 } from '@/lib/errors';
 
@@ -118,11 +124,65 @@ describe('lib/errors.ts classifiers added for F5-6', () => {
     expect(isInvalidArtifactUrl(new LicenseApiError('something else', 400))).toBe(false);
   });
 
-  it('isReleaseNotesTooLong matches Fastify\'s schema-validation text', () => {
+  // Round-6 focused review, findings R6-3/R6-4: only release_notes had a
+  // classifier before this round, even though register-release.js bounds
+  // seven fields total, and the one classifier that did exist matched an
+  // exact string including the current character limit - tautological
+  // against its own test (the test fed it the same literal it compared
+  // against), so a Fastify/ajv wording bump on the generated tail, or a
+  // limit change, would have silently broken it in production with the
+  // test staying green. Now shape-matched (any limit) and covers all
+  // seven fields with live-verified message text (see the bare-server
+  // `register-release` probe run for this round, not committed here -
+  // each of the six new backend bodies below was confirmed against the
+  // real server before writing the assertion).
+  it("isReleaseNotesTooLong matches Fastify's schema-validation text, at any limit", () => {
     expect(
       isReleaseNotesTooLong(new LicenseApiError('Release_notes must NOT have more than 10000 characters', 400))
     ).toBe(true);
+    expect(
+      isReleaseNotesTooLong(new LicenseApiError('Release_notes must NOT have more than 5000 characters', 400))
+    ).toBe(true);
     expect(isReleaseNotesTooLong(new LicenseApiError('something else', 400))).toBe(false);
+  });
+
+  it('isProductIdTooLong matches the live backend body', () => {
+    expect(isProductIdTooLong(new LicenseApiError('Product_id must NOT have more than 200 characters', 400))).toBe(
+      true
+    );
+    expect(isProductIdTooLong(new LicenseApiError('Version must NOT have more than 100 characters', 400))).toBe(
+      false
+    );
+  });
+
+  it('isVersionTooLong matches the live backend body', () => {
+    expect(isVersionTooLong(new LicenseApiError('Version must NOT have more than 100 characters', 400))).toBe(true);
+  });
+
+  it('isChannelTooLong matches the live backend body', () => {
+    expect(isChannelTooLong(new LicenseApiError('Channel must NOT have more than 100 characters', 400))).toBe(true);
+  });
+
+  it('isPlatformTooLong matches the live backend body', () => {
+    expect(isPlatformTooLong(new LicenseApiError('Platform must NOT have more than 100 characters', 400))).toBe(
+      true
+    );
+  });
+
+  it('isChecksumTooLong matches the live backend body', () => {
+    expect(isChecksumTooLong(new LicenseApiError('Checksum must NOT have more than 256 characters', 400))).toBe(
+      true
+    );
+  });
+
+  it('isArtifactUrlTooLong matches the live backend body and does not collide with isInvalidArtifactUrl', () => {
+    expect(
+      isArtifactUrlTooLong(new LicenseApiError('Artifact_url must NOT have more than 2048 characters', 400))
+    ).toBe(true);
+    expect(isArtifactUrlTooLong(new LicenseApiError('artifact_url must be a valid http(s) URL', 400))).toBe(false);
+    expect(isInvalidArtifactUrl(new LicenseApiError('Artifact_url must NOT have more than 2048 characters', 400))).toBe(
+      false
+    );
   });
 
   it('isDuplicateRelease matches only 409 with the exact duplicate message', () => {

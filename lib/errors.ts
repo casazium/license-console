@@ -119,19 +119,54 @@ export function isInvalidArtifactUrl(error: unknown): boolean {
   );
 }
 
-// Fastify's own schema-validation error text for register-release.js's
-// release_notes maxLength: 10000 (round-3 independent review, finding
-// B-4) - not a hand-written message, so this couples to that exact
-// limit; if the limit in register-release.js's schema ever changes,
-// update this string to match (round-5 independent review, finding
-// F5-6, same "classifier never existed" gap as isInvalidArtifactUrl
-// above).
+// Fastify's own schema-validation error text for any of
+// register-release.js's maxLength fields (release_notes since round 3's
+// finding B-4; product_id/version/channel/platform/artifact_url/checksum
+// added in round 5's finding F5-4). Matches the message *shape*, not a
+// hardcoded field name or character limit (round-6 focused review,
+// findings R6-3/R6-4): round 5 added six new bounded fields but this
+// app's own classifier only ever covered release_notes by exact string
+// match, so the other six fell through to the generic "Something went
+// wrong" fallback - and even the one classifier that did exist was
+// tautological against its own unit test (it fed the classifier the
+// same literal the classifier compared against), so a Fastify/ajv
+// wording bump on the generated tail ("must NOT have more than N
+// characters") would have silently broken it in production with the
+// test staying green. `field` is matched case-insensitively against
+// Fastify's own capitalized-first-letter convention (see
+// app.js's setErrorHandler) so callers pass the field name in its
+// natural casing.
+function isTooLong(error: unknown, field: string): boolean {
+  if (!(error instanceof LicenseApiError) || error.status !== 400) return false;
+  return new RegExp(`^${field} must NOT have more than \\d+ characters$`, 'i').test(error.message);
+}
+
 export function isReleaseNotesTooLong(error: unknown): boolean {
-  return (
-    error instanceof LicenseApiError &&
-    error.status === 400 &&
-    error.message === 'Release_notes must NOT have more than 10000 characters'
-  );
+  return isTooLong(error, 'release_notes');
+}
+
+export function isProductIdTooLong(error: unknown): boolean {
+  return isTooLong(error, 'product_id');
+}
+
+export function isVersionTooLong(error: unknown): boolean {
+  return isTooLong(error, 'version');
+}
+
+export function isChannelTooLong(error: unknown): boolean {
+  return isTooLong(error, 'channel');
+}
+
+export function isPlatformTooLong(error: unknown): boolean {
+  return isTooLong(error, 'platform');
+}
+
+export function isChecksumTooLong(error: unknown): boolean {
+  return isTooLong(error, 'checksum');
+}
+
+export function isArtifactUrlTooLong(error: unknown): boolean {
+  return isTooLong(error, 'artifact_url');
 }
 
 // The exact 409 message casazium/license's register-release.js returns

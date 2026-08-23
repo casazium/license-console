@@ -87,6 +87,19 @@ export function notifyReleaseNotesTooLong() {
   });
 }
 
+// Round-6 focused review, findings R6-3/R6-4: register-release.js bounds
+// six more fields (product_id/version/channel/platform/artifact_url/
+// checksum) besides release_notes, and none of them had console UI
+// copy - one shared function rather than six near-identical ones, since
+// the only thing that differs is which field's name to show.
+export function notifyFieldTooLong(fieldLabel: string, maxLength: number) {
+  notifications.show({
+    color: 'red',
+    title: `${fieldLabel} too long`,
+    message: `${fieldLabel} can be at most ${maxLength.toLocaleString()} characters.`,
+  });
+}
+
 export function notifyDuplicateRelease() {
   notifications.show({
     color: 'red',
