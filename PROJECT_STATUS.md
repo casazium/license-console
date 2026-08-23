@@ -6060,3 +6060,58 @@ that repo's own `PROJECT_STATUS.md` §170. Nothing pushed, per the
 operator's standing instruction; committing is pending explicit
 instruction, same as every prior round.
 
+## 97. Round-7 focused review (separately dispatched Opus agent) of round 6's own diff - one stale hardcoded string in this repo, closed alongside its own duplicate function (2026-08-23)
+
+Round 7 reviewed the three commits made after round 6 closed (across all
+three repos). This app's own instance of R7-5 (LOW): two places still
+hardcoded `10,000` rather than reading `MAX_LENGTHS.release_notes` like
+the other six fields' branches R6-3/R6-4 built - `RegisterReleaseForm.
+tsx`'s own `release-notes-too-long` branch (its `form.setFieldError()`
+call), and, in a separate file, `lib/notify.ts`'s dedicated
+`notifyReleaseNotesTooLong()` function, which hardcoded the same number
+in its notification copy rather than taking the limit as a parameter the
+way the newer, shared `notifyFieldTooLong()` (built for the other six
+fields in round 6) already does. Both were stale of `MAX_LENGTHS.
+release_notes` and would have silently drifted if that limit ever
+changed - the exact drift-fragility R6-3/R6-4 closed for the other six
+fields, on the one field they'd originally been generalized *from*.
+
+Fixed by replacing the `release-notes-too-long` branch's call with
+`notifyFieldTooLong('Release notes', MAX_LENGTHS.release_notes)` and a
+`.toLocaleString()`-formatted field error, matching every other branch
+in the same catch chain exactly. `notifyReleaseNotesTooLong()` itself
+was then dead code (its one caller was this branch) and was removed from
+`lib/notify.ts` rather than kept as an unused wrapper.
+
+**Verification**: `npm run build`, `npx vitest run` (6 files / 42 tests,
+unchanged - no new test needed, this was a pure DRY fix with no new
+behavior to cover), and `npm run lint` all clean. The rest of round 7's
+findings (R7-1, R7-2, R7-3, R7-4) were in `casazium/license` and
+`casazium/casazium`; see `casazium/license`'s own `PROJECT_STATUS.md`
+§171. Nothing pushed, per the operator's standing instruction;
+committing is pending explicit instruction, same as every prior round.
+
+## 98. Round-8 focused review of round 7's own diff - one prose accuracy fix in this repo's own §97 (2026-08-23)
+
+Round 8 (a fourth focused review, scoped to round 7's own diff across
+all three repos) found no code defect in this app - the console-side
+fix from round 7 (§97 above) held up completely (no dangling
+`notifyReleaseNotesTooLong` references, no remaining hardcoded `10,000`
+outside `MAX_LENGTHS` itself, build/lint/tests all clean, independently
+re-confirmed). The one finding that touched this repo was purely
+editorial: F8-4 (LOW), a self-contradicting sentence in §97 above -
+"two of `RegisterReleaseForm.tsx`'s error branches" hardcoded `10,000`,
+when one of the two was actually in a different file
+(`lib/notify.ts`'s `notifyReleaseNotesTooLong()`) - the sentence's own
+next clause named that file correctly, so it contradicted its own
+opening claim. Corrected §97 in place to attribute each hardcoded
+instance to its actual file.
+
+**Verification**: no code changed in this repo this round, so no new
+test/build/lint run was needed beyond what §97 already recorded (still
+clean). The rest of round 8's findings (F8-1 through F8-3, F8-5, F8-6)
+were in `casazium/license` and `casazium/casazium`; see
+`casazium/license`'s own `PROJECT_STATUS.md` §172. Nothing pushed, per
+the operator's standing instruction; committing is pending explicit
+instruction, same as every prior round.
+

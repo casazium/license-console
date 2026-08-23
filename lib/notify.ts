@@ -79,14 +79,6 @@ export function notifyInvalidArtifactUrl() {
   });
 }
 
-export function notifyReleaseNotesTooLong() {
-  notifications.show({
-    color: 'red',
-    title: 'Release notes too long',
-    message: 'Release notes can be at most 10,000 characters.',
-  });
-}
-
 // Round-6 focused review, findings R6-3/R6-4: register-release.js bounds
 // six more fields (product_id/version/channel/platform/artifact_url/
 // checksum) besides release_notes, and none of them had console UI

@@ -13,7 +13,6 @@ import {
   notifyReleasePaymentFailed,
   notifyReservedProductId,
   notifyInvalidArtifactUrl,
-  notifyReleaseNotesTooLong,
   notifyFieldTooLong,
   notifyDuplicateRelease,
   notifyReleaseLimitReached,
@@ -152,8 +151,19 @@ export function RegisterReleaseForm() {
           notifyInvalidArtifactUrl();
           form.setFieldError('artifact_url', 'Must be a valid http:// or https:// URL');
         } else if (result.reason === 'release-notes-too-long') {
-          notifyReleaseNotesTooLong();
-          form.setFieldError('release_notes', 'Must be 10,000 characters or fewer');
+          // Round-7 focused review, finding R7-5: this used to call the
+          // release-notes-only notifyReleaseNotesTooLong() and hardcode
+          // "10,000" here, both independently stale of MAX_LENGTHS.
+          // release_notes above - the same drift-fragile pattern R6-3/
+          // R6-4 already fixed for the other six fields, on the one
+          // field they'd originally been generalized from. Uses the
+          // same shared notifyFieldTooLong()/MAX_LENGTHS every other
+          // branch below already does.
+          notifyFieldTooLong('Release notes', MAX_LENGTHS.release_notes);
+          form.setFieldError(
+            'release_notes',
+            `Must be ${MAX_LENGTHS.release_notes.toLocaleString()} characters or fewer`
+          );
         } else if (result.reason === 'product-id-too-long') {
           notifyFieldTooLong('Product ID', MAX_LENGTHS.product_id);
           form.setFieldError('product_id', `Must be ${MAX_LENGTHS.product_id.toLocaleString()} characters or fewer`);
