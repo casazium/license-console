@@ -1,7 +1,26 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-23 (§93: round-3 independent Opus review of the
+Last updated: 2026-08-23 (§94: round-4 independent review of the §93
+commit (`52b3d89`) - operator asked for one last independent review,
+run by both the primary session and a separately dispatched Opus
+agent. This app's own finding (F4): `throwForFailedResponse()`
+(`lib/license-client.live.ts`) only ever preserved the license server's
+real error text for a `403`; `lib/errors.ts`'s `isReservedProductId()`
+classifier (added in §93, matching `register-release.js`'s `400`
+rejection for the reserved-prefix guard) had existed and been wired
+into `registerReleaseAction` since round 3 but could never actually
+match, since every `400` fell into a generic status-only fallback -
+the bespoke "This product ID is reserved" UI copy had been unreachable
+the whole time. Fixed by extending the same body-preserving branch to
+`400`. 3 new regression tests added (`tests/lib/license-client-errors.test.ts`),
+confirmed to fail against the pre-fix code via `git stash`. Full
+verification: `vitest run` (6 files/31 tests), `tsc --noEmit`,
+`eslint .`, `npm run build` all clean. The rest of round 4's findings
+(F1/F2/F3/F5) were in `casazium/license`; see that repo's own
+`PROJECT_STATUS.md` §168 for the full picture. See §94 below for
+detail.)
+2026-08-23 (§93: round-3 independent Opus review of the
 committed Software Distribution work - operator explicitly requested
 "another round" covering all three repos' committed diffs. Found the
 Releases UI (§91) genuinely clean on security (correct auth pattern, no
@@ -5801,4 +5820,50 @@ third now asserts N/r/p parse as positive integers and salt/hash match
 their expected hex-length patterns, without depending on `password.ts`'s
 private cost-parameter constants. All 28 tests still pass, `tsc
 --noEmit` and `eslint .` still clean.
+
+## 94. Round-4 independent review (self + separate Opus agent) of the §93 commit - `throwForFailedResponse` 400-detail gap fixed (2026-08-23)
+
+Operator asked for "one last independent review of the plan and the
+actual work just committed," run by both the primary session and a
+separately dispatched Opus agent, each told not to trust any prior
+round's summary. This is a review of `52b3d89` - the commit §93 itself
+produced. Most of round 4's findings landed in `casazium/license` (see
+that repo's own `PROJECT_STATUS.md` §168); this app had one.
+
+**F4 (LOW) - `throwForFailedResponse()` only preserved the server's
+real error text for a `403`, silently making an existing classifier +
+UI copy unreachable.** `lib/errors.ts`'s `isReservedProductId()` was
+added in §93 specifically to catch `register-release.js`'s `400`
+rejection for a reserved `_casazium_`-prefixed `product_id`, and
+`registerReleaseAction` (`app/(app)/releases/actions.ts`) has called it
+since the same commit. But the shared `throwForFailedResponse()` helper
+in `lib/license-client.live.ts` special-cased only `res.status === 403`
+- every other status, `400` included, fell into a generic
+`Failed to X: 400 Bad Request` fallback with no body text at all, so
+`isReservedProductId()`'s exact-message match could never succeed.
+`RegisterReleaseForm.tsx`'s own "This product ID is reserved - pick a
+different one" copy (also written in §93) had accordingly been dead
+code since it landed - any tenant hitting this case saw the generic
+"Something went wrong" toast instead.
+
+Fixed by extending the same body-preserving branch to `400` as well as
+`403` - both now parse the JSON body and use `body.error` (falling back
+to `res.statusText` if the body doesn't parse), leaving every other
+status on the pre-existing generic fallback exactly as before.
+
+**Verification**: added `tests/lib/license-client-errors.test.ts` (3
+new tests, this app's first coverage of `license-client.live.ts`'s
+error-handling path) - mocks `global.fetch` via `vi.stubGlobal` and
+exercises `registerRelease()` directly: a `400` now surfaces the real
+body text and a `LicenseApiError` with `status: 400`; a `403` still
+does (unaffected by the fix); an unhandled status (`500`) still falls
+back to the generic message. Confirmed the `400` test is a real
+regression test, not a tautology, by temporarily reverting
+`lib/license-client.live.ts` via `git stash` and re-running - it failed
+as expected (received a generic `LicenseApiError` with no message
+match), the other two still passed. Restored the fix and re-ran the
+full suite: 6 files / 31 tests passing (28 existing + 3 new). `tsc
+--noEmit`, `eslint .`, and `npm run build` all clean. Nothing pushed,
+per the operator's standing instruction; committing is pending explicit
+instruction, same as every prior round.
 

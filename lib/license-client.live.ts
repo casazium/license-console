@@ -121,17 +121,25 @@ async function liveFetch(path: string, init: RequestInit = {}, tenantApiKey?: st
 
 // Shared by every !res.ok branch below - preserves the server's own
 // error text for every 403 (not just issue-license's quota/payment
-// cases, which is where this started - SaaS-B4). lib/errors.ts's
-// isOverQuota()/isPaymentFailed()/isTenantRejected() all classify by
-// matching this exact message text, and none of them work without it -
-// the generic `Failed to X: status statusText` fallback below (used for
-// every other status, and for a 403 whose body doesn't parse) carries no
-// classifiable information on purpose, since it's not one of the known,
-// specifically-handled cases.
+// cases, which is where this started - SaaS-B4) AND every 400
+// (round-4 independent review, finding F4: register-release.js's own
+// 400 rejections - the reserved-prefix guard and the artifact_url
+// scheme check - were both added in round 2/3, but this function only
+// special-cased 403 at the time, so lib/errors.ts's own
+// isReservedProductId() classifier (which matches on the exact 400
+// body text) could never actually see it - every 400 fell into the
+// generic `Failed to X: 400 Bad Request` fallback below, indistinguishable
+// from any other failure, even though the classifier + UI copy for it
+// already existed). lib/errors.ts's isOverQuota()/isPaymentFailed()/
+// isTenantRejected()/isReservedProductId() all classify by matching this
+// exact message text, and none of them work without it - the generic
+// fallback below (used for every other status, and for a 403/400 whose
+// body doesn't parse) carries no classifiable information on purpose,
+// since it's not one of the known, specifically-handled cases.
 async function throwForFailedResponse(res: Response, fallbackMessage: string): Promise<never> {
-  if (res.status === 403) {
+  if (res.status === 403 || res.status === 400) {
     const body: { error?: string } = await res.json().catch(() => ({}));
-    throw new LicenseApiError(body.error || 'Forbidden', 403);
+    throw new LicenseApiError(body.error || res.statusText, res.status);
   }
   throw new LicenseApiError(`${fallbackMessage}: ${res.status} ${res.statusText}`, res.status);
 }
