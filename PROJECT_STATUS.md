@@ -1,7 +1,17 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-23 (§96: round-6 focused review (separately
+Last updated: 2026-08-24 (§99: the Licenses
+list and detail page both showed a green "Active" badge for a license
+whose `expires_at` had already passed - `status` never auto-transitions
+on expiry in `casazium/license`'s backend (no cron, by design), and
+quota counting already accounts for that separately at read time, but
+the console's badge didn't. Added `licenseStatusBadge()` to
+`lib/format.ts`, returning an `expired` (yellow) state for
+active-but-past-expiry licenses without touching the real `status`
+value anywhere else. Applied to both the list table and the detail
+page. `next build`/`eslint .` clean. See §99 below for full detail.)
+2026-08-23 (§96: round-6 focused review (separately
 dispatched Opus agent) of round 5's own diff (`9638a26`) - operator
 asked for a narrower, cheaper pass scoped to what round 5 actually
 changed, not a fresh full round, after confirming the core security
@@ -6114,4 +6124,30 @@ were in `casazium/license` and `casazium/casazium`; see
 `casazium/license`'s own `PROJECT_STATUS.md` §172. Nothing pushed, per
 the operator's standing instruction; committing is pending explicit
 instruction, same as every prior round.
+
+## 99. Licenses list showed a green "Active" badge for expired-but-unrevoked licenses (2026-08-24)
+
+Operator noticed directly, using the app: the Licenses page's status
+badge stayed green "Active" for a license whose `expires_at` had
+already passed. Confirmed against `casazium/license`'s backend before
+touching anything - `status` never auto-transitions on expiry (no
+cron, no automatic write-back; `src/lib/quota.js`'s own header comment
+documents this explicitly), so `status` stays `'active'` in the
+database forever unless someone explicitly revokes the license. Quota
+counting and license verification both already account for this
+separately, checking `expires_at` at read time rather than trusting
+`status` alone - the console's badge just didn't do the same.
+
+**Fix, display-only:** added `licenseStatusBadge(status, expiresAt)`
+to `lib/format.ts` - returns `{ label: 'expired', color: 'yellow' }`
+when `status === 'active'` but `expires_at` has passed, otherwise the
+existing green/gray active/revoked mapping unchanged. Applied to both
+`LicensesTable.tsx` (the list) and the license detail page, so the two
+stay consistent with each other. Deliberately doesn't touch the real
+`status` value anywhere else in the app or the backend - other code
+(quota enforcement, `RevokeDeleteActions`, etc.) correctly depends on
+`status` staying a stable two-value revoked/active flag, not a
+three-value display state.
+
+**Verification**: `next build` and `eslint .` both clean.
 
