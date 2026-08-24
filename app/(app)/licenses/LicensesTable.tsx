@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import type { LicenseSortColumn } from '@/lib/license-types';
 import type { LicenseListItem } from '@/lib/license-client';
-import { formatDate } from '@/lib/format';
+import { formatDate, licenseStatusBadge } from '@/lib/format';
 
 type SortDirection = 'asc' | 'desc';
 
@@ -84,7 +84,9 @@ export function LicensesTable({
         </Table.Tr>
       </Table.Thead>
       <Table.Tbody>
-        {licenses.map((license) => (
+        {licenses.map((license) => {
+          const statusBadge = licenseStatusBadge(license.status, license.expires_at);
+          return (
           <Table.Tr key={license.key}>
             <Table.Td>
               <Anchor component={Link} href={`/licenses/${license.key}`}>
@@ -94,8 +96,8 @@ export function LicensesTable({
             <Table.Td>{license.product_id}</Table.Td>
             <Table.Td>{license.tier}</Table.Td>
             <Table.Td>
-              <Badge color={license.status === 'active' ? 'green' : 'gray'}>
-                {license.status}
+              <Badge color={statusBadge.color}>
+                {statusBadge.label}
               </Badge>
             </Table.Td>
             <Table.Td>{license.issued_to}</Table.Td>
@@ -121,7 +123,8 @@ export function LicensesTable({
               )}
             </Table.Td>
           </Table.Tr>
-        ))}
+          );
+        })}
       </Table.Tbody>
     </Table>
   );

@@ -49,3 +49,24 @@ export function formatDate(iso: string | null): string {
 export function formatDateTime(iso: string | null): string {
   return iso === null ? 'Never' : `${new Date(iso).toISOString().slice(0, 19).replace('T', ' ')} UTC`;
 }
+
+// A license's `status` column never auto-transitions on expiry - no
+// cron, no automatic write-back (see casazium/license's src/lib/
+// quota.js, which documents this explicitly) - it stays 'active' in
+// the database forever unless someone explicitly revokes it, even long
+// after expires_at has passed. Quota counting and license verification
+// on the backend already account for this by checking expires_at
+// separately from status; this mirrors that same distinction for
+// display, so the badge doesn't claim a license is active when it's
+// actually expired. Purely cosmetic - doesn't touch the real `status`
+// value anywhere else, which other code correctly depends on staying a
+// stable revoked/active flag.
+export function licenseStatusBadge(
+  status: 'active' | 'revoked',
+  expiresAt: string | null
+): { label: string; color: string } {
+  if (status === 'active' && expiresAt !== null && new Date(expiresAt).getTime() <= Date.now()) {
+    return { label: 'expired', color: 'yellow' };
+  }
+  return { label: status, color: status === 'active' ? 'green' : 'gray' };
+}

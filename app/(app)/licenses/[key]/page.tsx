@@ -1,6 +1,6 @@
 import { Anchor, Badge, Code, Group, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import { getLicense, listActivations } from '@/lib/license-client';
-import { formatDateTime } from '@/lib/format';
+import { formatDateTime, licenseStatusBadge } from '@/lib/format';
 import { isRateLimited } from '@/lib/errors';
 import { requireSessionWithTenantKey, markIfTenantRejected } from '@/lib/tenant-context';
 import { MockDataNotice } from '@/components/MockDataNotice';
@@ -61,11 +61,13 @@ export default async function LicenseDetailPage({
     );
   }
 
+  const statusBadge = licenseStatusBadge(license.status, license.expires_at);
+
   return (
     <Stack>
       <Group justify="space-between">
         <Title order={2}>{license.key}</Title>
-        <Badge color={license.status === 'active' ? 'green' : 'gray'}>{license.status}</Badge>
+        <Badge color={statusBadge.color}>{statusBadge.label}</Badge>
       </Group>
 
       <SimpleGrid cols={{ base: 1, sm: 2 }}>
