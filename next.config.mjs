@@ -81,6 +81,28 @@ const nextConfig = {
         // delete) has no business being frameable from anywhere.
         source: '/(.*)',
         headers: [
+          // This console is an authenticated admin app - nothing here
+          // belongs in a search index, including the pre-auth /login and
+          // /signup pages. Sent as a header rather than a <meta name=
+          // "robots"> tag so it applies to API routes and to any crawler
+          // that doesn't execute JS, and so it can't be missed by a page
+          // that forgets the tag.
+          //
+          // Prompted by Google Search Console reporting
+          // license.casazium.com/login and license-cloud.casazium.com/login
+          // under "Duplicate without user-selected canonical": two live
+          // instances of this same app (standalone and hosted, see
+          // casazium/casazium BETA_LAUNCH_STATUS.md) serving near-identical
+          // login pages with nothing declaring intent. A canonical between
+          // them would be wrong - they're different tenancy models serving
+          // different customers, not duplicates of one another - so the
+          // right answer is that neither should be indexed at all.
+          //
+          // Deliberately NOT paired with a `Disallow: /` in app/robots.ts:
+          // a crawler that isn't allowed to fetch the page never sees this
+          // header, which would strand the already-indexed URLs instead of
+          // removing them. Crawling stays open on purpose.
+          { key: 'X-Robots-Tag', value: 'noindex' },
           { key: 'X-Frame-Options', value: 'DENY' },
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
