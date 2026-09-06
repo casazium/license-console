@@ -88,6 +88,12 @@ export async function proxy(request: NextRequest) {
   return NextResponse.next();
 }
 
+// robots.txt joins favicon.ico here rather than PUBLIC_PATHS above: it's a
+// static, unconditionally-public asset with no session semantics at all, so
+// the cheapest correct thing is for this proxy never to run for it. Without
+// the exclusion it matched the catch-all, failed the session check, and
+// 307'd to /login - confirmed live on both instances, which meant neither
+// served crawl directives at all (see app/robots.ts).
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|robots.txt).*)'],
 };
