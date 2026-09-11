@@ -1,7 +1,28 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-11 (§100: real
+Last updated: 2026-09-11 (§101: four
+real bugs found live-testing §100's Stripe integration for the first
+time, in order: (1) "Pro" stayed a disabled "Current plan" after
+cancellation, since the button logic ignored subscription status and
+`plan` is deliberately preserved as history - fixed with a
+`currentStatus` prop; (2) "Free" still redirected to an empty Stripe
+Billing Portal once fully canceled - fixed by disabling it with
+"Nothing to cancel"; (3) once `casazium/license`'s new `resetToFree`
+reset a canceled tenant to `plan: null`, the Free tile never registered
+as current (`null !== 'free'`) - fixed by normalizing to `currentPlan ??
+'free'`, and #2's now-dead "Nothing to cancel" state removed; (4) no
+on-screen sign a cancellation had happened at all, since status/plan
+stay at Pro until the billing period ends - added an orange
+"Subscription canceled" `Alert` naming the access-ends date, companion
+to `casazium/license` `PROJECT_STATUS.md` §188's new
+`cancelAtPeriodEnd`/`currentPeriodEnd` fields (which needed two of its
+own production bug fixes there before the banner's data was correct).
+Each fix individually verified: `tsc --noEmit`/`eslint`/`next build`/the
+full 53-test suite clean. Live-verified end to end against the
+operator's actual production deployment. See §101 below for full
+detail.)
+2026-09-11 (§100: real
 Stripe billing landed in `casazium/license` behind the existing
 `BillingProvider` interface - Pro is now $39/mo or $374/yr (competitor-
 pricing-informed, operator-decided), Free stays $0/5 licenses. This
@@ -6221,4 +6242,80 @@ with no `node_modules` yet this session). `npm run lint` clean.
 pre-existing and unrelated to this change). `npm test` (Vitest): 53/53
 passing, unaffected by this UI-only change - no existing test file
 covers `app/(app)/billing` today, so nothing here needed updating.
+
+## 101. Four real bugs found live-testing §100's Stripe integration for the first time, plus the pending-cancellation banner (2026-09-11)
+
+Same session as §100, continued once the operator did the one-time
+Stripe Dashboard setup and tested the real integration end to end for
+the first time - a real subscription, a real cancellation, a real
+webhook. Each of the four items below was found live, in that order,
+not anticipated in advance; §100's own 53-test suite caught none of
+them, since none of these states existed before real Stripe billing did.
+
+### 1. "Pro" stayed a disabled "Current plan" after cancellation (`b4966f5`)
+
+`PlanSelector.tsx`'s disabled-button logic only checked `currentPlan ===
+plan.id`, ignoring subscription status. `plan` is deliberately preserved
+as history after cancellation (stays `'pro'`, per `casazium/license`'s
+`upsertSubscription`), so a tenant who canceled saw "Pro - Current plan"
+disabled with no way back in, despite having no active subscription at
+all - a real gap the stub era never produced, since it never had a
+canceled-but-still-recorded-as-`'pro'` state to expose. Fixed by adding a
+`currentStatus` prop (`page.tsx` -> `PlanSelector`) and changing to
+`isCurrent = currentPlan === plan.id && currentStatus === 'active'`.
+
+### 2. "Free" still redirected to Stripe with nothing to manage there (`3bfb2a6`)
+
+Found immediately after fixing #1: with "Pro" re-enabled, clicking
+"Free" from a fully-canceled state still bounced to an empty Stripe
+Billing Portal page. `stripe-provider.js`'s `createCheckoutSession('free',
+...)` only checks whether `stripe_customer_id` exists, not whether
+there's a live subscription, before redirecting - and once fully
+canceled there's nothing left to manage there. Fixed client-side:
+`nothingToDowngrade = plan.id === 'free' && currentStatus === 'canceled'`,
+disabling Free's button with a "Nothing to cancel" label specifically in
+that state.
+
+### 3. A reset-to-Free tenant's plan (`null`) didn't register as "Free" (`239c9ee`)
+
+Companion to `casazium/license`'s `resetToFree` (§187/§188, that
+repo's `PROJECT_STATUS.md`): once a fully canceled Pro subscription
+resets `billing_subscriptions` to `plan: null, status: 'active'`
+server-side - a deliberate design change from leaving the tenant
+permanently blocked, per the operator's own explicit choice
+("option 2, drop them to free") - `isCurrent`'s `currentPlan ===
+plan.id` comparison never matched the Free tile's `id: 'free'`, since
+`null !== 'free'`. Fixed by normalizing `effectivePlan = currentPlan ??
+'free'` before comparing. Also removed #2's `nothingToDowngrade` state
+as dead code: `status: 'canceled'` no longer persists as a resting state
+once `resetToFree` ships (cancellation now resolves straight to Free in
+one atomic webhook write), so the state that logic existed for can no
+longer occur.
+
+### 4. No on-screen sign a cancellation had happened at all (`9e93373`)
+
+Operator-reported gap, found testing live: canceling from the Billing
+Portal left the Billing page looking identical to an active,
+uncanceled subscription for the rest of the billing period, since
+`status`/`plan` deliberately stay at Pro until the subscription
+actually ends. Companion to `casazium/license` `PROJECT_STATUS.md`
+§188's new `cancelAtPeriodEnd`/`currentPeriodEnd` fields on `GET
+/billing/status` (itself needing two follow-up production bug fixes
+there before the data was correct - see that section). `billing/page.tsx`
+renders an orange "Subscription canceled" `Alert` (matching the existing
+Demo-checkout `Alert`'s style in `checkout/confirm/StubCheckoutConfirm.tsx`)
+naming the access-ends date via the existing `formatDate` helper,
+whenever `cancelAtPeriodEnd` is true. `BillingStatus`
+(`lib/license-types.ts`) and both the mock client's `getBillingStatus`/
+`completeStubCheckout` gained the two new fields for type parity across
+every provider.
+
+### Verified (each fix, individually)
+
+All four: `npx tsc --noEmit`, `npm run lint`, `npm run build`, and the
+full 53-test suite clean - no test file covers `app/(app)/billing` today,
+so none needed updating for any of these four UI-only changes. Live-
+verified end to end against the operator's actual production deployment
+after #4's second (Flexible-billing-mode) backend fix landed: the
+banner rendered correctly with the right access-ends date.
 
