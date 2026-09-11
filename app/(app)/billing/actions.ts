@@ -15,10 +15,13 @@ type ActionResult<T> = { ok: true; data: T } | { ok: false; reason: 'rate-limite
 // no code here needs to change or be removed for that swap-in.
 const STUB_CHECKOUT_HOST = 'stub-billing.invalid';
 
-export async function createCheckoutSessionAction(plan: string): Promise<ActionResult<{ url: string }>> {
+export async function createCheckoutSessionAction(
+  plan: string,
+  interval?: string
+): Promise<ActionResult<{ url: string }>> {
   const { identity, tenantApiKey } = await requireSessionWithTenantKey();
   try {
-    const session = await createCheckoutSession(plan, tenantApiKey);
+    const session = await createCheckoutSession(plan, interval, tenantApiKey);
     if (new URL(session.url).hostname === STUB_CHECKOUT_HOST) {
       return { ok: true, data: { url: `/billing/checkout/confirm?plan=${encodeURIComponent(plan)}` } };
     }

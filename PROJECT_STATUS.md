@@ -1,7 +1,24 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-08-24 (§99: the Licenses
+Last updated: 2026-09-11 (§100: real
+Stripe billing landed in `casazium/license` behind the existing
+`BillingProvider` interface - Pro is now $39/mo or $374/yr (competitor-
+pricing-informed, operator-decided), Free stays $0/5 licenses. This
+repo's own change is UI-only: `PlanSelector.tsx` now shows the real
+prices and a monthly/annual `SegmentedControl` (only meaningful for
+Pro - Free has no Stripe Price at all), passing `interval` through
+`createCheckoutSessionAction` -&gt; all three `license-client*.ts`
+dispatcher files -&gt; `POST /billing/checkout`. No change needed to the
+stub-hostname-detection guard in `actions.ts` or the demo-checkout
+confirm flow - both already handle a real (non-stub) URL correctly,
+including the new Billing Portal downgrade-to-free redirect, since
+they're all just "navigate to whatever URL comes back." `tsc --noEmit`,
+`eslint .`, `next build`, and this repo's own 53-test suite all clean.
+Full detail (including the pricing decision itself) in
+`casazium/license` `PROJECT_STATUS.md` §187. See §100 below for full
+detail.)
+2026-08-24 (§99: the Licenses
 list and detail page both showed a green "Active" badge for a license
 whose `expires_at` had already passed - `status` never auto-transitions
 on expiry in `casazium/license`'s backend (no cron, by design), and
@@ -6150,4 +6167,58 @@ stay consistent with each other. Deliberately doesn't touch the real
 three-value display state.
 
 **Verification**: `next build` and `eslint .` both clean.
+
+## 100. Real Stripe billing UI: prices and a monthly/annual toggle on PlanSelector (2026-09-11)
+
+Companion to `casazium/license` `PROJECT_STATUS.md` §187, which builds
+the real Stripe provider behind the interface this console already
+called through the stub. Operator asked to "hook up stripe finally and
+start to charge," commissioned a competitor-pricing pass this session
+(Keygen, Cryptolens, Cryptlex, LicenseSpring, Zentitle, 10Duke - every
+primary pricing page egress-blocked in this sandbox, so figures were
+secondary-sourced and flagged as such) and decided Pro at $39/month or
+$374/year (~20% off); Free stays $0/5 licenses.
+
+### What changed here
+
+- **`lib/license-client.ts`/`.live.ts`/`.mock.ts`**: `createCheckoutSession`
+  gained an `interval` parameter (mirrors the trailing-param-forwarded
+  pattern every other dispatcher method in this file already uses).
+  `.live.ts`'s JSON body omits `interval` when not passed (`JSON.stringify`
+  drops `undefined` values) - `casazium/license`'s own schema defaults it
+  to `'monthly'` server-side in that case, so this file doesn't need its
+  own fallback.
+- **`app/(app)/billing/actions.ts`**: `createCheckoutSessionAction(plan,
+  interval)` - no other change. The existing stub-hostname-detection
+  guard (checking whether the returned URL's host is
+  `stub-billing.invalid`) is interval-agnostic and needed zero changes to
+  keep working correctly once real Stripe/Portal URLs start coming back
+  from the server.
+- **`app/(app)/billing/PlanSelector.tsx`**: `PLANS` now shows real prices
+  (`$0` / `$39/mo or $374/yr`) instead of only the license-count
+  description; a new Mantine `SegmentedControl` (monthly/annual) is only
+  passed through for the Pro selection (`plan === 'pro' ? billingInterval
+  : undefined`) - Free has no Stripe Price at all, so the interval concept
+  doesn't apply there.
+- **No change needed** to `checkout/confirm/*` (the stub-only demo
+  confirmation flow, still correctly unreachable once the URL is real -
+  confirmed, not assumed) or `billing/page.tsx`. `window.location.assign()`
+  now covers three distinct real destinations (a Stripe Checkout Session,
+  a Stripe Billing Portal session for the downgrade/cancel path, and the
+  stub's own in-app confirm page) with no branching needed in this file,
+  since all three are "just a URL" from this console's point of view -
+  the design `actions.ts`'s own hostname check was built around from the
+  start.
+- No Stripe secrets touch this repo at any point - unchanged boundary
+  from `SaaS-C4`.
+
+### Verified
+
+`npx tsc --noEmit` clean (after `npm install` - this was a fresh clone
+with no `node_modules` yet this session). `npm run lint` clean.
+`npm run build` clean (`next build`, including the Turbopack
+`instrumentation.ts`/`process.exit` Edge Runtime warning, confirmed
+pre-existing and unrelated to this change). `npm test` (Vitest): 53/53
+passing, unaffected by this UI-only change - no existing test file
+covers `app/(app)/billing` today, so nothing here needed updating.
 

@@ -1,39 +1,50 @@
 'use client';
 
 import { useState } from 'react';
-import { Button, Card, Group, Stack, Text } from '@mantine/core';
+import { Button, Card, Group, SegmentedControl, Stack, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { brandButtonStyle } from '@/components/brandButtonStyle';
 import { notifyRateLimited } from '@/lib/notify';
 import { createCheckoutSessionAction } from './actions';
 
 // Mirrors casazium/license's own src/lib/quota.js PLAN_LIMITS exactly -
-// the only two plans that exist anywhere in the system. Placeholder
-// numbers (that file's own comment: "no real pricing has been decided
-// anywhere in this plan"), not this task's to invent real ones for.
+// the only two plans that exist anywhere in the system. Price is real
+// (competitor-research-informed pricing decision), the license limits
+// are unchanged from the stub-era placeholder.
 const PLANS = [
-  { id: 'free', label: 'Free', limitDescription: 'Up to 5 active licenses' },
-  { id: 'pro', label: 'Pro', limitDescription: 'Up to 100 active licenses' },
+  { id: 'free', label: 'Free', limitDescription: 'Up to 5 active licenses', priceLabel: '$0' },
+  { id: 'pro', label: 'Pro', limitDescription: 'Up to 100 active licenses', priceLabel: '$39/mo or $374/yr' },
+];
+
+// Only Pro has more than one Stripe Price (monthly/annual) - Free has no
+// Price at all (it's the absence of a paid subscription, not a $0
+// Price), so this control only matters when selecting Pro.
+// billing-checkout.js's own schema defaults to 'monthly' when omitted.
+const INTERVAL_OPTIONS = [
+  { label: 'Monthly', value: 'monthly' },
+  { label: 'Annual (save ~20%)', value: 'annual' },
 ];
 
 export function PlanSelector({ currentPlan }: { currentPlan: string | null }) {
   const [pendingPlan, setPendingPlan] = useState<string | null>(null);
+  const [billingInterval, setBillingInterval] = useState<string>('monthly');
 
   async function handleSelectPlan(plan: string) {
     setPendingPlan(plan);
     try {
-      const result = await createCheckoutSessionAction(plan);
+      const result = await createCheckoutSessionAction(plan, plan === 'pro' ? billingInterval : undefined);
       if (!result.ok) {
         notifyRateLimited();
         setPendingPlan(null);
         return;
       }
-      // The stub provider's URL isn't part of this app's own routing -
-      // a plain navigation, not next/navigation's router, which is only
-      // for internal routes. .assign(), not a `.href =` assignment -
-      // this project's eslint config (react-hooks' immutability rule)
-      // rejects directly mutating a property on an external value like
-      // `window`, even from an event handler.
+      // Covers a real Stripe Checkout Session, a real Stripe Billing
+      // Portal session (the downgrade-to-free path), and the stub's own
+      // in-app confirm-page redirect - all three are just a URL to
+      // navigate to. .assign(), not a `.href =` assignment - this
+      // project's eslint config (react-hooks' immutability rule) rejects
+      // directly mutating a property on an external value like `window`,
+      // even from an event handler.
       window.location.assign(result.data.url);
     } catch {
       notifications.show({
@@ -50,11 +61,20 @@ export function PlanSelector({ currentPlan }: { currentPlan: string | null }) {
       <Text size="sm" c="dimmed">
         Change plan
       </Text>
+      <SegmentedControl
+        data={INTERVAL_OPTIONS}
+        value={billingInterval}
+        onChange={setBillingInterval}
+        size="sm"
+        aria-label="Billing interval for the Pro plan"
+      />
       {PLANS.map((plan) => (
         <Card key={plan.id} withBorder padding="md">
           <Group justify="space-between">
             <Stack gap={0}>
-              <Text fw={600}>{plan.label}</Text>
+              <Text fw={600}>
+                {plan.label} · {plan.priceLabel}
+              </Text>
               <Text size="sm" c="dimmed">
                 {plan.limitDescription}
               </Text>

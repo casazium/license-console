@@ -129,8 +129,8 @@ export const getRecentlyIssuedLicenses: typeof mock.getRecentlyIssuedLicenses = 
   client().getRecentlyIssuedLicenses(limit, tenantApiKey);
 export const getBillingStatus: typeof mock.getBillingStatus = (tenantApiKey) =>
   client().getBillingStatus(tenantApiKey);
-export const createCheckoutSession: typeof mock.createCheckoutSession = (plan, tenantApiKey) =>
-  client().createCheckoutSession(plan, tenantApiKey);
+export const createCheckoutSession: typeof mock.createCheckoutSession = (plan, interval, tenantApiKey) =>
+  client().createCheckoutSession(plan, interval, tenantApiKey);
 export const completeStubCheckout: typeof mock.completeStubCheckout = (plan, tenantApiKey) =>
   client().completeStubCheckout(plan, tenantApiKey);
 export const getSelfLicenseStatus: typeof mock.getSelfLicenseStatus = (tenantApiKey) =>

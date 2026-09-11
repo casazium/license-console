@@ -496,12 +496,19 @@ export async function getBillingStatus(tenantApiKey?: string): Promise<BillingSt
   return res.json();
 }
 
-export async function createCheckoutSession(plan: string, tenantApiKey?: string): Promise<{ url: string }> {
+export async function createCheckoutSession(
+  plan: string,
+  interval?: string,
+  tenantApiKey?: string
+): Promise<{ url: string }> {
+  // interval is omitted from the JSON body (JSON.stringify drops
+  // undefined values) when not passed - billing-checkout.js's own
+  // schema defaults it to 'monthly' server-side in that case.
   const res = await liveFetch(
     '/billing/checkout',
     {
       method: 'POST',
-      body: JSON.stringify({ plan }),
+      body: JSON.stringify({ plan, interval }),
     },
     tenantApiKey
   );
