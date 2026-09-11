@@ -93,7 +93,7 @@ export default async function BillingPage() {
         </Stack>
       )}
 
-      <PlanSelector currentPlan={billing.plan} />
+      <PlanSelector currentPlan={billing.plan} currentStatus={billing.status} />
     </Stack>
   );
 }

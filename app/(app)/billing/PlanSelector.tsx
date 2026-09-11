@@ -25,7 +25,13 @@ const INTERVAL_OPTIONS = [
   { label: 'Annual (save ~20%)', value: 'annual' },
 ];
 
-export function PlanSelector({ currentPlan }: { currentPlan: string | null }) {
+export function PlanSelector({
+  currentPlan,
+  currentStatus,
+}: {
+  currentPlan: string | null;
+  currentStatus: string;
+}) {
   const [pendingPlan, setPendingPlan] = useState<string | null>(null);
   const [billingInterval, setBillingInterval] = useState<string>('monthly');
 
@@ -68,29 +74,42 @@ export function PlanSelector({ currentPlan }: { currentPlan: string | null }) {
         size="sm"
         aria-label="Billing interval for the Pro plan"
       />
-      {PLANS.map((plan) => (
-        <Card key={plan.id} withBorder padding="md">
-          <Group justify="space-between">
-            <Stack gap={0}>
-              <Text fw={600}>
-                {plan.label} · {plan.priceLabel}
-              </Text>
-              <Text size="sm" c="dimmed">
-                {plan.limitDescription}
-              </Text>
-            </Stack>
-            <Button
-              variant={currentPlan === plan.id ? 'default' : 'filled'}
-              disabled={currentPlan === plan.id}
-              loading={pendingPlan === plan.id}
-              style={currentPlan === plan.id ? undefined : brandButtonStyle}
-              onClick={() => handleSelectPlan(plan.id)}
-            >
-              {currentPlan === plan.id ? 'Current plan' : 'Select'}
-            </Button>
-          </Group>
-        </Card>
-      ))}
+      {PLANS.map((plan) => {
+        // A plan only counts as "current" (and its button disabled) while
+        // it's actually active - matching billing.plan alone isn't enough.
+        // A canceled or past_due subscription still has its old plan
+        // recorded (deliberately preserved as history, not cleared), so
+        // without this check a tenant who canceled Pro would see "Pro -
+        // Current plan" as a disabled button with no way back in, even
+        // though they have no active subscription at all (a real gap
+        // found live-testing the real Stripe cancellation flow for the
+        // first time - the stub era never produced a canceled-but-still-
+        // recorded-as-pro state to expose this).
+        const isCurrent = currentPlan === plan.id && currentStatus === 'active';
+        return (
+          <Card key={plan.id} withBorder padding="md">
+            <Group justify="space-between">
+              <Stack gap={0}>
+                <Text fw={600}>
+                  {plan.label} · {plan.priceLabel}
+                </Text>
+                <Text size="sm" c="dimmed">
+                  {plan.limitDescription}
+                </Text>
+              </Stack>
+              <Button
+                variant={isCurrent ? 'default' : 'filled'}
+                disabled={isCurrent}
+                loading={pendingPlan === plan.id}
+                style={isCurrent ? undefined : brandButtonStyle}
+                onClick={() => handleSelectPlan(plan.id)}
+              >
+                {isCurrent ? 'Current plan' : 'Select'}
+              </Button>
+            </Group>
+          </Card>
+        );
+      })}
     </Stack>
   );
 }
