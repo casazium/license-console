@@ -319,9 +319,15 @@ export type ReleaseDetail = Release & {
 // licensesUsed/licenseLimit added for BETA_LAUNCH_STATUS.md §4's
 // quota-visibility beta-readiness finding - null under self-hosted
 // (no tenantId, no plan concept at all - same posture as `plan` itself).
+// cancelAtPeriodEnd/currentPeriodEnd surface a pending-but-not-yet-
+// effective Stripe cancellation (status/plan stay unchanged until it
+// actually takes effect) - always false/null under the stub or
+// self-hosted, real values only from a real Stripe-backed deployment.
 export type BillingStatus = {
   status: 'active' | 'past_due' | 'canceled';
   plan: string | null;
+  cancelAtPeriodEnd: boolean;
+  currentPeriodEnd: string | null;
   licensesUsed: number | null;
   licenseLimit: number | null;
 };

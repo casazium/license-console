@@ -1,8 +1,9 @@
 import { notFound } from 'next/navigation';
-import { Badge, Progress, Stack, Text, Title } from '@mantine/core';
+import { Alert, Badge, Progress, Stack, Text, Title } from '@mantine/core';
 import { getBillingStatus } from '@/lib/license-client';
 import { isMultiTenant } from '@/lib/config';
 import { isRateLimited } from '@/lib/errors';
+import { formatDate } from '@/lib/format';
 import { requireSessionWithTenantKey, markIfTenantRejected } from '@/lib/tenant-context';
 import { RateLimitNotice } from '@/components/RateLimitNotice';
 import { PlanSelector } from './PlanSelector';
@@ -68,6 +69,20 @@ export default async function BillingPage() {
           Your subscription is not active - issuing new licenses is blocked
           until this is resolved.
         </Text>
+      )}
+
+      {/* Operator-reported gap: canceling from the Stripe Billing Portal
+          gave no on-screen sign that anything had happened - status/plan
+          deliberately stay at Pro until the subscription actually ends
+          (saas-tier.md's documented end-of-period behavior), so without
+          this the console looked identical to an active, uncanceled
+          subscription for the rest of the billing period. */}
+      {billing.cancelAtPeriodEnd && (
+        <Alert color="orange" title="Subscription canceled">
+          Your Pro subscription has been canceled
+          {billing.currentPeriodEnd ? ` and access ends on ${formatDate(billing.currentPeriodEnd)}` : ''}. You&apos;ll
+          keep Pro&apos;s limits until then, after which your account reverts to the Free plan.
+        </Alert>
       )}
 
       {/* Beta-readiness finding (BETA_LAUNCH_STATUS.md §4): a tenant
