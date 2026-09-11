@@ -86,6 +86,16 @@ export function PlanSelector({
         // first time - the stub era never produced a canceled-but-still-
         // recorded-as-pro state to expose this).
         const isCurrent = currentPlan === plan.id && currentStatus === 'active';
+        // Selecting "free" means "downgrade my active paid subscription" -
+        // it redirects to the Stripe Billing Portal, which only has
+        // something to do when a real subscription (active or past_due,
+        // i.e. Stripe still considers it live) exists. Once a
+        // subscription is fully canceled there's nothing left to manage
+        // there - found live, immediately after fixing the "Pro" button
+        // above: canceling, then clicking "Free" again, bounced to an
+        // empty Portal page with nothing to cancel.
+        const nothingToDowngrade = plan.id === 'free' && currentStatus === 'canceled';
+        const disabled = isCurrent || nothingToDowngrade;
         return (
           <Card key={plan.id} withBorder padding="md">
             <Group justify="space-between">
@@ -98,13 +108,13 @@ export function PlanSelector({
                 </Text>
               </Stack>
               <Button
-                variant={isCurrent ? 'default' : 'filled'}
-                disabled={isCurrent}
+                variant={disabled ? 'default' : 'filled'}
+                disabled={disabled}
                 loading={pendingPlan === plan.id}
-                style={isCurrent ? undefined : brandButtonStyle}
+                style={disabled ? undefined : brandButtonStyle}
                 onClick={() => handleSelectPlan(plan.id)}
               >
-                {isCurrent ? 'Current plan' : 'Select'}
+                {isCurrent ? 'Current plan' : nothingToDowngrade ? 'Nothing to cancel' : 'Select'}
               </Button>
             </Group>
           </Card>
