@@ -77,25 +77,17 @@ export function PlanSelector({
       {PLANS.map((plan) => {
         // A plan only counts as "current" (and its button disabled) while
         // it's actually active - matching billing.plan alone isn't enough.
-        // A canceled or past_due subscription still has its old plan
-        // recorded (deliberately preserved as history, not cleared), so
-        // without this check a tenant who canceled Pro would see "Pro -
-        // Current plan" as a disabled button with no way back in, even
-        // though they have no active subscription at all (a real gap
-        // found live-testing the real Stripe cancellation flow for the
-        // first time - the stub era never produced a canceled-but-still-
-        // recorded-as-pro state to expose this).
-        const isCurrent = currentPlan === plan.id && currentStatus === 'active';
-        // Selecting "free" means "downgrade my active paid subscription" -
-        // it redirects to the Stripe Billing Portal, which only has
-        // something to do when a real subscription (active or past_due,
-        // i.e. Stripe still considers it live) exists. Once a
-        // subscription is fully canceled there's nothing left to manage
-        // there - found live, immediately after fixing the "Pro" button
-        // above: canceling, then clicking "Free" again, bounced to an
-        // empty Portal page with nothing to cancel.
-        const nothingToDowngrade = plan.id === 'free' && currentStatus === 'canceled';
-        const disabled = isCurrent || nothingToDowngrade;
+        // A past_due subscription still has its old plan recorded
+        // (deliberately preserved, not cleared), so without the status
+        // check a past-due Pro tenant would see "Pro - Current plan" as a
+        // disabled button with no way back in. A fully canceled
+        // subscription instead resets currentPlan to null server-side
+        // (stripe-provider.js's resetToFree) - normalized to 'free' here
+        // since that's the same resting state as a tenant with no billing
+        // history at all.
+        const effectivePlan = currentPlan ?? 'free';
+        const isCurrent = effectivePlan === plan.id && currentStatus === 'active';
+        const disabled = isCurrent;
         return (
           <Card key={plan.id} withBorder padding="md">
             <Group justify="space-between">
@@ -114,7 +106,7 @@ export function PlanSelector({
                 style={disabled ? undefined : brandButtonStyle}
                 onClick={() => handleSelectPlan(plan.id)}
               >
-                {isCurrent ? 'Current plan' : nothingToDowngrade ? 'Nothing to cancel' : 'Select'}
+                {isCurrent ? 'Current plan' : 'Select'}
               </Button>
             </Group>
           </Card>
