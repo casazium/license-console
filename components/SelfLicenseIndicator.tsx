@@ -138,6 +138,54 @@ export async function SelfLicenseIndicator({ tenantApiKey }: { tenantApiKey?: st
     );
   }
 
+  // 'misconfigured' and 'load-error' both mean a call-home was never
+  // attempted at all - they used to fall into the same "check-in
+  // failed" branch below, which is inaccurate for either (no check-in
+  // was ever made to fail) and actively misleading for 'misconfigured'
+  // specifically: a final build (casazium/license PROJECT_STATUS.md
+  // §192, LICENSE §8) deliberately runs with no SELF_LICENSE_KEY set,
+  // which reports this exact outcome forever, by design - not a
+  // transient problem. Neutral (not red-alarm) styling here, since this
+  // state is equally reachable by an operator who genuinely forgot to
+  // configure a real Tier-B key or whose persistent volume isn't
+  // mounted (ensureInstanceKey's own failure path also reports
+  // 'misconfigured') - the error text still surfaces that case, just
+  // without implying an ongoing, actively-failing connection.
+  if (lastOutcome.outcome === 'misconfigured') {
+    return (
+      <Group gap="xs" mb="md">
+        <Badge color="gray" variant="light">
+          Self-license: not active
+        </Badge>
+        <Text size="xs" c="dimmed">
+          {formatDateTime(lastOutcome.at)}
+          {lastOutcome.error ? `: ${lastOutcome.error}` : ''}
+        </Text>
+      </Group>
+    );
+  }
+
+  // 'load-error' - the native module file is present but failed to
+  // load (a broken build, not a missing/wrong key) - unlike
+  // 'misconfigured' above, this has no benign explanation, so it keeps
+  // the red alarm styling.
+  if (lastOutcome.outcome === 'load-error') {
+    return (
+      <Group gap="xs" mb="md">
+        <Badge color="red" variant="light">
+          Self-license module failed to load
+        </Badge>
+        <Text size="xs" c="dimmed">
+          {formatDateTime(lastOutcome.at)}
+          {lastOutcome.error ? `: ${lastOutcome.error}` : ''}
+        </Text>
+      </Group>
+    );
+  }
+
+  // lastOutcome.outcome === 'failure' - a real call-home attempt was
+  // made and failed (attemptCallHome()'s own catch block) - this is the
+  // only outcome where "check-in failed" is actually accurate.
   return (
     <Group gap="xs" mb="md">
       <Badge color="red" variant="light">

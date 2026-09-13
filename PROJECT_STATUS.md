@@ -1,7 +1,23 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-13 (§103: fixed
+Last updated: 2026-09-13 (§104: checked
+this repo for impact from `casazium/license`'s new LICENSE §8
+final-build commitment. The mechanism itself (`SELF_LICENSE_OVERLAY=
+tier-b`, `SELF_LICENSE_KEY` unset) needs no console change - but found
+and fixed a real gap in `SelfLicenseIndicator.tsx`: its catch-all
+branch rendered a red "Self-license check-in failed" badge for the
+backend's `outcome: 'misconfigured'`/`'load-error'` states, neither of
+which is actually a failed check-in (no call-home was ever attempted
+in either case) - and `'misconfigured'` specifically is exactly what a
+final build reports forever, by design, not a transient problem. Gave
+each outcome its own accurate branch: `'misconfigured'` now reads
+"Self-license: not active" with neutral styling, `'load-error'` keeps
+red-alarm styling (a genuinely broken build) with accurate wording,
+`'failure'` alone keeps "check-in failed" (the only outcome where a
+real call-home attempt actually failed). `typecheck`/`lint` both clean.
+See §104 below.)
+2026-09-13 (§103: fixed
 a stray backslash on `laster-console`'s launchd plist's DOCTYPE line
 (`dtd"\>` instead of `dtd">`) - harmless to `plutil`/launchd but broke
 strict XML parsers like Python's `plistlib`. Walked through
@@ -6454,4 +6470,63 @@ there was nothing else to check.
 
 Nothing - fixed, verified four ways, and the running service was never
 touched.
+
+## 104. Checked for console-side impact from `casazium/license`'s new LICENSE §8 final-build commitment (2026-09-13)
+
+`casazium/license` added a shutdown commitment (`LICENSE` §8, commit
+`029be5f`) and then verified and documented the actual final-build
+procedure (`PROJECT_STATUS.md` §192, `DEPLOYMENT.md`, commit `131fdfd`
+there): building the existing `SELF_LICENSE_OVERLAY=tier-b` Docker
+image and running it with `SELF_LICENSE_KEY` unset already satisfies
+both halves of the commitment (Tier-A gate exempt, no MLS call-home
+ever attempted) - no new build flag, no new runtime behavior on that
+side.
+
+Checked whether any of that reaches this repo. Mostly not, but found
+one real gap:
+
+- `PlanSelector.tsx`'s billing/plan UI and the license-client
+  dispatchers are unaffected - the final build is a distribution
+  artifact for a departing self-hosted licensee, not a hosted-tenant
+  billing state this console's own SaaS UI would ever need to reflect.
+- `TierAStatusIndicator.tsx` already handles this correctly:
+  `inspectTierALicense()` returns `{applicable: false, reason:
+  'tier-b'}` for any Tier-B-shaped backend (a final build included),
+  and the component renders nothing for `applicable: false` - no
+  misleading Tier-A badge.
+- **`SelfLicenseIndicator.tsx` does not handle this correctly.** Its
+  final catch-all branch (anything that isn't `outcome: 'success'`,
+  `outcome: 'restored'`, or no outcome at all) renders a red "Self-
+  license check-in failed" badge with the raw error text. A final
+  build's backend reports `{tier: 'tier-b', lastOutcome: {outcome:
+  'misconfigured', error: 'SELF_LICENSE_KEY is not set'}}` forever, by
+  design (`casazium/license` `PROJECT_STATUS.md` §192) - so if a
+  departing licensee's console is ever pointed at their own final-build
+  instance, this dashboard would show a permanent red "check-in failed"
+  badge for what is actually the correct, intended, permanent state,
+  not a transient problem needing attention.
+
+**Fixed** (`components/SelfLicenseIndicator.tsx`), operator confirmed:
+`outcome === 'misconfigured'` and `outcome === 'load-error'` each got
+their own branch instead of falling into the generic failure case.
+`'misconfigured'` (SELF_LICENSE_KEY unset, or ensureInstanceKey's own
+volume-not-mounted failure - both real call sites for this outcome in
+`self-license-client.js`) now renders "Self-license: not active" with
+neutral gray styling rather than a red alarm, since it's equally
+reachable by a deliberate final build or a genuine misconfiguration and
+no longer implies an actively-failing connection either way; the error
+text still surfaces the specific reason for anyone checking.
+`'load-error'` (the native module present but failing to load - a
+genuinely broken build, no benign explanation) keeps red-alarm styling,
+just with accurate wording ("module failed to load", not "check-in
+failed"). `'failure'` (a real call-home attempt that actually failed)
+is the only remaining case that says "check-in failed" - now
+accurately, since that's the only outcome where one was actually
+attempted. `npm run typecheck` and `npm run lint` both clean; no
+existing test file for this component to update.
+
+### What's still open
+
+Nothing - fixed and verified (typecheck/lint clean); no test file
+existed for this component to add coverage to.
 
