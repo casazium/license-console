@@ -1,7 +1,24 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-11 (§101: four
+Last updated: 2026-09-13 (§102:
+registered a new self-hosted runner, `laster-console`, and moved
+`test.yml`'s `test` job onto it - part of an org-wide fix for GitHub
+Actions minutes (~98% of the included 2,000 used in September 2026).
+`casazium/license`'s own `laster` runner is registered to that repo
+only, so this repo needed its own instance: walked through
+interactively with the operator on their actual Mac (copying
+`~/actions-runner` with `bin`/`externals` fixed from absolute to
+relative symlinks, registering via a repo-level token, a new launchd
+plist with `DOCKER_CONFIG` dropped), confirmed online before touching
+the workflow. The header comment's old "hosted runner is simpler,
+lower-privilege" rationale is replaced with the same
+`pull_request`-on-self-hosted trade-off `casazium/license`'s own
+`test.yml` already documents. Verified via a real push-to-`main` run
+(not just `actionlint`) confirming `test` ran on `laster-console`.
+Companion `casazium/license` work self-documented in its own
+`PROJECT_STATUS.md` §190. See §102 below for full detail.)
+2026-09-11 (§101: four
 real bugs found live-testing §100's Stripe integration for the first
 time, in order: (1) "Pro" stayed a disabled "Current plan" after
 cancellation, since the button logic ignored subscription status and
@@ -6318,4 +6335,77 @@ so none needed updating for any of these four UI-only changes. Live-
 verified end to end against the operator's actual production deployment
 after #4's second (Flexible-billing-mode) backend fix landed: the
 banner rendered correctly with the right access-ends date.
+
+## 102. New self-hosted runner `laster-console`; `test` job moved off GitHub-hosted minutes (2026-09-13)
+
+The `casazium` org used ~98% of its included 2,000 monthly GitHub
+Actions minutes in September 2026 (mostly `casazium/stored`, addressed
+separately). Part of the org-wide fix: `casazium/license` already runs
+its own CI on a self-hosted Mac runner (`laster`), but that runner is
+registered to that repo only - this repo needed its own instance to do
+the same for its `.github/workflows/test.yml` `test` job (Vitest,
+typecheck, lint, build - no Playwright, no Docker).
+
+### Registering `laster-console`
+
+Landed after `#31` (a workflow-level `concurrency` group cancelling a
+PR's superseded runs, `run_id`-keyed for `main` pushes so they're never
+cancelled) had already merged. Walked through interactively with the
+operator on their own Mac, since this session cannot execute commands
+there directly:
+
+- **Folder**: `rsync -a` from `casazium/license`'s `~/actions-runner`,
+  excluding `.runner`, `.credentials`/`.credentials_rsaparams`,
+  `.docker`, `_work`, `_diag`. `bin`/`externals` turned out to be
+  *absolute* symlinks to sibling `bin.2.337.0`/`externals.2.337.0`
+  directories (the runner's own versioned self-update layout) -
+  recreated as *relative* symlinks pointing within the new
+  `~/actions-runner-console` folder instead of carrying the absolute
+  ones over unchanged (which would have resolved back to the original
+  `~/actions-runner`, the exact failure mode an earlier copy attempt
+  hit).
+- **Registration**: a repo-level token
+  (`gh api -X POST repos/casazium/license-console/actions/runners/registration-token`),
+  then `./config.sh --unattended --name laster-console --labels
+  self-hosted,macOS,ARM64`.
+- **Service**: a new launchd plist, copied from `laster`'s own with the
+  label, `ProgramArguments`/`WorkingDirectory` (→
+  `~/actions-runner-console`), and log paths changed - `DOCKER_CONFIG`
+  dropped entirely, since this runner never logs in to a registry.
+  Loaded via `launchctl load`, not `svc.sh install` (which would
+  regenerate the plist and drop `KeepAlive`/`ThrottleInterval`).
+- Confirmed online (`gh api repos/casazium/license-console/actions/runners`
+  → `status: "online"`, correct `self-hosted, macOS, ARM64` labels)
+  before touching the workflow.
+
+### The workflow change
+
+`test.yml`'s `test` job → `runs-on: [self-hosted, macOS, ARM64]`. The
+header comment previously said a GitHub-hosted runner was "the simpler,
+lower-privilege choice" for this repo specifically because it has no
+Playwright/build-hardware needs unlike `casazium/license` - rewritten to
+record why that's no longer the deciding factor (GitHub Actions minutes
+are, org-wide) and to carry the same accepted trade-off
+`casazium/license`'s own `test.yml` already documents: this job runs on
+`pull_request`, and a self-hosted runner executes workflow code directly
+on real hardware with no sandbox - accepted while this repo is private
+(no public-fork PR exposure) and single-operator; revisit if either
+changes.
+
+### Verified
+
+`actionlint` clean. Pushed on explicit operator instruction; the
+resulting push-to-`main` run confirmed directly, not assumed - run
+`34784163371`'s `test` job ran on `laster-console`, all steps
+(checkout, Node setup, install, typecheck, lint, test, build) green.
+Companion `casazium/license` work (self-documented in its own
+`PROJECT_STATUS.md` §190): moved `publish-image` to `laster` and
+evaluated (but left alone) `publish-sea.yml`'s two release jobs,
+documented `laster` there for the first time, and bumped
+`actions/checkout`/`actions/setup-node` to v4.
+
+### What's still open
+
+Nothing - registered, running, moved, pushed, and confirmed via a real
+CI run on the new runner.
 
