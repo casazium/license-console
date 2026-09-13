@@ -1,7 +1,18 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-13 (§102:
+Last updated: 2026-09-13 (§103: fixed
+a stray backslash on `laster-console`'s launchd plist's DOCTYPE line
+(`dtd"\>` instead of `dtd">`) - harmless to `plutil`/launchd but broke
+strict XML parsers like Python's `plistlib`. Walked through
+interactively on the operator's own Mac, verifying each step: confirmed
+the defect, backed up the file, fixed only that one character on that
+one line, then verified via `plutil -lint`, a successful `plistlib.load`
+reporting the correct settings, and a `diff` against the backup showing
+only that line changed. Deliberately did not reload the running service -
+the fix touches only the XML header, not any actual setting. See §103
+below for full detail.)
+2026-09-13 (§102:
 registered a new self-hosted runner, `laster-console`, and moved
 `test.yml`'s `test` job onto it - part of an org-wide fix for GitHub
 Actions minutes (~98% of the included 2,000 used in September 2026).
@@ -6408,4 +6419,39 @@ documented `laster` there for the first time, and bumped
 
 Nothing - registered, running, moved, pushed, and confirmed via a real
 CI run on the new runner.
+
+## 103. Fixed a malformed DOCTYPE line in `laster-console`'s launchd plist (2026-09-13)
+
+`~/Library/LaunchAgents/actions.runner.casazium-license-console.laster-console.plist`
+had a stray backslash at the end of its DOCTYPE line (`dtd"\>` instead of
+`dtd">`) - likely an escaping mistake from whichever step generated the
+file. Not breaking anything: `plutil -lint` passed and launchd loaded it
+fine, since Apple's own plist parser tolerates it. But a strict XML
+parser doesn't - confirmed directly, `python3`'s `plistlib.load` failed
+with `not well-formed (invalid token): line 2, column 101` - so any tool
+or check that reads runner plists that way would crash specifically on
+this one. The other four runner plists on the Mac (`laster`,
+`laster-casazium`, `laster-stored`, `laster-stored-mutate`) don't have
+this problem.
+
+Walked through interactively with the operator on their own Mac, since
+this session cannot execute commands there directly, verifying each
+step before moving on: confirmed the defect first (`sed -n 2p`), backed
+up the file (`cp ... .plist.bak-20260913-181613`), removed only the
+backslash on only that line (`sed -i '' '2s|dtd"\\>|dtd">|'`), then
+verified `plutil -lint` reports OK, `plistlib.load` now parses and
+reports the correct `Label`/`KeepAlive`/`ThrottleInterval`/
+`WorkingDirectory`, and `diff` against the backup shows only that one
+line changed. Deliberately did not reload the launchd service - the fix
+only changes the XML header, not any actual setting, so the already-running
+service was already correct; reloading it needlessly risks killing an
+in-progress job. Checked this repo's own runner documentation
+(`test.yml`'s header comment, §102 above) for embedded plist contents
+that might carry the same bug - neither shows a literal plist, so
+there was nothing else to check.
+
+### What's still open
+
+Nothing - fixed, verified four ways, and the running service was never
+touched.
 
