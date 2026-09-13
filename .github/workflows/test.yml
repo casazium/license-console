@@ -15,6 +15,14 @@ on:
   pull_request:
     branches: [main]
 
+# A new push to a PR cancels that PR's still-running CI: only the latest
+# commit's result matters, and the org's included Actions minutes are
+# finite (2026-09-13, 90% used). Pushes to main get a unique group
+# (run_id), so they are never cancelled or dropped from the queue.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
