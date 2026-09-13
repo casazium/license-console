@@ -4,11 +4,23 @@ name: Test
 # suite (added the same session as this workflow - see PROJECT_STATUS.md
 # §92) had no CI running it at all, and its own `npm test` was watch-mode
 # by default (never terminated non-interactively) until this same pass
-# fixed it to `vitest run`. Standard GitHub-hosted runner, unlike
-# casazium/license's own self-hosted-Mac test.yml - this app has no
-# Playwright e2e suite committed (only ad hoc manual smoke tests, never
-# checked in) and no build step needing that hardware, so a hosted runner
-# is the simpler, lower-privilege choice here.
+# fixed it to `vitest run`.
+#
+# 2026-09-13: moved from a GitHub-hosted runner to a dedicated self-hosted
+# Mac runner (`laster-console`) to cut GitHub Actions minutes - the org
+# hit ~98% of its included 2,000 monthly minutes in September 2026. This
+# app has no Playwright e2e suite (only ad hoc manual smoke tests, never
+# checked in) and no build step needing Apple Silicon, so a hosted runner
+# was originally the simpler, lower-privilege choice here - `laster`
+# (casazium/license's own runner) is registered to that repo only, so
+# this needed its own separate instance, `laster-console`, in
+# `~/actions-runner-console` on the same Mac. Same deliberate trade-off
+# as casazium/license's test.yml: this job runs on pull_request, and a
+# self-hosted runner executes workflow code directly on real hardware
+# with no sandbox - anyone with push/PR access to this repo can now run
+# code on the operator's Mac. Accepted because casazium/license-console
+# is private (no public-fork PR exposure) and single-operator today;
+# revisit if that ever changes (e.g. outside collaborators added).
 on:
   push:
     branches: [main]
@@ -25,7 +37,7 @@ concurrency:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, macOS, ARM64]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
