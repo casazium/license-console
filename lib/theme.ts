@@ -49,6 +49,26 @@ export const theme = createTheme({
       '#0b0a08',
       '#050504',
     ],
+    // Overrides Mantine's own stock gray (a cool blue-grey) with the
+    // design system's warm greys, at the same index positions Mantine's
+    // defaults use - `c="dimmed"` (VersionStamp, BrandCopyright, and
+    // every other dimmed Text in the app) resolves to gray[6] in light
+    // mode via Mantine's own --mantine-color-dimmed variable, which
+    // otherwise would have kept reading as Mantine's default gray no
+    // matter what "ink" above is set to - unlike primaryColor, dimmed
+    // text doesn't go through primaryColor at all.
+    gray: [
+      '#f7f6f3', // --cz-paper
+      '#f2f0ec', // --cz-paper-2
+      '#e0ded7', // --cz-rule
+      '#c9c6bb', // --cz-rule-strong
+      '#a5a294', // --cz-on-dark-3
+      '#8a8676', // --cz-on-dark-4
+      '#6b6858', // --cz-muted - shade 6, what c="dimmed" actually resolves to
+      '#5b584c', // --cz-ink-3
+      '#43413a', // --cz-ink-2
+      '#16150f', // --cz-ink
+    ],
   },
   primaryColor: 'ink',
   primaryShade: { light: 6, dark: 6 },
