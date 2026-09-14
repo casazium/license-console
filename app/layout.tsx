@@ -9,6 +9,7 @@ import { ColorSchemeScript, MantineProvider, mantineHtmlProps } from '@mantine/c
 import { Notifications } from '@mantine/notifications';
 import { getBranding } from '@/lib/branding';
 import { getSession } from '@/lib/session';
+import { theme } from '@/lib/theme';
 
 // A function, not a static object: reads branding per-request (via
 // getBranding()) so a changed BRANDING_FAVICON_URL takes effect without a
@@ -55,7 +56,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         color-scheme script.
       */}
       <body style={brandColorStyle} suppressHydrationWarning>
-        <MantineProvider>
+        <MantineProvider theme={theme}>
           <Notifications />
           {children}
         </MantineProvider>

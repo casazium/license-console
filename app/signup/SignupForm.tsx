@@ -52,7 +52,7 @@ export function SignupForm() {
   }
 
   return (
-    <Card withBorder shadow="sm" padding="lg" w={360}>
+    <Card withBorder shadow="none" padding="lg" maw={360} w="100%">
       <form onSubmit={form.onSubmit(handleSubmit)} noValidate>
         <Stack>
           <TextInput label="Company / organization" autoFocus {...form.getInputProps('tenantName')} />

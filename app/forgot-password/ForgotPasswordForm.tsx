@@ -48,7 +48,7 @@ export function ForgotPasswordForm() {
 
   if (sent) {
     return (
-      <Card withBorder shadow="sm" padding="lg" w={360}>
+      <Card withBorder shadow="none" padding="lg" maw={360} w="100%">
         <Alert color="blue" title="Check your email">
           If that email is registered, we&apos;ve sent a link to reset your password.
         </Alert>
@@ -57,7 +57,7 @@ export function ForgotPasswordForm() {
   }
 
   return (
-    <Card withBorder shadow="sm" padding="lg" w={360}>
+    <Card withBorder shadow="none" padding="lg" maw={360} w="100%">
       <form onSubmit={form.onSubmit(handleSubmit)} noValidate>
         <Stack>
           <Text size="sm" c="dimmed">
