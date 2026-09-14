@@ -3,10 +3,15 @@ import { getDb } from './db';
 
 const DEFAULT_TITLE_HTML = 'License Console';
 
-// Mantine's default primary blue (blue.6) - used whenever BRANDING_COLOR is
-// unset, so `var(--brand-color)` always resolves to something reasonable
-// without requiring operators to write CSS fallback syntax themselves.
-const DEFAULT_COLOR = '#228be6';
+// The redesign's --cz-ink token (casazium/casazium's shared/styles/
+// shell.css) - used whenever BRANDING_COLOR is unset, so `var(--brand-color)`
+// always resolves to something reasonable without requiring operators to
+// write CSS fallback syntax themselves. Was Mantine's default primary blue
+// (#228be6) until this default was changed to match casazium.com's 2026-09
+// redesign (lib/theme.ts's own header comment has the full rationale) -
+// an operator who has already set BRANDING_COLOR themselves is completely
+// unaffected, since that value always wins over this default.
+const DEFAULT_COLOR = '#16150f';
 
 export type Branding = {
   logoUrl: string | null;

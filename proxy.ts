@@ -94,6 +94,15 @@ export async function proxy(request: NextRequest) {
 // the exclusion it matched the catch-all, failed the session check, and
 // 307'd to /login - confirmed live on both instances, which meant neither
 // served crawl directives at all (see app/robots.ts).
+//
+// fonts/img (redesign work, PROJECT_STATUS.md): same reasoning exactly -
+// public/ held nothing but a .gitkeep before the self-hosted IBM Plex fonts
+// and logo mark were added, so this matcher never had to account for real
+// static assets living there. Without this exclusion, /fonts/*.woff2
+// 307'd to /login the same way robots.txt used to - confirmed live via a
+// direct curl - which broke the login page's own fonts, since a page whose
+// entire job is being reachable pre-session can't depend on an asset the
+// session gate itself blocks.
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|robots.txt).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|robots.txt|fonts|img).*)'],
 };
