@@ -93,7 +93,10 @@ export function PlanSelector({
             <Group justify="space-between">
               <Stack gap={0}>
                 <Text fw={600}>
-                  {plan.label} · {plan.priceLabel}
+                  {plan.label} ·{' '}
+                  <Text component="span" fw={600} ff="monospace" fz="sm">
+                    {plan.priceLabel}
+                  </Text>
                 </Text>
                 <Text size="sm" c="dimmed">
                   {plan.limitDescription}

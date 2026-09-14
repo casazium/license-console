@@ -59,17 +59,29 @@ export function AppShellClient({
     router.refresh();
   }
 
+  // Same treatment as casazium.com's marketing nav (HOMEPAGE-SPEC.md
+  // section 2): a flat hairline instead of Mantine's default shadow, no
+  // filled background behind the active link - only ink vs ink-3 (see
+  // "backgroundColor: transparent" below, which overrides Mantine's own
+  // light-variant active fill).
+  const shellSurfaceStyle = { backgroundColor: 'var(--cz-paper)', boxShadow: 'none' };
+
   return (
     <AppShell
       header={{ height: 60 }}
       navbar={{ width: 220, breakpoint: 'sm', collapsed: { mobile: !opened } }}
       footer={{ height: 36 }}
       padding="md"
+      styles={{
+        header: { ...shellSurfaceStyle, borderBottom: '1px solid var(--cz-rule)' },
+        navbar: { ...shellSurfaceStyle, borderRight: '1px solid var(--cz-rule)' },
+        footer: { ...shellSurfaceStyle, borderTop: '1px solid var(--cz-rule)' },
+      }}
     >
       <AppShell.Header>
         <Group h="100%" px="md" justify="space-between">
           <Group gap="xs">
-            <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
+            <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" color="var(--cz-ink)" />
             <BrandLogo logoUrl={branding.logoUrl} linkUrl={branding.logoLinkUrl} size={28} />
           </Group>
           <Button variant="subtle" style={brandTextButtonStyle} onClick={handleSignOut}>
@@ -78,15 +90,21 @@ export function AppShellClient({
         </Group>
       </AppShell.Header>
       <AppShell.Navbar p="md">
-        {navItems.map((item) => (
-          <NavLink
-            key={item.href}
-            component={Link}
-            href={item.href}
-            label={item.label}
-            active={pathname.startsWith(item.href)}
-          />
-        ))}
+        {navItems.map((item) => {
+          const active = pathname.startsWith(item.href);
+          return (
+            <NavLink
+              key={item.href}
+              component={Link}
+              href={item.href}
+              label={item.label}
+              active={active}
+              c={active ? 'var(--cz-ink)' : 'var(--cz-ink-3)'}
+              fw={active ? 500 : 400}
+              styles={{ root: { backgroundColor: 'transparent' } }}
+            />
+          );
+        })}
       </AppShell.Navbar>
       <AppShell.Main>
         {showEmailVerificationBanner && <EmailVerificationBanner />}
