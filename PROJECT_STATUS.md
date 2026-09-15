@@ -1,7 +1,17 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-13 (§104: checked
+Last updated: 2026-09-15 (§105: aligned
+the console with casazium.com's 2026-09 redesign across three merged
+PRs - Mantine themed with the redesign's tokens (IBM Plex, radius
+scale, zeroed shadows) rather than replaced, DEFAULT_COLOR changed to
+the ink token (BRANDING_COLOR overrides unaffected), a shared
+AuthShell extracted from four duplicated pre-auth pages, the dashboard
+app shell and PlanSelector retthemed, two real bugs found and fixed
+along the way (a static-asset auth-gate gap, a double-nested/
+fixed-width form card) - and bumped the version to 1.0.0 (stuck at
+0.1.0, no tags, since the first commit). See §105 below.)
+2026-09-13 (§104: checked
 this repo for impact from `casazium/license`'s new LICENSE §8
 final-build commitment. The mechanism itself (`SELF_LICENSE_OVERLAY=
 tier-b`, `SELF_LICENSE_KEY` unset) needs no console change - but found
@@ -6529,4 +6539,55 @@ existing test file for this component to update.
 
 Nothing - fixed and verified (typecheck/lint clean); no test file
 existed for this component to add coverage to.
+
+## 105. Aligned the console with casazium.com's 2026-09 redesign; version bumped to 1.0.0 (2026-09-14/15)
+
+Three PRs, all merged directly by the operator shortly after opening:
+
+- **#32 - theme + pre-auth pages.** `lib/theme.ts` (new) themes Mantine
+  with the redesign's tokens (IBM Plex fonts, the design system's radius
+  scale, zeroed shadows) rather than replacing Mantine. `lib/branding.ts`'s
+  `DEFAULT_COLOR` changed from Mantine's stock blue to the redesign's ink
+  token - only the default; `BRANDING_COLOR` still overrides it exactly as
+  before, so self-hosted white-label deployments are unaffected. Extracted
+  `components/AuthShell.tsx` from markup previously hand-duplicated across
+  all four pre-auth pages (login/signup/forgot-password/reset-password).
+  Self-hosted the IBM Plex font files and logo marks from
+  `casazium/casazium`'s own verified sources (checksums confirmed to
+  match) into `public/fonts`/`public/img`. Two real bugs found and fixed
+  in the process: `proxy.ts`'s auth-gate matcher had never had to account
+  for real static assets (`public/` held only a `.gitkeep` before this),
+  so `/fonts/*.woff2` 307'd to `/login` exactly like `robots.txt` used to
+  before its own fix - broke the login page's own fonts until fixed; and
+  each pre-auth form's own `Card` was a fixed `w={360}` with its own
+  shadow, which combined with a redundant wrapping `Paper` in the first
+  `AuthShell` draft produced a double-bordered, overflowing box at 360px -
+  fixed by removing the redundant wrapper and making the existing cards
+  fluid (`maw={360} w="100%"`, shadow removed). Verified live in a browser
+  at 360/768/1280px via a dev server + Playwright.
+- **#33 - dashboard app shell + billing cards.** `AppShellClient.tsx`:
+  paper background, hairline borders instead of Mantine's default shadow,
+  no filled background behind the active nav link. `lib/theme.ts` gained a
+  warm-gray override for Mantine's `colors.gray` scale, since `c="dimmed"`
+  text (used everywhere, including `VersionStamp`/`BrandCopyright`, both
+  also switched to mono per the design system's own rule for dates/
+  versions/copyright) resolves through `gray`, not `primaryColor` - it was
+  still reading as Mantine's stock cool gray despite the ink theme from
+  #32. `PlanSelector.tsx`'s price now renders in mono; its card styling
+  already came for free from #32's `Card` component defaults. App shell
+  verified live in a browser; `PlanSelector` verified by typecheck/lint
+  and code review only (reaching `/billing` needs a full multi-tenant
+  signup flow not set up for what's a small, mechanical change).
+- **#34 - version bump to 1.0.0.** `package.json`'s version had been stuck
+  at `0.1.0` since the very first commit - no git tags exist in this repo
+  at all - despite shipping full auth, live Stripe billing, and now this
+  redesign. `lib/version.ts`'s `VersionStamp` footer reads this directly,
+  so this is what was actually showing "v0.1.0" in the console's own UI.
+
+### What's still open
+
+Nothing outstanding from this work. The branding tension raised while
+scoping `casazium/license`'s end-user-portal task (see that repo's
+`TASK_A1_LICENSE_PORTAL.md`) is a separate, future decision, not part of
+this entry.
 
