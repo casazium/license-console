@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession, revokeAccountSessions, SESSION_COOKIE_NAME } from '@/lib/session';
 import { isMultiTenant, isSameOrigin } from '@/lib/config';
+import { getAccountEmail } from '@/lib/auth';
+import { getNotificationProvider } from '@/lib/notifications';
 
 export async function POST(request: NextRequest) {
   // Security review finding (third-party audit, R3-review-lows): this
@@ -32,11 +34,29 @@ export async function POST(request: NextRequest) {
   // account id) - matches every other SaaS-only behavior in this repo
   // in being gated behind isMultiTenant(), not attempted and silently
   // no-op'd.
-  if (isMultiTenant()) {
-    const session = await getSession();
-    if (session) {
-      revokeAccountSessions(session.id);
-    }
+  // Operator notification (TASK_ACCOUNT_NOTIFICATIONS.md) - reads the
+  // session unconditionally (both modes), not just under isMultiTenant()
+  // as this route used to. Session revocation genuinely only applies to
+  // SaaS (self-hosted has no accounts row to revoke), but a logout
+  // notification is one of only two events self-hosted deployments ever
+  // emit under this task - it must not be gated behind the same check.
+  // Adversarial review verified this is safe to call unconditionally:
+  // getSession() never throws (every failure path is caught inside it)
+  // and a null return (no/expired/invalid cookie) doesn't block anything
+  // below - cookie deletion proceeds either way.
+  const session = await getSession();
+
+  if (isMultiTenant() && session) {
+    revokeAccountSessions(session.id);
+  }
+
+  if (session) {
+    const logoutIdentity = session.mode === 'saas' ? (getAccountEmail(session.id) ?? session.id) : session.id;
+    getNotificationProvider()
+      .notify({ type: 'logout', email: logoutIdentity })
+      .catch((err) => {
+        console.error(`Failed to send logout notification for account ${session.id}:`, err);
+      });
   }
 
   const response = NextResponse.json({ ok: true });

@@ -16,6 +16,7 @@ import {
 } from '@/lib/session';
 import { requireSessionWithTenantKey, markIfTenantRejected } from '@/lib/tenant-context';
 import { isRateLimited } from '@/lib/errors';
+import { getNotificationProvider } from '@/lib/notifications';
 
 // Same values and reasoning as signup/route.ts and reset-password/route.ts's
 // identical constants - no shared constants module in this codebase
@@ -105,6 +106,21 @@ export async function deleteAccountAction(password: string): Promise<DeleteAccou
     db.prepare('DELETE FROM accounts WHERE id = ?').run(identity.id);
   });
   deleteLocalRows();
+
+  // Operator notification (TASK_ACCOUNT_NOTIFICATIONS.md) - fire-and-
+  // forget, must not block or fail this redirect. Deliberately the
+  // opaque account id only, never the email - see provider.ts's own doc
+  // comment: a plaintext email in a permanent Discord message would
+  // outlive this app's "permanently deleted, cannot be recovered"
+  // promise for hosted accounts. Fired after deleteLocalRows() commits
+  // (both the license-server-side and local deletions have already
+  // succeeded by this point - deleteAccountOnServer above throws on
+  // failure, so this line is only reached on a real, complete deletion).
+  getNotificationProvider()
+    .notify({ type: 'account.deleted', accountId: identity.id })
+    .catch((err) => {
+      console.error(`Failed to send account.deleted notification for account ${identity.id}:`, err);
+    });
 
   const store = await cookies();
   store.delete(SESSION_COOKIE_NAME);

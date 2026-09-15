@@ -1,7 +1,19 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-15 (§105: aligned
+Last updated: 2026-09-15 (§106: built
+operator notifications (account.created/account.deleted/login/logout) as
+an optional Discord webhook, corrected after an adversarial review found
+a real injection vulnerability, a failure-handling gap, and a
+misattributed call site - all fixed before implementation. A further,
+real deviation found during the build itself: the new module had to be
+renamed lib/notify/ -> lib/notifications/ after tsc caught it silently
+losing module resolution to an unrelated, pre-existing lib/notify.ts.
+Verified live: the escaping logic against the actual injection string,
+the failure handling against a real unreachable webhook and a real 404
+response, and a full clean build/lint/typecheck. Live Discord webhook
+testing remains the operator's own next step. See §106 below.)
+2026-09-15 (§105: aligned
 the console with casazium.com's 2026-09 redesign across three merged
 PRs - Mantine themed with the redesign's tokens (IBM Plex, radius
 scale, zeroed shadows) rather than replaced, DEFAULT_COLOR changed to
@@ -6590,4 +6602,76 @@ Nothing outstanding from this work. The branding tension raised while
 scoping `casazium/license`'s end-user-portal task (see that repo's
 `TASK_A1_LICENSE_PORTAL.md`) is a separate, future decision, not part of
 this entry.
+
+## 106. Built operator notifications for account/session events (`TASK_ACCOUNT_NOTIFICATIONS.md`), corrected after an adversarial review, then a real naming collision found by `tsc` during implementation (2026-09-15)
+
+Operator asked to be notified of `account.created`/`account.deleted`/
+`login`/`logout` events, on any deployment mode (Casazium's own SaaS
+resource, or a self-hosted Tier A/B customer's own console), by something
+"simple and optional" - settled in conversation on a Discord webhook,
+mirroring this repo's own `EmailProvider` pattern (stub default, one env
+var to enable a real implementation).
+
+An adversarial review (a separate Opus pass with real tool access,
+instructed to verify every claim against actual code) found the first
+scope draft's central design sound but three real defects before any code
+was written: a genuine Discord-markdown injection vulnerability via the
+unescaped signup email (the draft's own non-goals wrongly ruled out
+fixing it), a failure-handling claim that doesn't hold since plain
+`fetch()` doesn't reject on HTTP error responses (a Discord 429/401/404
+would have been silently swallowed), and an `account.created` call site
+cited inside the wrong `try`/`catch`, which would have misattributed a
+notification failure as a signup failure. All three fixed in the rewrite
+before implementation began - see `TASK_ACCOUNT_NOTIFICATIONS.md`'s own
+revision note for the full record.
+
+**Built exactly as the corrected scope doc specified**, with one further,
+real deviation found during implementation itself: `lib/notify.ts`
+already existed in this repo (an unrelated, pre-existing Mantine-toast
+helper used across several settings/licenses/billing components), and it
+silently won Node's module resolution over the new `lib/notify/index.ts`
+this task tried to add at the same path - every `getNotificationProvider`
+import failed to resolve, caught immediately by `tsc --noEmit` rather
+than at runtime. Fixed by renaming the new module to `lib/notifications/`
+throughout (four provider files, four call-site imports) - not a design
+change, purely a path collision neither the scope doc nor its review
+had reason to anticipate.
+
+**Verified, not just typechecked:**
+
+- The Discord-markdown sanitizer was tested directly against the exact
+  injection string the review found (`a[x](https://evil.example)@b.co`)
+  plus spoilers/bold/strikethrough/code/mentions/channel-refs and a raw
+  Unicode RTL-override character - every case neutralized correctly,
+  confirmed by inspecting the actual escaped output, not just that it ran
+  without throwing.
+- The corrected failure handling was verified against two real HTTP
+  scenarios, not assumed from reading the code: a genuinely unreachable
+  webhook (real `fetch` network-level rejection) and a real local HTTP
+  server returning `404` (simulating a revoked/deleted Discord webhook) -
+  confirmed the provider's `if (!res.ok) throw` actually fires and
+  surfaces the exact status/body, closing the precise gap the review
+  found in the original "plain fetch POST" design.
+- `npx tsc --noEmit`, `npm run lint`, and `npm run build` (Turbopack) all
+  clean - the full production build lists `/api/login`, `/api/logout`,
+  `/api/signup`, and `/settings` among its compiled routes, confirming
+  every wired call site compiles as part of the real app, not in
+  isolation.
+
+**Not yet done, genuinely operator-only:** a live end-to-end test against
+a real Discord webhook (`NOTIFY_WEBHOOK_URL` pointed at an actual server)
+has not been run - this session has no Discord account/webhook to test
+against. Recommend creating a test webhook and exercising all four events
+(signup, login, logout, delete account) once before relying on this in
+production, per `TASK_ACCOUNT_NOTIFICATIONS.md`'s own "what done looks
+like" checklist.
+
+### What's still open
+
+- Live Discord webhook verification (see above) - operator's own next
+  step.
+- The two open questions `TASK_ACCOUNT_NOTIFICATIONS.md` left unresolved
+  (self-hosted admin-username-in-notifications acceptability; whether
+  firing on every login/logout gets too noisy in practice) remain open,
+  not blocking this build.
 

@@ -74,6 +74,19 @@ This matters for self-hosted deployments too, just less acutely — self-hosted 
 docker exec <container> sh scripts/restore-drill-from-b2.sh
 ```
 
+## 7. Operator notifications (optional, `TASK_ACCOUNT_NOTIFICATIONS.md`)
+
+An optional, off-by-default Discord webhook notification for four events: `account.created`, `account.deleted`, `login`, `logout`. Unset by default in every deployment mode, self-hosted included — nothing changes for anyone who doesn't configure it.
+
+**Enabling it:** create a webhook in a Discord server you control (Server Settings → Integrations → Webhooks → New Webhook), then set `NOTIFY_WEBHOOK_URL` to the URL it gives you. That's the only variable — there's no separate provider selector, and no path/destination to configure beyond the URL itself.
+
+**What each event shows:** `account.created`, `login`, and `logout` carry the real account email under `MULTI_TENANT`, or the configured `ADMIN_UI_USERNAME` in self-hosted mode (self-hosted has no per-user accounts at all, so login/logout are the only two of the four events it ever emits — not a gap, just what that mode has). `account.deleted` deliberately shows only the opaque account ID, never an email — this app's own Privacy Policy promises a deleted hosted account is "permanently deleted... and cannot be recovered," and Discord messages don't expire, so a plaintext email in a permanent deletion notification would outlive that promise indefinitely.
+
+**Known, accepted risks:**
+- Self-hosted's `POST /api/logout` doesn't revoke anything (self-hosted has no per-session accounts row to revoke) — a replayed session cookie fires a fresh logout notification each time. Low severity (requires an already-valid, same-origin cookie), but a sustained replay could plausibly trip Discord's own per-webhook rate limit.
+- This is an activity feed, not a security-alerting feature — it only fires on *successful* logins, so a failed brute-force attempt produces no Discord activity at all.
+- If the local account-deletion transaction were to fail after the remote `casazium/license` tenant deletion already succeeded, no `account.deleted` notification fires — a pre-existing gap in that flow's own error handling, not something this feature introduces.
+
 ## Deploying the SaaS-tier instance (SaaS-C1)
 
 Everything above still applies, plus:

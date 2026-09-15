@@ -1,6 +1,17 @@
 # Task scope: operator notifications for account/session events
 
-Status: Scoped, not authorized. Nothing in this document has been built.
+Status: Built, pending a real Discord webhook smoke test. Authorized and
+implemented 2026-09-15. One real deviation from this doc, found during
+implementation: every `lib/notify/*` path below actually lives at
+`lib/notifications/*` instead - `lib/notify.ts` already existed in this
+repo (an unrelated, pre-existing Mantine-toast helper used across several
+components), and it silently won module resolution over a same-named
+directory's `index.ts`, which is why every `getNotificationProvider`
+import failed to resolve until this was caught by `tsc --noEmit`. Every
+other design decision in this document was implemented as scoped,
+including all three adversarial-review corrections (Discord markdown
+escaping + `allowed_mentions`, the `!res.ok` throw, and the corrected
+`account.created` call site).
 
 **Revision note**: second draft. An adversarial review (a separate Opus
 pass with real tool access, instructed to verify every claim against
@@ -174,15 +185,15 @@ either try/catch, its own independent fire-and-forget call.
 
 ## New files (mirroring `lib/email/`'s exact structure)
 
-- `lib/notify/provider.ts` - the `NotificationProvider` interface:
+- `lib/notifications/provider.ts` - the `NotificationProvider` interface:
   `notify(event: NotificationEvent): Promise<void>`, where
   `NotificationEvent` is a discriminated union over the four event names,
   each carrying only the fields that event actually has (no shared
   "identity" shape that's real for three events and awkwardly empty for
   the fourth).
-- `lib/notify/stub-provider.ts` - no-op, matching `stub-provider.ts`'s own
+- `lib/notifications/stub-provider.ts` - no-op, matching `stub-provider.ts`'s own
   minimalism (logs at most, sends nothing).
-- `lib/notify/discord-provider.ts` - plain `fetch` POST to the configured
+- `lib/notifications/discord-provider.ts` - plain `fetch` POST to the configured
   webhook URL, Discord's `embeds` schema, color-coded per event type. No
   SDK dependency, matching `resend-provider.ts`'s own "one endpoint, one
   call shape" reasoning. Must escape user-supplied text and set
@@ -190,7 +201,7 @@ either try/catch, its own independent fire-and-forget call.
   throw on a non-2xx response the same way `resend-provider.ts` does (see
   correction above) - both now required parts of this file's spec, not
   implementation details left to chance.
-- `lib/notify/index.ts` - `getNotificationProvider()`, selecting the stub
+- `lib/notifications/index.ts` - `getNotificationProvider()`, selecting the stub
   (default, whenever `NOTIFY_WEBHOOK_URL` is unset) or the Discord
   provider (whenever it's set) - deliberately **no** fail-loud-in-production
   check the way `EMAIL_PROVIDER` has one. That check exists because a
@@ -297,7 +308,7 @@ real webhook).
 
 ## What done looks like
 
-- `lib/notify/provider.ts`, `stub-provider.ts`, `discord-provider.ts`,
+- `lib/notifications/provider.ts`, `stub-provider.ts`, `discord-provider.ts`,
   `index.ts` built per the above - including markdown escaping,
   `allowed_mentions: { parse: [] }`, and a real `if (!res.ok) throw` in
   the Discord provider's send function.

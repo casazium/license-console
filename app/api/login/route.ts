@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyCredentials } from '@/lib/auth';
+import { verifyCredentials, getAccountEmail } from '@/lib/auth';
+import { getNotificationProvider } from '@/lib/notifications';
 import { createSessionToken, sessionCookieOptions, SESSION_COOKIE_NAME } from '@/lib/session';
 import { checkAndReserveAttempt, refundAttempt, getClientKey, getAccountOnlyKey } from '@/lib/login-rate-limit';
 import { isMultiTenant, isSameOrigin } from '@/lib/config';
@@ -191,5 +192,19 @@ export async function POST(request: NextRequest) {
   const token = await createSessionToken(identity);
   const response = NextResponse.json({ ok: true });
   response.cookies.set(SESSION_COOKIE_NAME, token, sessionCookieOptions);
+
+  // Operator notification (TASK_ACCOUNT_NOTIFICATIONS.md) - fire-and-
+  // forget, only reached after every rate limit and the tenant-rejection
+  // probe above have already passed, i.e. only on a real, successful
+  // login. Self-hosted has no accounts row/email at all - identity.id
+  // there is literally the configured ADMIN_UI_USERNAME (lib/auth.ts's
+  // own verifyCredentials()), which is what gets shown instead.
+  const loginIdentity = identity.mode === 'saas' ? (getAccountEmail(identity.id) ?? identity.id) : identity.id;
+  getNotificationProvider()
+    .notify({ type: 'login', email: loginIdentity })
+    .catch((err) => {
+      console.error(`Failed to send login notification for account ${identity.id}:`, err);
+    });
+
   return response;
 }

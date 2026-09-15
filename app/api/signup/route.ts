@@ -9,6 +9,7 @@ import { checkAndReserveAttempt, getClientKey } from '@/lib/login-rate-limit';
 import { normalizeEmail } from '@/lib/auth';
 import { generateOneTimeToken, hashOneTimeToken } from '@/lib/one-time-token';
 import { getEmailProvider } from '@/lib/email';
+import { getNotificationProvider } from '@/lib/notifications';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 8;
@@ -224,6 +225,21 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     console.error(`Failed to send signup confirmation email for account ${accountId}:`, err);
   }
+
+  // Operator notification (TASK_ACCOUNT_NOTIFICATIONS.md) - fire-and-
+  // forget, same posture as forgot-password/route.ts's own password-reset
+  // send: a Discord outage must never fail a signup that already
+  // succeeded. Deliberately its own statement here, not nested inside
+  // either try/catch above - the adversarial review that scoped this
+  // task found the first draft's proposed placement (inside the INSERT's
+  // own try/catch) would have misattributed a notification failure as an
+  // account-insert failure, incorrectly failing a signup that actually
+  // succeeded.
+  getNotificationProvider()
+    .notify({ type: 'account.created', email })
+    .catch((err) => {
+      console.error(`Failed to send account.created notification for account ${accountId}:`, err);
+    });
 
   const token = await createSessionToken({ id: accountId, role: 'admin', mode: 'saas' });
   const response = NextResponse.json({ ok: true });
