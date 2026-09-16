@@ -14,6 +14,7 @@ import { brandButtonStyle, brandTextButtonStyle } from '@/components/brandButton
 import { US_TIMEZONE_OPTIONS, zonedDateTimeToIso } from '@/lib/timezone';
 import { limitsToFormValues, buildLimits, type LimitsFormValues } from '@/lib/limits-form';
 import { LimitsFieldset } from '@/components/LimitsFieldset';
+import { PortalLinkReveal } from '@/components/PortalLinkReveal';
 import {
   deactivateByInstanceIdAction,
   deleteLicenseAction,
@@ -35,6 +36,18 @@ export function RevokeDeleteActions({
   const [busy, setBusy] = useState(false);
   const [deleteModalOpened, { open: openDeleteModal, close: closeDeleteModal }] =
     useDisclosure(false);
+  // TASK_A1_LICENSE_PORTAL.md - a reissued portal link is a one-time
+  // value with no way to see it again short of another reissue, so a
+  // transient toast (easy to dismiss by accident) is the wrong shape for
+  // it - same reasoning ApiKeyReveal.tsx/ApiBaseUrlDisplay.tsx (Settings
+  // page) already established for this codebase's other one-time/
+  // sensitive values. A Modal the operator dismisses deliberately, same
+  // pattern this component already uses for the delete confirmation
+  // above.
+  const [reissuedPortalLink, setReissuedPortalLink] = useState<{
+    portalToken: string;
+    portalLink: string | null;
+  } | null>(null);
 
   async function handleToggleRevoke() {
     setBusy(true);
@@ -100,12 +113,7 @@ export function RevokeDeleteActions({
         notifications.show({ color: 'red', title: 'Reissue failed', message: licenseKey });
         return;
       }
-      notifications.show({
-        color: 'blue',
-        title: 'Portal link reissued',
-        message: result.data.portalToken,
-        autoClose: false,
-      });
+      setReissuedPortalLink(result.data);
     } catch {
       notifications.show({
         color: 'red',
@@ -142,6 +150,23 @@ export function RevokeDeleteActions({
           <Button color="red" onClick={handleDelete}>
             Delete
           </Button>
+        </Group>
+      </Modal>
+
+      <Modal
+        opened={reissuedPortalLink !== null}
+        onClose={() => setReissuedPortalLink(null)}
+        title="Portal link reissued"
+        centered
+      >
+        {reissuedPortalLink && (
+          <PortalLinkReveal
+            portalLink={reissuedPortalLink.portalLink}
+            token={reissuedPortalLink.portalToken}
+          />
+        )}
+        <Group justify="flex-end" mt="lg">
+          <Button onClick={() => setReissuedPortalLink(null)}>Done</Button>
         </Group>
       </Modal>
     </>

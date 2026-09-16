@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import {
+  buildPortalLink,
   deactivateByInstanceId,
   deleteLicense,
   issueLicense,
@@ -38,13 +39,13 @@ type ActionResult<T> =
 
 export async function issueLicenseAction(
   input: IssueLicenseInput,
-): Promise<ActionResult<{ key: string; portalToken: string }>> {
+): Promise<ActionResult<{ key: string; portalToken: string; portalLink: string | null }>> {
   const { identity, tenantApiKey } = await requireSessionWithTenantKey();
   try {
     const license = await issueLicense(input, tenantApiKey);
     revalidatePath('/licenses');
     revalidatePath('/dashboard');
-    return { ok: true, data: license };
+    return { ok: true, data: { ...license, portalLink: buildPortalLink(license.portalToken) } };
   } catch (err) {
     if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
     if (isOverQuota(err)) return { ok: false, reason: 'over-quota' };
@@ -144,11 +145,14 @@ export async function reissueActivationTokenAction(
 // no change to any existing route's behavior).
 export async function reissuePortalTokenAction(
   key: string,
-): Promise<ActionResult<{ portalToken: string } | null>> {
+): Promise<ActionResult<{ portalToken: string; portalLink: string | null } | null>> {
   const { identity, tenantApiKey } = await requireSessionWithTenantKey();
   try {
     const result = await reissuePortalToken(key, tenantApiKey);
-    return { ok: true, data: result };
+    return {
+      ok: true,
+      data: result ? { ...result, portalLink: buildPortalLink(result.portalToken) } : null,
+    };
   } catch (err) {
     if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
     markIfTenantRejected(err, identity.tenantId);

@@ -86,6 +86,24 @@ export function getBackendMode(): BackendMode {
   return 'mock';
 }
 
+/**
+ * TASK_A1_LICENSE_PORTAL.md - the end-user license portal lives at the
+ * license server's own root, not under its /v1 API prefix (that repo's
+ * own "Route placement" reasoning: it's an HTML page, not part of the
+ * versioned JSON API). LICENSE_API_URL always includes /v1
+ * (.env.example's own documented format), so building a real portal link
+ * means stripping that suffix, not just a trailing slash the way
+ * apiBaseUrl (Settings page) leaves it for API-call display purposes.
+ * Returns null in mock/standalone mode (no real backend to link to) so
+ * callers can show a fallback rather than a broken link.
+ */
+export function buildPortalLink(token: string): string | null {
+  const url = process.env.LICENSE_API_URL?.trim();
+  if (!url) return null;
+  const origin = url.replace(/\/+$/, '').replace(/\/v1$/, '');
+  return `${origin}/portal/${encodeURIComponent(token)}`;
+}
+
 function client() {
   return getBackendMode() === 'live' ? live : mock;
 }

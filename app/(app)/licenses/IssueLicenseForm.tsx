@@ -10,6 +10,7 @@ import {
   NumberInput,
   Select,
   Stack,
+  Text,
   Textarea,
   TextInput,
   Title,
@@ -22,6 +23,7 @@ import { brandButtonStyle } from '@/components/brandButtonStyle';
 import { US_TIMEZONE_OPTIONS, zonedDateTimeToIso } from '@/lib/timezone';
 import { notifyRateLimited, notifyOverQuota, notifyPaymentFailed, notifyProductIdTaken } from '@/lib/notify';
 import { LimitsFieldset } from '@/components/LimitsFieldset';
+import { PortalLinkReveal } from '@/components/PortalLinkReveal';
 import { INITIAL_LIMITS, buildLimits, type LimitsFormValues } from '@/lib/limits-form';
 
 type IssueLicenseValues = {
@@ -67,6 +69,19 @@ export function IssueLicenseForm({
 }) {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
+  // TASK_A1_LICENSE_PORTAL.md - holding the issued license here, instead
+  // of navigating away immediately, is what makes the portal link
+  // reveal below possible at all: it's a one-time value with no way to
+  // see it again short of a reissue, so a transient toast that could be
+  // dismissed by accident (or missed while the page navigates out from
+  // under it) is the wrong shape for it - same reasoning
+  // ApiKeyReveal.tsx/ApiBaseUrlDisplay.tsx (Settings page) already
+  // established for this codebase's other one-time/sensitive values.
+  const [issuedLicense, setIssuedLicense] = useState<{
+    key: string;
+    portalToken: string;
+    portalLink: string | null;
+  } | null>(null);
 
   const form = useForm<IssueLicenseValues>({
     initialValues: {
@@ -131,20 +146,8 @@ export function IssueLicenseForm({
         title: 'License issued',
         message: result.data.key,
       });
-      // TASK_A1_LICENSE_PORTAL.md - portal_token is returned once, at
-      // issuance, and previously wasn't shown anywhere in this form - the
-      // only way to see one was to immediately click "Reissue portal
-      // link" on the detail page, rotating out a token nobody had seen
-      // yet. Persistent (autoClose: false), same as that button's own
-      // notification, since this is the one chance to copy it before
-      // navigating away.
-      notifications.show({
-        color: 'blue',
-        title: 'Portal link token',
-        message: result.data.portalToken,
-        autoClose: false,
-      });
-      router.push(`/licenses/${result.data.key}`);
+      setIssuedLicense(result.data);
+      setSubmitting(false);
     } catch {
       notifications.show({
         color: 'red',
@@ -153,6 +156,28 @@ export function IssueLicenseForm({
       });
       setSubmitting(false);
     }
+  }
+
+  if (issuedLicense) {
+    return (
+      <>
+        <Title order={2} mb="md">
+          License issued
+        </Title>
+        <Stack maw={480}>
+          <Text size="sm">
+            Key: <Text component="span" fw={600}>{issuedLicense.key}</Text>
+          </Text>
+          <PortalLinkReveal portalLink={issuedLicense.portalLink} token={issuedLicense.portalToken} />
+          <Button
+            style={brandButtonStyle}
+            onClick={() => router.push(`/licenses/${issuedLicense.key}`)}
+          >
+            Continue to license →
+          </Button>
+        </Stack>
+      </>
+    );
   }
 
   return (
