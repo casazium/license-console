@@ -1,7 +1,23 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-16 (§108: fixed
+Last updated: 2026-09-16 (§109: replaced
+the portal-link/portal-token notification toasts (§107, §108) with a
+persistent copy-link reveal panel, after the operator questioned why a
+value this consequential to lose was shown in a dismissible toast at
+all. Follows this repo's own existing pattern for one-time sensitive
+values (`ApiKeyReveal.tsx`/`ApiBaseUrlDisplay.tsx` on the Settings
+page) instead: a `PortalLinkReveal` component with a persistent field
+plus a Copy button, shown on the issuance success panel and in the
+reissue modal, both requiring an explicit action (`Continue to
+license`/`Done`) to dismiss. New `buildPortalLink()` in
+`lib/license-client.ts` derives the real portal URL from
+`LICENSE_API_URL`. `npx tsc --noEmit`/`npm run lint`/`npm run
+build`/`npm test` (53/53) all clean, plus Playwright verification
+against a live dev server (issue flow, copy-to-clipboard, continue
+navigation, reissue modal open/close). Deployed to production
+(`caa8ee9`) and confirmed working by the operator. See §109 below.)
+2026-09-16 (§108: fixed
 a real gap found during production testing of §107's own feature - the
 New License form discarded issue-license's new portal_token response
 entirely, so the only way to see one was to immediately click "Reissue
@@ -6767,4 +6783,54 @@ own delivery email).
 
 `npx tsc --noEmit`, `npm run lint`, `npm run build` all clean. `npm
 test`: 53/53, no regressions.
+
+## 109. Replaced portal-link toasts with a persistent copy-link reveal panel (2026-09-16)
+
+§107 and §108 both surfaced the portal token/link via
+`notifications.show()` (a persistent one, `autoClose: false`, but still
+a dismissible toast). The operator questioned that design directly:
+"should it really be a pop up or just a field? why a pop up?" A toast
+is the wrong shape for a value this consequential to lose - it's easy
+to dismiss by accident, and the token isn't retrievable again except by
+reissuing, which rotates it out. This repo already had a better
+precedent for exactly this class of value: the Settings page's
+`ApiKeyReveal.tsx` and `ApiBaseUrlDisplay.tsx`, both a persistent field
+plus a Copy button, dismissed only by deliberate navigation.
+
+### What was built
+
+- **`lib/license-client.ts`** - new `buildPortalLink(token)`: derives
+  the real portal URL from `LICENSE_API_URL` by stripping its `/v1`
+  suffix (the portal lives at the license server's root, not under the
+  API prefix - `TASK_A1_LICENSE_PORTAL.md`'s own route-placement
+  reasoning in `casazium/license`). Returns `null` in mock/standalone
+  mode so callers can show a fallback rather than a broken link.
+- **`components/PortalLinkReveal.tsx`** (new) - the shared reveal
+  component: a readonly field (portal link, or raw token if
+  `LICENSE_API_URL` isn't configured) plus a `CopyButton`, with a note
+  that this is the only time the value will be shown. Not masked, since
+  unlike `ApiKeyReveal`'s admin credential, the whole point of this
+  value is to be shared immediately (e.g. pasted into a delivery
+  email), not kept off-screen.
+- **`app/(app)/licenses/actions.ts`** - `issueLicenseAction` and
+  `reissuePortalTokenAction` now return `portalLink` alongside the
+  token.
+- **`app/(app)/licenses/IssueLicenseForm.tsx`** - on successful
+  issuance, shows a "License issued" panel with `PortalLinkReveal` and
+  an explicit "Continue to license ->" button, instead of auto-
+  navigating away underneath a toast.
+- **`app/(app)/licenses/[key]/LicenseActions.tsx`** - "Reissue portal
+  link" now opens a `Modal` titled "Portal link reissued" containing
+  `PortalLinkReveal`, dismissed via an explicit "Done" button.
+
+### Verification
+
+`npx tsc --noEmit`, `npm run lint`, `npm run build` clean. `npm test`:
+53/53, no regressions. Playwright, against a live local dev server:
+issuance reveal panel renders with the correct link/token and fallback
+note, Copy button confirmed copying to the real clipboard, "Continue to
+license" confirmed navigating to the license detail page, and the
+reissue modal confirmed opening with the new token and closing cleanly
+on "Done". Deployed to production (`caa8ee9`) and confirmed working by
+the operator.
 
