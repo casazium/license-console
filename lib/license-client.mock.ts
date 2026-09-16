@@ -296,7 +296,7 @@ export async function getLicense(key: string, _tenantApiKey?: string): Promise<L
 export async function issueLicense(
   input: IssueLicenseInput,
   _tenantApiKey?: string
-): Promise<{ key: string }> {
+): Promise<{ key: string; portalToken: string }> {
   const license: License = {
     key: generateKey(),
     product_id: input.product_id,
@@ -312,7 +312,9 @@ export async function issueLicense(
     notes: input.notes || null,
   };
   getStore().licenses.push(license);
-  return { key: license.key };
+  // TASK_A1_LICENSE_PORTAL.md - real issue-license always returns this
+  // now, once, the same trust model as the key itself.
+  return { key: license.key, portalToken: `portal_${Math.random().toString(36).slice(2, 10)}` };
 }
 
 export async function updateLicenseTerms(

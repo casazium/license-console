@@ -131,6 +131,19 @@ export function IssueLicenseForm({
         title: 'License issued',
         message: result.data.key,
       });
+      // TASK_A1_LICENSE_PORTAL.md - portal_token is returned once, at
+      // issuance, and previously wasn't shown anywhere in this form - the
+      // only way to see one was to immediately click "Reissue portal
+      // link" on the detail page, rotating out a token nobody had seen
+      // yet. Persistent (autoClose: false), same as that button's own
+      // notification, since this is the one chance to copy it before
+      // navigating away.
+      notifications.show({
+        color: 'blue',
+        title: 'Portal link token',
+        message: result.data.portalToken,
+        autoClose: false,
+      });
       router.push(`/licenses/${result.data.key}`);
     } catch {
       notifications.show({

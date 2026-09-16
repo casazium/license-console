@@ -38,7 +38,7 @@ type ActionResult<T> =
 
 export async function issueLicenseAction(
   input: IssueLicenseInput,
-): Promise<ActionResult<{ key: string }>> {
+): Promise<ActionResult<{ key: string; portalToken: string }>> {
   const { identity, tenantApiKey } = await requireSessionWithTenantKey();
   try {
     const license = await issueLicense(input, tenantApiKey);

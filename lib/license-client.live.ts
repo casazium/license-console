@@ -238,7 +238,7 @@ export async function getLicense(key: string, tenantApiKey?: string): Promise<Li
 export async function issueLicense(
   input: IssueLicenseInput,
   tenantApiKey?: string
-): Promise<{ key: string }> {
+): Promise<{ key: string; portalToken: string }> {
   const res = await liveFetch(
     '/issue-license',
     {
@@ -250,8 +250,12 @@ export async function issueLicense(
   if (!res.ok) {
     await throwForFailedResponse(res, 'Failed to issue license');
   }
-  const data: { key: string } = await res.json();
-  return { key: data.key };
+  // TASK_A1_LICENSE_PORTAL.md - portal_token is returned once, here, the
+  // same trust model as the key itself: this is the only place the
+  // console can capture it without a separate reissue (which would
+  // rotate out a token nobody ever saw).
+  const data: { key: string; portal_token: string } = await res.json();
+  return { key: data.key, portalToken: data.portal_token };
 }
 
 export async function setLicenseRevoked(
