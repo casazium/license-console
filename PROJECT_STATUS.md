@@ -1,7 +1,17 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-16 (§107: additive
+Last updated: 2026-09-16 (§108: fixed
+a real gap found during production testing of §107's own feature - the
+New License form discarded issue-license's new portal_token response
+entirely, so the only way to see one was to immediately click "Reissue
+portal link" right after creating a license, rotating out a token
+nobody had seen yet. Now shown in a persistent notification right after
+issuance, same pattern as the reissue button's own. Also fixes the
+shared onboarding flow, which reuses this same form component. `npx tsc
+--noEmit`/`npm run lint`/`npm run build`/`npm test` (53/53) all clean.
+See §108 below.)
+2026-09-16 (§107: additive
 wiring for casazium/license's new A1 end-user license portal
 (TASK_A1_LICENSE_PORTAL.md) - a "Reissue portal link" admin action next
 to the existing per-activation reissue button, mirroring its exact
@@ -6724,4 +6734,37 @@ Nothing from this task - the customer-facing portal pages themselves live
 entirely in `casazium/license` (`GET /portal/:token` and its siblings),
 not in this console. See that repo's `TASK_A1_LICENSE_PORTAL.md` for the
 full feature.
+
+## 108. Surfaced `portal_token` on license issuance, not just on reissue (2026-09-16)
+
+Found live, during the operator's own production test of §107's admin
+action: `issue-license` has always returned a `portal_token` (that
+field was never new - `casazium/license` PROJECT_STATUS.md §202), but
+this console's "New License" form silently discarded it. The only way
+to actually see a token for a fresh license was to click "Reissue
+portal link" immediately afterward on its detail page - which works,
+but rotates out a token nobody had ever seen, and isn't an obvious flow
+for the real use case (an ISV needs the link right away to put in their
+own delivery email).
+
+### What was built
+
+- **`lib/license-client.mock.ts`** / **`.live.ts`** - `issueLicense`'s
+  return type widened from `{ key: string }` to `{ key: string;
+  portalToken: string }`; the live implementation now parses
+  `portal_token` out of the real API response instead of discarding it.
+- **`app/(app)/licenses/actions.ts`** - `issueLicenseAction`'s return
+  type updated to match (this was a hardcoded explicit annotation, not
+  inferred - `tsc` didn't catch the mismatch until this was fixed too).
+- **`app/(app)/licenses/IssueLicenseForm.tsx`** - shows the new
+  `portalToken` in a second, persistent notification (`autoClose:
+  false`) right after the existing "License issued" one, same pattern
+  `LicenseActions.tsx`'s reissue button already uses. Shared by both
+  `app/(app)/licenses/new/page.tsx` and the onboarding flow (SaaS-B5),
+  so both are fixed by this one change.
+
+### Verification
+
+`npx tsc --noEmit`, `npm run lint`, `npm run build` all clean. `npm
+test`: 53/53, no regressions.
 
