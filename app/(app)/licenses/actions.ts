@@ -6,6 +6,7 @@ import {
   deleteLicense,
   issueLicense,
   reissueActivationToken,
+  reissuePortalToken,
   setLicenseRevoked,
   updateLicenseNotes,
   updateLicenseTerms,
@@ -129,6 +130,24 @@ export async function reissueActivationTokenAction(
   const { identity, tenantApiKey } = await requireSessionWithTenantKey();
   try {
     const result = await reissueActivationToken(key, instanceId, tenantApiKey);
+    return { ok: true, data: result };
+  } catch (err) {
+    if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
+    markIfTenantRejected(err, identity.tenantId);
+    throw err;
+  }
+}
+
+// TASK_A1_LICENSE_PORTAL.md - the end-user license portal's own
+// credential. Same additive shape as reissueActivationTokenAction above;
+// this is the console's one change for that task (a new admin action,
+// no change to any existing route's behavior).
+export async function reissuePortalTokenAction(
+  key: string,
+): Promise<ActionResult<{ portalToken: string } | null>> {
+  const { identity, tenantApiKey } = await requireSessionWithTenantKey();
+  try {
+    const result = await reissuePortalToken(key, tenantApiKey);
     return { ok: true, data: result };
   } catch (err) {
     if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };

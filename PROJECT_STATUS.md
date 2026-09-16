@@ -1,7 +1,14 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-15 (§106: built
+Last updated: 2026-09-16 (§107: additive
+wiring for casazium/license's new A1 end-user license portal
+(TASK_A1_LICENSE_PORTAL.md) - a "Reissue portal link" admin action next
+to the existing per-activation reissue button, mirroring its exact
+shape across the client/action/UI layers. No existing route's behavior
+changed. `npx tsc --noEmit`/`npm run lint`/`npm run build`/`npm test`
+(53/53) all clean. See §107 below.)
+2026-09-15 (§106: built
 operator notifications (account.created/account.deleted/login/logout) as
 an optional Discord webhook, corrected after an adversarial review found
 a real injection vulnerability, a failure-handling gap, and a
@@ -6674,4 +6681,47 @@ like" checklist.
   (self-hosted admin-username-in-notifications acceptability; whether
   firing on every login/logout gets too noisy in practice) remain open,
   not blocking this build.
+
+## 107. Additive wiring for `casazium/license`'s A1 end-user license portal (2026-09-16)
+
+`casazium/license`'s `TASK_A1_LICENSE_PORTAL.md` (built same day, that
+repo's PROJECT_STATUS.md §202) added a new admin-gated
+`POST /admin/reissue-portal-token` route - the credential-recovery and
+backfill path for the new end-user license portal's own token, distinct
+from the existing per-activation `reissue-activation-token`. The scope
+doc's own "What done looks like" named exactly one change to this repo:
+an additive admin action, no change to any existing route's behavior.
+
+### What was built
+
+- **`lib/license-client.mock.ts`** / **`.live.ts`** / **`.ts`** -
+  `reissuePortalToken(key, tenantApiKey?)`, mirroring
+  `reissueActivationToken`'s existing three-file shape exactly, minus the
+  `instanceId` parameter (the portal token is per-license, not
+  per-activation - the mock only needs the license itself to exist, not a
+  matching activation row).
+- **`app/(app)/licenses/actions.ts`** - `reissuePortalTokenAction(key)`,
+  same `requireSessionWithTenantKey`/rate-limit/tenant-rejection handling
+  as `reissueActivationTokenAction`.
+- **`app/(app)/licenses/[key]/LicenseActions.tsx`** - a "Reissue portal
+  link" button in `RevokeDeleteActions` (the license-level action group,
+  alongside Revoke/Delete) - not `ActivationsTable`'s per-row reissue
+  button, since this credential is per-license. Shows the new
+  `portal_token` in a persistent notification, same UX as the existing
+  activation-token reissue flow.
+
+### Verification
+
+`npx tsc --noEmit`, `npm run lint`, and `npm run build` all clean. `npm
+test`: 53/53 passing, no regressions - this repo has no existing direct
+unit-test coverage of `reissueActivationToken` itself to mirror (checked
+before assuming a gap; the precedent function has none either), so no
+new test file was added for parity with that same bar.
+
+### What's still open
+
+Nothing from this task - the customer-facing portal pages themselves live
+entirely in `casazium/license` (`GET /portal/:token` and its siblings),
+not in this console. See that repo's `TASK_A1_LICENSE_PORTAL.md` for the
+full feature.
 

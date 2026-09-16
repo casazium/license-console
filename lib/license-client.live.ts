@@ -333,6 +333,26 @@ export async function listActivations(key: string, tenantApiKey?: string): Promi
   return data.activations;
 }
 
+export async function reissuePortalToken(
+  key: string,
+  tenantApiKey?: string
+): Promise<{ portalToken: string } | null> {
+  const res = await liveFetch(
+    '/admin/reissue-portal-token',
+    {
+      method: 'POST',
+      body: JSON.stringify({ key }),
+    },
+    tenantApiKey
+  );
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    await throwForFailedResponse(res, 'Failed to reissue portal token');
+  }
+  const data: { reissued: boolean; portal_token: string } = await res.json();
+  return { portalToken: data.portal_token };
+}
+
 export async function reissueActivationToken(
   key: string,
   instanceId: string,

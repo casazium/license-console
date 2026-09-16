@@ -18,6 +18,7 @@ import {
   deactivateByInstanceIdAction,
   deleteLicenseAction,
   reissueActivationTokenAction,
+  reissuePortalTokenAction,
   setLicenseRevokedAction,
   updateLicenseNotesAction,
   updateLicenseTermsAction,
@@ -82,11 +83,48 @@ export function RevokeDeleteActions({
     }
   }
 
+  // TASK_A1_LICENSE_PORTAL.md - reissues (or, for a license issued
+  // before the portal shipped, mints for the first time - the "lazy
+  // backfill" decision) the end-user license portal's own link. Per-
+  // license, not per-activation, so it lives here with Revoke/Delete
+  // rather than in ActivationsTable's per-row reissue button below.
+  async function handleReissuePortalToken() {
+    setBusy(true);
+    try {
+      const result = await reissuePortalTokenAction(licenseKey);
+      if (!result.ok) {
+        notifyRateLimited();
+        return;
+      }
+      if (!result.data) {
+        notifications.show({ color: 'red', title: 'Reissue failed', message: licenseKey });
+        return;
+      }
+      notifications.show({
+        color: 'blue',
+        title: 'Portal link reissued',
+        message: result.data.portalToken,
+        autoClose: false,
+      });
+    } catch {
+      notifications.show({
+        color: 'red',
+        title: 'Reissue failed',
+        message: 'Something went wrong. Please try again.',
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <>
       <Group>
         <Button variant="default" loading={busy} onClick={handleToggleRevoke}>
           {status === 'active' ? 'Revoke' : 'Unrevoke'}
+        </Button>
+        <Button variant="default" loading={busy} onClick={handleReissuePortalToken}>
+          Reissue portal link
         </Button>
         <Button color="red" variant="outline" loading={busy} onClick={openDeleteModal}>
           Delete

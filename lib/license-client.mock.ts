@@ -395,6 +395,21 @@ export async function reissueActivationToken(
   return { token: `reissued_${Math.random().toString(36).slice(2, 10)}` };
 }
 
+// TASK_A1_LICENSE_PORTAL.md - the end-user license portal's own
+// credential, distinct from an activation token: per-license, not
+// per-activation, so this only needs the license itself to exist (unlike
+// reissueActivationToken above, which needs a matching activation row) -
+// this is what makes the real route the correct backfill path for a
+// license with zero activations.
+export async function reissuePortalToken(
+  key: string,
+  _tenantApiKey?: string
+): Promise<{ portalToken: string } | null> {
+  const license = getStore().licenses.find((entry) => entry.key === key);
+  if (!license) return null;
+  return { portalToken: `portal_${Math.random().toString(36).slice(2, 10)}` };
+}
+
 export async function deactivateByInstanceId(
   key: string,
   instanceId: string,

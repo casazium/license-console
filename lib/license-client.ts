@@ -111,6 +111,8 @@ export const listActivations: typeof mock.listActivations = (key, tenantApiKey) 
   client().listActivations(key, tenantApiKey);
 export const reissueActivationToken: typeof mock.reissueActivationToken = (key, instanceId, tenantApiKey) =>
   client().reissueActivationToken(key, instanceId, tenantApiKey);
+export const reissuePortalToken: typeof mock.reissuePortalToken = (key, tenantApiKey) =>
+  client().reissuePortalToken(key, tenantApiKey);
 export const deactivateByInstanceId: typeof mock.deactivateByInstanceId = (key, instanceId, tenantApiKey) =>
   client().deactivateByInstanceId(key, instanceId, tenantApiKey);
 export const deleteAccount: typeof mock.deleteAccount = (tenantApiKey) =>
