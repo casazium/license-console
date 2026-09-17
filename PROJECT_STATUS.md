@@ -1,7 +1,19 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-17 (§111: four
+Last updated: 2026-09-17 (§112: closed
+the three lower-priority gaps deferred from §111 - export-rate-limit
+per-account isolation (checkExportCooldown), the branding-title XSS
+trust guard (getBranding()'s titleIsHtml computation plus a real
+BrandTitle.tsx component test with an actual <img onerror> payload,
+proving isHtml=false renders it as inert text), and session cookie
+flags (httpOnly/secure/sameSite=lax - sameSite is this repo's real
+CSRF-equivalent defense for two routes, confirmed while writing §111).
+Found and fixed a second instance of §111's own ':memory:' infra bug
+before it left stray files behind. `npx tsc --noEmit`/`npm run
+lint`/`npm run build`/`npm test` (136/136) all clean. Not yet committed
+- awaiting the operator's go-ahead. See §112 below.)
+2026-09-17 (§111: four
 new security regression test files (68 tests) closing gaps found by a
 fresh coverage inventory against this repo's own security-review
 history - the F8 resolveApiKey fail-closed rule (25 call sites, zero
@@ -7045,4 +7057,69 @@ here.
 test`: 121/121 (53 original + 68 new), no regressions. Not yet
 committed/pushed - awaiting the operator's go-ahead per this repo's
 established git discipline.
+
+## 112. Security regression suite, part 2: export rate limit, branding-title trust, session cookie flags (2026-09-17)
+
+Closes the three lower-priority gaps deferred from §111's own coverage
+inventory.
+
+### `tests/lib/export-rate-limit.test.ts` (5 tests)
+
+`checkExportCooldown()` (`lib/export-rate-limit.ts`, GET
+/api/export-data's per-account cooldown - a security review found a
+tenant could otherwise exhaust the backend's shared per-tenant admin
+rate limit "in three clicks") had zero coverage, despite
+`login-rate-limit.ts`'s near-identical shape already being well tested.
+The property that actually matters and was missing: per-*account*, not
+global - one tenant's cooldown must never block a different tenant's
+export. Covers that plus first-export-allowed, immediate-repeat-blocked
+(with seconds-remaining), full elapse via `vi.useFakeTimers()`, and the
+one-millisecond-before-elapsed boundary.
+
+### `tests/lib/branding-title-trust.test.ts` (3 tests) + `tests/components/BrandTitle.test.tsx` (3 tests)
+
+Security review finding L3's actual XSS guard: `titleHtml` only reaches
+`dangerouslySetInnerHTML` when `titleIsHtml` is explicitly `true` - true
+for the platform/env-var source (`BRANDING_TITLE_HTML`, genuinely
+operator-trusted), false for anything from `tenant_branding` (nothing
+writes that table yet, so this is forward-looking, but the trust-level
+*computation* in `getBranding()` is exactly the kind of logic a future
+refactor could silently invert). The `lib/branding.ts` file tests prove
+platform branding and the self-hosted/no-tenantId path are always
+trusted, and a tenant with no `tenant_branding` row falls back to the
+platform value's own trust level rather than a blanket default. The
+`BrandTitle.tsx` component test proves the actual rendering guard with a
+real payload (`<img src=x onerror=...>`): `isHtml=false` renders it as
+literal, inert text (no `<img>` element ever created, no handler ever
+had anything to fire on); `isHtml=true` renders real markup, confirming
+the trusted path still works as intended. **A second real infra bug
+found and fixed, same class as §111's**: an early draft of the
+`lib/branding.ts` test used `DB_FILE=':memory-not-special:'`, which hit
+the identical `lib/db.ts` behavior §111 already found (no special case
+for a non-absolute `:memory:`-style string, so it becomes a literal
+file on disk) - fixed before it ever left a stray file behind, using a
+real PID-suffixed temp path with `afterAll` cleanup, same convention as
+§111's route test.
+
+### `tests/lib/session-cookie-flags.test.ts` (4 tests)
+
+`sessionCookieOptions` (`lib/session.ts`) is what actually protects the
+signed session JWT in the browser - `httpOnly` (the primary XSS-
+exfiltration defense), `secure` in production, and `sameSite: 'lax'`
+(the same property `isSameOrigin()`'s own comment names as *why*
+`/api/logout`/`/api/verify-email/resend` need no separate origin check:
+"a cross-site request simply doesn't carry it" - this repo's real CSRF-
+equivalent defense, confirmed while writing §111's password-reset
+tests). All three flags were correct in source but unverified. Since
+`sessionCookieOptions` is a plain module-level constant computed once
+at import time from `process.env.NODE_ENV` (not a function), exercising
+both the production and non-production values needs a fresh module
+instance per case (`vi.resetModules()` + a dynamic import after the env
+stub) rather than a single static import.
+
+### Verification
+
+`npx tsc --noEmit`, `npm run lint`, `npm run build` all clean. `npm
+test`: 136/136 (121 + 15 new), no regressions. Not yet committed -
+awaiting the operator's go-ahead.
 
