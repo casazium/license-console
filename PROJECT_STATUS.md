@@ -1,7 +1,22 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-16 (§109: replaced
+Last updated: 2026-09-17 (§110: added
+a separate "API vN.N.N" display to the footer's VersionStamp, alongside
+this console's own version - operator asked "can we just add a separate
+API version to the console?" after finding this console's own version
+(frozen at 1.0.0, no tags) and the connected License Server's version
+were two different, unrelated numbers. New getBackendVersion() calls the
+backend's unauthenticated GET / (deliberately not /admin/build-info,
+which requireAdmin-gates on the global ADMIN_API_KEY that
+resolveApiKey() never uses under MULTI_TENANT - SaaS-B2/F8), so it works
+identically in self-hosted and hosted modes; omitted from pre-auth pages,
+which have no reason to add a backend round trip for a value visitors
+can't act on. `npx tsc --noEmit`/`npm run lint`/`npm run build`/`npm
+test` (53/53) all clean. Pushed directly to `main` (`4a9615d`); no
+authenticated browser verification of the rendered footer text was done
+in this session - flagged, not silently skipped. See §110 below.)
+2026-09-16 (§109: replaced
 the portal-link/portal-token notification toasts (§107, §108) with a
 persistent copy-link reveal panel, after the operator questioned why a
 value this consequential to lose was shown in a dismissible toast at
@@ -6833,4 +6848,81 @@ license" confirmed navigating to the license detail page, and the
 reissue modal confirmed opening with the new token and closing cleanly
 on "Done". Deployed to production (`caa8ee9`) and confirmed working by
 the operator.
+
+## 110. Footer now shows the connected License Server's own API version, separate from this console's version (2026-09-17)
+
+While reviewing `casazium/license`'s SEA-vs-SaaS release-version gap in
+a sibling session, the operator asked directly: "wait, the version is
+also in the footer of license" - `VersionStamp.tsx` shows this
+console's own `package.json` version (frozen at `1.0.0` since §105's
+version bump; no tags exist in this repo), which is a legitimately
+separate, valid scheme for a continuously-deployed frontend (`gitSha`
+is the real freshness signal), but is a different number from the
+License Server it talks to and was never labeled as such. Operator then
+asked "can we just add a separate API version to the console?" -
+authorized directly, not inferred.
+
+### What was built
+
+- **`lib/license-types.ts`** - new `BackendVersion` type:
+  `{ version: string } | null`. `null` covers both "backend
+  unreachable" and mock/standalone mode (no real backend to report on)
+  - deliberately the same "nothing to show" value in both cases, so the
+    footer doesn't need a separate mock-only display.
+- **`lib/license-client.live.ts`** - new `getBackendVersion()`, wrapped
+  in `cache()` with no `tenantApiKey` param (the backend's own version
+  isn't tenant-scoped - every tenant gets the same true answer, so this
+  carries none of `getBroadActiveLicenses`' cross-tenant cache-poisoning
+  risk). Calls the backend's **unauthenticated** `GET /` (confirmed by
+  reading `casazium/license`'s `src/app.js`: outside the `/v1` prefix,
+  no `preHandler`, returns `{ message, version, buildFingerprint }`).
+  **Deliberately not `GET /admin/build-info`**: that route
+  `requireAdmin`-gates on the backend's single global `ADMIN_API_KEY`
+  (confirmed in `src/hooks/require-admin.js`), and this repo's own
+  `resolveApiKey()` has a hard-fail rule (SaaS-B2, citing finding F8)
+  that never falls back to a global admin key under `MULTI_TENANT` - a
+  missed call site silently operating as the superuser across every
+  tenant is exactly the bug that rule exists to prevent. Build-info
+  could never be called correctly from a hosted tenant's console
+  session; the unauthenticated root endpoint needs no key at all and so
+  works identically in self-hosted and hosted modes. Swallows any
+  failure and returns `null` rather than throwing - a footer nicety,
+  not something that should ever block or break the page it's shown on.
+- **`lib/license-client.mock.ts`** - `getBackendVersion()` always
+  returns `null`: standalone/demo mode never runs against a real
+  backend, so there is no real version to report.
+- **`lib/license-client.ts`** - re-exports `BackendVersion` and
+  dispatches `getBackendVersion` to the mock/live implementation, same
+  pattern as every other client method here.
+- **`app/(app)/layout.tsx`** - fetches `apiVersion` via
+  `getBackendVersion()` alongside the existing `appVersion`, passed down
+  to `AppShellClient`.
+- **`app/(app)/AppShellClient.tsx`** - accepts `apiVersion` and passes
+  it to `VersionStamp`.
+- **`components/VersionStamp.tsx`** - `apiVersion` is optional (omitted
+  entirely on pages that never fetch it - pre-auth pages have no reason
+  to add a backend round trip to show a value a signed-out visitor can't
+  act on) and renders as `v{version} · API v{apiVersion.version}` when
+  present, or exactly as before when absent or `null` - never an
+  "unknown" placeholder.
+- **Deliberately not wired into `components/AuthShell.tsx`** (login,
+  signup, forgot-password, reset-password): showing the backend's API
+  version to a signed-out visitor has no value and would cost every one
+  of those pages an extra backend round trip they don't otherwise need.
+
+### Verification
+
+`npx tsc --noEmit`, `npm run lint`, `npm run build` (full Next.js
+production build - confirms no server/client boundary violation from
+the type-only `BackendVersion` import into the `'use client'`
+`VersionStamp`/`AppShellClient` components) all clean. `npm test`:
+53/53, no regressions. **Not verified:** an authenticated browser
+render of the new footer text - no seeded login credentials exist in
+this sandbox (`.env` absent) for a full sign-in smoke test. A dev-server
+request to a dashboard route did correctly 307-redirect an
+unauthenticated request to `/login`, confirming the server itself runs
+without crashing, but that is not equivalent to seeing the rendered
+`API vN.N.N` text live - flagged honestly rather than claimed. Pushed
+directly to `main` (`4a9615d`), no PR (this repo's established
+convention).
 
