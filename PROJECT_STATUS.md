@@ -1,7 +1,21 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-17 (§110: added
+Last updated: 2026-09-17 (§111: four
+new security regression test files (68 tests) closing gaps found by a
+fresh coverage inventory against this repo's own security-review
+history - the F8 resolveApiKey fail-closed rule (25 call sites, zero
+prior coverage), cross-tenant cache isolation on getBroadActiveLicenses,
+the already-fixed Discord injection escaping, and password-reset/email-
+verification token security (single-use, expiry, the M4
+invalidate-every-other-token fix, session revocation, the isSameOrigin
+CSRF-equivalent guard). Found and fixed a real infra bug along the way:
+DB_FILE=':memory:' isn't special-cased by lib/db.ts, so it created a
+literal file named ":memory:" in the repo root - switched to a real
+PID-suffixed temp file. `npx tsc --noEmit`/`npm run lint`/`npm run
+build`/`npm test` (121/121) all clean. Not yet committed - awaiting the
+operator's go-ahead. See §111 below.)
+2026-09-17 (§110: added
 a separate "API vN.N.N" display to the footer's VersionStamp, alongside
 this console's own version - operator asked "can we just add a separate
 API version to the console?" after finding this console's own version
@@ -6925,4 +6939,110 @@ without crashing, but that is not equivalent to seeing the rendered
 `API vN.N.N` text live - flagged honestly rather than claimed. Pushed
 directly to `main` (`4a9615d`), no PR (this repo's established
 convention).
+
+## 111. Security regression suite, part 1: four new test files closing gaps a coverage inventory found (2026-09-17)
+
+Operator asked to "create and run tests specifically to target security
+issues." Before writing anything, an inventory pass compared this
+repo's real test coverage (53 tests, 7 files) against its own security-
+review history (`resolveApiKey`'s F8 fail-closed rule, the Discord
+injection fix, `getBackendMode`'s fail-closed production guard, etc.) -
+some findings were already well covered (login rate limiting, password
+hashing, backend-mode fail-closed); the ones below were not.
+
+### `tests/lib/resolve-api-key-fail-closed.test.ts` (50 tests)
+
+The single highest-priority gap: `resolveApiKey()`'s hard-fail rule
+(SaaS-B2, finding F8 - a missing `tenantApiKey` under `MULTI_TENANT`
+must throw, never fall back to the global admin key) had **zero**
+enforcing test, despite being "the single most safety-critical rule in
+the codebase." `resolveApiKey` itself isn't exported, so this calls all
+25 exported functions that take a `tenantApiKey` directly (the real call
+sites, not the helper in isolation) - a helper-only test would prove the
+rule works when called correctly, not that every call site actually
+calls it. Two sweeps: missing key throws and never even attempts the
+request (`fetch` not called at all - a caught-then-ignored throw would
+defeat the point); a real tenant key authenticates as that tenant, never
+the global key. Deliberately excludes `getExpiringLicenses`/
+`getLicensesNearSeatLimit` - both read through the internal, `cache()`-
+wrapped `getBroadActiveLicenses`, keyed on the `tenantApiKey` argument;
+calling either twice with the same argument (`undefined`, used
+throughout the negative sweep) across different scenarios in one module
+instance would silently return a memoized result from the wrong
+scenario rather than re-exercising `resolveApiKey()`. Both call sites
+were checked directly and correctly thread `tenantApiKey` through -
+covered instead by the next file, which is precisely about that cache.
+
+### `tests/lib/cross-tenant-cache-isolation.test.ts` (3 tests)
+
+The console-side risk `getBroadActiveLicenses`'s own code comment
+names but nothing tested: the cache is "explicitly keyed on
+`tenantApiKey` ... to avoid cross-tenant cache poisoning" - this proves
+the key actually separates tenants, using a fetch mock that responds
+with different license data depending on which tenant's bearer token it
+receives. Confirms tenant B's call never returns tenant A's memoized
+result, and that a cache hit for tenant A (expected, intended behavior)
+still returns only tenant A's data after tenant B's intervening call.
+**First attempt failed for an instructive reason**: forgetting
+`MULTI_TENANT=true` in the env stub meant `resolveApiKey()` ignored the
+`tenantApiKey` argument entirely and used the global key for every
+call, making every request identical regardless of which "tenant" the
+test thought it was querying - caught immediately by the assertions
+themselves failing, not a silent false pass.
+
+### `tests/lib/discord-notification-injection.test.ts` (5 tests)
+
+Regression coverage for an already-fixed real vulnerability
+(`TASK_ACCOUNT_NOTIFICATIONS.md`'s own adversarial review): signup's
+`EMAIL_RE` validation allows `a[x](https://evil.example)@b.co` as a
+valid email, and Discord renders `[text](url)` masked links inside
+embed fields - unescaped, that email would reach the operator's own
+Discord channel as a clickable link to an attacker's URL. Tests the
+exact payload the review found (asserts the literal `[x](...)` sequence
+never survives), full markdown-special-character coverage, the Unicode
+bidi-override strip, the `allowed_mentions: {parse: []}` defense-in-
+depth, and that `account.deleted` carries no email at all (PII scope,
+not just an escaping concern). `sanitizeForDiscord()` isn't exported -
+exercised only through the real `notify()` call, the same path
+production traffic takes.
+
+### `tests/routes/password-reset-email-verification.test.ts` (10 tests)
+
+Neither `POST /api/reset-password` nor `GET /api/verify-email` had any
+test at all before this - both are unauthenticated, token-is-the-
+credential flows, the highest-value kind of route to leave unverified.
+Exercises the real exported Route Handlers against a real (temp-file)
+SQLite DB, not a mocked db layer, specifically because this repo's own
+`lib/db.ts` documents a real bug it once had in exactly this area (a
+`datetime()` string-comparison bug in token-pruning). Covers: single-use
+(a redeemed token can't be replayed), expiry enforcement (rejected, and
+the password/verification state is provably unchanged), the M4 fix
+(redeeming one token invalidates every *other* outstanding token for
+the same account - the fix for a real account-retake scenario), session
+revocation on password reset, and the `isSameOrigin` cross-origin guard
+(confirmed this **is** this app's real CSRF-equivalent defense for
+these two routes, per `lib/config.ts`'s own header comment - a plainly-
+named `csrf` grep search alone would have missed it and misreported this
+as an uncovered gap). **A real infrastructure bug found and fixed while
+writing this file, not shipped**: `DB_FILE=':memory:'` doesn't invoke
+SQLite's special in-memory mode here - `lib/db.ts`'s `openDatabase()`
+joins a non-absolute `DB_FILE` onto `process.cwd()` with no special case
+for that string, so it created a literal file named `:memory:` (plus
+`-shm`/`-wal`) in the repo root. Fixed by using a real PID-suffixed temp
+file, matching `casazium/license`'s own test-DB convention, with cleanup
+in `afterAll`.
+
+### Not yet started (part 2, `casazium/license` backend)
+
+Admin-route auth sweep + `constantTimeEquals` timing-safety test, and
+SQL-injection payload tests - tracked and worked in that repo's own
+session, self-documented in its own `PROJECT_STATUS.md`, not duplicated
+here.
+
+### Verification
+
+`npx tsc --noEmit`, `npm run lint`, `npm run build` all clean. `npm
+test`: 121/121 (53 original + 68 new), no regressions. Not yet
+committed/pushed - awaiting the operator's go-ahead per this repo's
+established git discipline.
 
