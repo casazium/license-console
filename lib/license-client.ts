@@ -17,6 +17,7 @@ import * as mock from './license-client.mock';
 
 export type {
   Activation,
+  BackendVersion,
   BillingStatus,
   DashboardStats,
   ExpiringLicense,
@@ -155,6 +156,7 @@ export const completeStubCheckout: typeof mock.completeStubCheckout = (plan, ten
   client().completeStubCheckout(plan, tenantApiKey);
 export const getSelfLicenseStatus: typeof mock.getSelfLicenseStatus = (tenantApiKey) =>
   client().getSelfLicenseStatus(tenantApiKey);
+export const getBackendVersion: typeof mock.getBackendVersion = () => client().getBackendVersion();
 export const listReleases: typeof mock.listReleases = (params, tenantApiKey) =>
   client().listReleases(params, tenantApiKey);
 export const registerRelease: typeof mock.registerRelease = (input, tenantApiKey) =>

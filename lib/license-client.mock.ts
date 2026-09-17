@@ -6,6 +6,7 @@
 
 import type {
   Activation,
+  BackendVersion,
   BillingStatus,
   DashboardStats,
   ExpiringLicense,
@@ -583,6 +584,16 @@ export async function completeStubCheckout(plan: string, _tenantApiKey?: string)
 // demo mode, same as it would be for any ordinary live Tier-A backend.
 export async function getSelfLicenseStatus(_tenantApiKey?: string): Promise<SelfLicenseStatus> {
   return { tier: 'tier-a' };
+}
+
+// Standalone/demo mode never runs against a real casazium/license backend
+// (see the module docblock), so there's no real version to report -
+// deliberately null, the same "nothing to show" value getBackendVersion
+// returns for a live backend that couldn't be reached, so the footer
+// treats both cases identically rather than needing a separate mock-only
+// display.
+export async function getBackendVersion(): Promise<BackendVersion> {
+  return null;
 }
 
 // Standalone/demo mode never runs against a real casazium/license

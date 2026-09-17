@@ -38,6 +38,7 @@ import { LicenseApiError } from './errors';
 import { isMultiTenant } from './config';
 import type {
   Activation,
+  BackendVersion,
   BillingStatus,
   DashboardStats,
   ExpiringLicense,
@@ -205,6 +206,35 @@ const getBroadActiveLicenses = cache(async (tenantApiKey?: string): Promise<RawL
     tenantApiKey
   );
   return licenses;
+});
+
+// GET / is the backend's public, unauthenticated health check (see
+// casazium/license's src/app.js) - deliberately not GET /admin/build-info,
+// which requireAdmin-gates on the backend's own global ADMIN_API_KEY.
+// Under MULTI_TENANT, resolveApiKey() above refuses to ever use that
+// global key from a tenant request context (SaaS-B2's own hard-fail
+// rule) - build-info could never work from a hosted tenant's console
+// session. This endpoint needs no key at all, so it works identically in
+// both self-hosted and hosted modes. No tenantApiKey param: the backend's
+// own version isn't tenant-scoped, every tenant gets the same true
+// answer, so cache() here carries none of getBroadActiveLicenses' above
+// cross-tenant cache-poisoning risk. Swallows failures (returns null)
+// rather than throwing - this is a footer nicety, not something that
+// should ever break the page it's shown on if the backend is briefly
+// slow or unreachable.
+export const getBackendVersion = cache(async (): Promise<BackendVersion> => {
+  try {
+    const root = baseUrl().replace(/\/v1$/, '');
+    const res = await fetch(`${root}/`, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return { version: typeof data.version === 'string' ? data.version : 'unknown' };
+  } catch {
+    return null;
+  }
 });
 
 export async function listLicenses(

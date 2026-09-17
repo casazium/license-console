@@ -6,6 +6,7 @@ import { useDisclosure } from '@mantine/hooks';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import type { Branding } from '@/lib/branding';
+import type { BackendVersion } from '@/lib/license-client';
 import type { AppVersion } from '@/lib/version';
 import { BrandLogo } from '@/components/BrandLogo';
 import { BrandCopyright } from '@/components/BrandCopyright';
@@ -22,6 +23,7 @@ const BASE_NAV_ITEMS = [
 export function AppShellClient({
   branding,
   appVersion,
+  apiVersion,
   showBilling,
   showSettingsNav,
   showEmailVerificationBanner,
@@ -29,6 +31,7 @@ export function AppShellClient({
 }: {
   branding: Branding;
   appVersion: AppVersion;
+  apiVersion: BackendVersion;
   // SaaS-B4: only true under MULTI_TENANT (see app/(app)/layout.tsx) -
   // self-hosted has no billing concept, so no nav item and no route to
   // reach one.
@@ -120,7 +123,7 @@ export function AppShellClient({
               </Text>
             </>
           )}
-          <VersionStamp {...appVersion} />
+          <VersionStamp {...appVersion} apiVersion={apiVersion} />
           {branding.supportEmail && (
             <>
               <Text size="xs" c="dimmed">

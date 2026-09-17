@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { getBranding } from '@/lib/branding';
+import { getBackendVersion } from '@/lib/license-client';
 import { getAppVersion } from '@/lib/version';
 import { requireSession } from '@/lib/session';
 import { AppShellClient } from './AppShellClient';
@@ -19,6 +20,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const session = await requireSession();
   const branding = getBranding(session.tenantId);
   const appVersion = getAppVersion();
+  const apiVersion = await getBackendVersion();
   // SaaS-B4: billing is a SaaS-only concept - self-hosted has no
   // subscription/quota at all (quota.js's own MULTI_TENANT-only gate on
   // the server side). session.tenantId is only ever set under
@@ -42,6 +44,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     <AppShellClient
       branding={branding}
       appVersion={appVersion}
+      apiVersion={apiVersion}
       showBilling={showBilling}
       showSettingsNav={showSettingsNav}
       showEmailVerificationBanner={showEmailVerificationBanner}

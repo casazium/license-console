@@ -331,3 +331,13 @@ export type BillingStatus = {
   licensesUsed: number | null;
   licenseLimit: number | null;
 };
+
+// The connected License Server backend's own version (its package.json
+// version, see casazium/license's src/lib/version.js), distinct from this
+// console's own APP_VERSION (lib/version.ts) - the two are independently
+// versioned repos/deployments. null when the backend couldn't be reached
+// or returned something unexpected - this is a footer nicety, not
+// something that should ever block rendering the page it's shown on.
+export type BackendVersion = {
+  version: string;
+} | null;
