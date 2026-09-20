@@ -10,6 +10,7 @@ import {
 import {
   isRateLimited,
   isProductIdTaken,
+  isProductIdRetired,
   isPaymentFailed,
   isReservedProductId,
   isInvalidArtifactUrl,
@@ -52,6 +53,12 @@ import { requireSessionWithTenantKey, markIfTenantRejected } from '@/lib/tenant-
 // checksum) added (round-6 focused review, findings R6-3/R6-4): round
 // 5's own F5-4 bounded six more fields, but only release_notes ever got
 // a matching classifier - the other six fell through the same way.
+// 'product-id-retired' added (security review finding, fresh audit,
+// 2026-09 - permanent product_id retirement, operator follow-up
+// "distinguish the two cases"): distinct from 'product-id-taken' above -
+// nobody owns a retired product_id, an admin has to release it - so it
+// needs its own UI copy rather than the "pick a different account"
+// framing 'product-id-taken' uses.
 type ActionResult<T> =
   | { ok: true; data: T }
   | {
@@ -59,6 +66,7 @@ type ActionResult<T> =
       reason:
         | 'rate-limited'
         | 'product-id-taken'
+        | 'product-id-retired'
         | 'payment-failed'
         | 'reserved-product-id'
         | 'invalid-artifact-url'
@@ -84,6 +92,7 @@ export async function registerReleaseAction(
   } catch (err) {
     if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
     if (isProductIdTaken(err)) return { ok: false, reason: 'product-id-taken' };
+    if (isProductIdRetired(err)) return { ok: false, reason: 'product-id-retired' };
     if (isPaymentFailed(err)) return { ok: false, reason: 'payment-failed' };
     if (isReservedProductId(err)) return { ok: false, reason: 'reserved-product-id' };
     if (isInvalidArtifactUrl(err)) return { ok: false, reason: 'invalid-artifact-url' };

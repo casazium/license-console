@@ -21,7 +21,13 @@ import { notifications } from '@mantine/notifications';
 import { issueLicenseAction } from './actions';
 import { brandButtonStyle } from '@/components/brandButtonStyle';
 import { US_TIMEZONE_OPTIONS, zonedDateTimeToIso } from '@/lib/timezone';
-import { notifyRateLimited, notifyOverQuota, notifyPaymentFailed, notifyProductIdTaken } from '@/lib/notify';
+import {
+  notifyRateLimited,
+  notifyOverQuota,
+  notifyPaymentFailed,
+  notifyProductIdTaken,
+  notifyProductIdRetired,
+} from '@/lib/notify';
 import { LimitsFieldset } from '@/components/LimitsFieldset';
 import { PortalLinkReveal } from '@/components/PortalLinkReveal';
 import { INITIAL_LIMITS, buildLimits, type LimitsFormValues } from '@/lib/limits-form';
@@ -135,6 +141,14 @@ export function IssueLicenseForm({
         } else if (result.reason === 'product-id-taken') {
           notifyProductIdTaken();
           form.setFieldError('product_id', 'Already in use - pick a different product ID');
+        } else if (result.reason === 'product-id-retired') {
+          // Distinct from 'product-id-taken' above (security review
+          // finding, fresh audit, 2026-09 - permanent product_id
+          // retirement, operator follow-up "distinguish the two cases"):
+          // nobody owns this product_id, it's retired, so "already in
+          // use" would be wrong.
+          notifyProductIdRetired();
+          form.setFieldError('product_id', 'This product ID has been retired - contact support or pick a different one');
         } else {
           notifyRateLimited();
         }

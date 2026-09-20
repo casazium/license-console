@@ -1,7 +1,22 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-17 (§112: closed
+Last updated: 2026-09-20 (§113: follow-up to
+`casazium/license`'s §214 permanent-product_id-retirement fix - that
+backend change introduced a new, distinct 403 message for a retired
+product_id instead of reusing "product_id is owned by a different
+tenant," which this console's `isProductIdTaken()` classifier
+special-cases to drive the onboarding form's friendly error copy (the
+exact form the operator's original bug report came from). Left alone,
+the new message would have silently stopped matching and fallen through
+to a generic "Something went wrong." Added a parallel
+`isProductIdRetired()` classifier, wired into both
+issueLicenseAction/registerReleaseAction and their forms with distinct
+copy ("This product ID has been retired - contact support or pick a
+different one," not "Already in use"). `npx tsc --noEmit`/`npm run
+lint`/`npm run build`/`npm test` (139/139) all clean. Not yet committed
+- awaiting the operator's go-ahead. See §113 below.)
+2026-09-17 (§112: closed
 the three lower-priority gaps deferred from §111 - export-rate-limit
 per-account isolation (checkExportCooldown), the branding-title XSS
 trust guard (getBranding()'s titleIsHtml computation plus a real
@@ -7120,6 +7135,51 @@ stub) rather than a single static import.
 ### Verification
 
 `npx tsc --noEmit`, `npm run lint`, `npm run build` all clean. `npm
-test`: 136/136 (121 + 15 new), no regressions. Not yet committed -
+test`: 136/136 (121 + 15 new), no regressions. Committed and pushed as
+`1cba7b1` (the "not yet committed" line above was accurate when written,
+now stale by construction the moment it merged - same self-referential
+pattern this repo's own §111 header note already flagged once before).
+
+## 113. Distinguished a live product_id collision from a permanently retired one in the UI (2026-09-20)
+
+Follow-up to `casazium/license`'s §214 (permanent product_id retirement,
+closing a real cross-tenant impersonation vulnerability): that fix made
+the backend return a new, distinct 403 message
+(`'product_id has been retired and is no longer available - contact
+support to have it released'`) for a retired product_id, instead of
+reusing `'product_id is owned by a different tenant'`. This console
+special-cases that exact string already - `lib/errors.ts`'s
+`isProductIdTaken()` is what turns a raw 403 into the friendly "Already
+in use - pick a different product ID" field error on the onboarding
+form (the same form the operator's original bug report screenshot came
+from). Left unaddressed, the backend's new message would have silently
+stopped matching `isProductIdTaken()` and fallen through to a generic
+"Something went wrong" error for every retired-product_id case -
+exactly the kind of cross-repo contract break this session's
+error-message audit exists to catch before it ships. Operator asked
+directly ("did you update the error message as well?") and then
+confirmed distinguishing the two cases was wanted.
+
+Added a parallel classifier, `isProductIdRetired()` (`lib/errors.ts`),
+matching only the new retirement message - proven mutually exclusive
+with `isProductIdTaken()` by a new test (`tests/lib/
+license-client-errors.test.ts`, 3 new tests). Wired through both call
+sites that already special-case `isProductIdTaken()`:
+`issueLicenseAction`/`registerReleaseAction` (`app/(app)/licenses/
+actions.ts`, `app/(app)/releases/actions.ts`) gained a `'product-id-
+retired'` branch in their `ActionResult` reason union, and
+`IssueLicenseForm.tsx`/`RegisterReleaseForm.tsx` gained a matching
+`else if` branch with distinct copy - "This product ID has been
+retired - contact support or pick a different one" rather than the
+misleading "Already in use" wording, since nobody currently owns a
+retired product_id. New `notifyProductIdRetired()` (`lib/notify.ts`)
+gives the toast its own title ("Product ID retired") and message
+pointing at both real options (pick a different one, or contact support
+if this exact name is needed back).
+
+### Verification
+
+`npx tsc --noEmit`, `npm run lint`, `npm run build` all clean. `npm
+test`: 139/139 (136 + 3 new), no regressions. Not yet committed -
 awaiting the operator's go-ahead.
 

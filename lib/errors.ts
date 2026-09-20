@@ -88,6 +88,28 @@ export function isProductIdTaken(error: unknown): boolean {
   );
 }
 
+// The exact 403 message casazium/license's issue-license.js/
+// register-release.js return for a permanently retired product_id
+// (security review finding, fresh audit, 2026-09 - permanent product_id
+// retirement; operator follow-up, "distinguish the two cases"). Before
+// that fix, a deleted account's or abandoned last license's product_id
+// was simply freed back to the open pool, indistinguishable from any
+// other fresh claim - now the backend intentionally returns a different
+// message, because "owned by a different tenant" would be actively
+// wrong here: nobody currently owns it, it's retired, and no amount of
+// picking a different account or waiting will change that - only an
+// admin's release-product-id action can. Kept as a separate classifier
+// rather than folded into isProductIdTaken above precisely so the two
+// cases can get different, accurate UI copy.
+export function isProductIdRetired(error: unknown): boolean {
+  return (
+    error instanceof LicenseApiError &&
+    error.status === 403 &&
+    error.message ===
+      'product_id has been retired and is no longer available - contact support to have it released'
+  );
+}
+
 // The exact 400 message casazium/license's register-release.js returns
 // when the submitted product_id starts with the reserved `_casazium_`
 // prefix (round-3 independent review, console finding C-1's companion -

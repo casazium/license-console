@@ -10,6 +10,7 @@ import { brandButtonStyle } from '@/components/brandButtonStyle';
 import {
   notifyRateLimited,
   notifyProductIdTaken,
+  notifyProductIdRetired,
   notifyReleasePaymentFailed,
   notifyReservedProductId,
   notifyInvalidArtifactUrl,
@@ -142,6 +143,14 @@ export function RegisterReleaseForm() {
         if (result.reason === 'product-id-taken') {
           notifyProductIdTaken();
           form.setFieldError('product_id', 'Already in use - pick a different product ID');
+        } else if (result.reason === 'product-id-retired') {
+          // Distinct from 'product-id-taken' above (security review
+          // finding, fresh audit, 2026-09 - permanent product_id
+          // retirement, operator follow-up "distinguish the two cases"):
+          // nobody owns this product_id, it's retired, so "already in
+          // use" would be wrong.
+          notifyProductIdRetired();
+          form.setFieldError('product_id', 'This product ID has been retired - contact support or pick a different one');
         } else if (result.reason === 'reserved-product-id') {
           notifyReservedProductId();
           form.setFieldError('product_id', 'This product ID is reserved - pick a different one');
