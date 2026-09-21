@@ -13,7 +13,7 @@ import { createCheckoutSessionAction } from './actions';
 // are unchanged from the stub-era placeholder.
 const PLANS = [
   { id: 'free', label: 'Free', limitDescription: 'Up to 5 active licenses', priceLabel: '$0' },
-  { id: 'pro', label: 'Pro', limitDescription: 'Up to 100 active licenses', priceLabel: '$39/mo or $374/yr' },
+  { id: 'pro', label: 'Pro', limitDescription: 'Up to 1,000 active licenses', priceLabel: '$39/mo or $374/yr' },
 ];
 
 // Only Pro has more than one Stripe Price (monthly/annual) - Free has no

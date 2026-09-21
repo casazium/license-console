@@ -576,7 +576,7 @@ export async function getRecentlyIssuedLicenses(
 // drift from what the licenses list actually shows.
 export async function getBillingStatus(_tenantApiKey?: string): Promise<BillingStatus> {
   const licensesUsed = getStore().licenses.filter((license) => license.status === 'active').length;
-  return { status: 'active', plan: 'pro', cancelAtPeriodEnd: false, currentPeriodEnd: null, licensesUsed, licenseLimit: 100 };
+  return { status: 'active', plan: 'pro', cancelAtPeriodEnd: false, currentPeriodEnd: null, licensesUsed, licenseLimit: 1000 };
 }
 
 export async function createCheckoutSession(
@@ -595,7 +595,7 @@ export async function completeStubCheckout(plan: string, _tenantApiKey?: string)
     cancelAtPeriodEnd: false,
     currentPeriodEnd: null,
     licensesUsed,
-    licenseLimit: plan === 'pro' ? 100 : 5,
+    licenseLimit: plan === 'pro' ? 1000 : 5,
   };
 }
 

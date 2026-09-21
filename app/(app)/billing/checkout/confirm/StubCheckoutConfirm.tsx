@@ -11,7 +11,7 @@ import { completeStubCheckoutAction } from '../../actions';
 // Mirrors PlanSelector.tsx's own PLANS list exactly.
 const PLAN_LABELS: Record<string, { label: string; limitDescription: string }> = {
   free: { label: 'Free', limitDescription: 'Up to 5 active licenses' },
-  pro: { label: 'Pro', limitDescription: 'Up to 100 active licenses' },
+  pro: { label: 'Pro', limitDescription: 'Up to 1,000 active licenses' },
 };
 
 export function StubCheckoutConfirm({ plan }: { plan: string }) {
