@@ -12,8 +12,6 @@ import {
   isChecksumTooLong,
   isArtifactUrlTooLong,
   isReleaseLimitReached,
-  isProductIdTaken,
-  isProductIdRetired,
 } from '@/lib/errors';
 
 // Round-4 independent review, finding F4: throwForFailedResponse()
@@ -64,10 +62,17 @@ describe('registerRelease preserves the server error body (lib/license-client.li
   });
 
   it('still surfaces the real body text on a 403, unaffected by the 400 fix', async () => {
+    // Any real 403 message register-release.js can return works here -
+    // this test is about throwForFailedResponse()'s generic body-text
+    // passthrough, not about what any particular message means. Uses
+    // the billing-standing message (still a live 403 case) rather than
+    // the old cross-tenant product_id-ownership one, which product_id
+    // being scoped per-tenant now (PRODUCT_UUID_DESIGN.md) means the
+    // server can no longer actually produce.
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ error: 'product_id is owned by a different tenant' }), {
+        new Response(JSON.stringify({ error: 'Subscription is not active' }), {
           status: 403,
           statusText: 'Forbidden',
         })
@@ -75,7 +80,7 @@ describe('registerRelease preserves the server error body (lib/license-client.li
     );
 
     await expect(registerRelease(input)).rejects.toMatchObject({
-      message: 'product_id is owned by a different tenant',
+      message: 'Subscription is not active',
       status: 403,
     });
   });
@@ -209,54 +214,12 @@ describe('lib/errors.ts classifiers added for F5-6', () => {
         )
       )
     ).toBe(true);
-    expect(isReleaseLimitReached(new LicenseApiError('product_id is owned by a different tenant', 403))).toBe(false);
+    expect(isReleaseLimitReached(new LicenseApiError('product_id already claimed', 403))).toBe(false);
   });
 });
 
-// Security review finding, fresh audit, 2026-09 (permanent product_id
-// retirement): casazium/license used to return the same
-// 'product_id is owned by a different tenant' 403 for both a live
-// cross-tenant collision and a permanently retired (nobody-owns-it)
-// product_id, which isProductIdTaken alone can't tell apart. Operator
-// follow-up asked to "distinguish the two cases" - isProductIdRetired is
-// the new classifier for the backend's own new, distinct message; these
-// tests lock in that the two never both match the same error (a
-// regression here would silently reunite the two UI paths this fix was
-// meant to split).
-describe('isProductIdTaken / isProductIdRetired distinguish live collisions from permanent retirement', () => {
-  it('isProductIdTaken matches only the live-collision message', () => {
-    expect(isProductIdTaken(new LicenseApiError('product_id is owned by a different tenant', 403))).toBe(true);
-    expect(isProductIdTaken(new LicenseApiError('product_id is owned by a different tenant', 400))).toBe(false);
-  });
-
-  it('isProductIdRetired matches only the retirement message', () => {
-    expect(
-      isProductIdRetired(
-        new LicenseApiError(
-          'product_id has been retired and is no longer available - contact support to have it released',
-          403
-        )
-      )
-    ).toBe(true);
-    expect(
-      isProductIdRetired(
-        new LicenseApiError(
-          'product_id has been retired and is no longer available - contact support to have it released',
-          400
-        )
-      )
-    ).toBe(false);
-  });
-
-  it('the two classifiers are mutually exclusive on both messages', () => {
-    const collision = new LicenseApiError('product_id is owned by a different tenant', 403);
-    const retired = new LicenseApiError(
-      'product_id has been retired and is no longer available - contact support to have it released',
-      403
-    );
-    expect(isProductIdTaken(collision)).toBe(true);
-    expect(isProductIdRetired(collision)).toBe(false);
-    expect(isProductIdTaken(retired)).toBe(false);
-    expect(isProductIdRetired(retired)).toBe(true);
-  });
-});
+// isProductIdTaken/isProductIdRetired and their describe block removed
+// (PRODUCT_UUID_DESIGN.md, casazium/license): both matched exact 403
+// message text from a global, cross-tenant product_id ownership model
+// that no longer exists - product_id is now scoped per-tenant, and
+// casazium/license's src/ no longer produces either message.

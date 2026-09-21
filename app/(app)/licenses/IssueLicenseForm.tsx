@@ -6,6 +6,7 @@ import Link from 'next/link';
 import {
   Anchor,
   Button,
+  Code,
   Group,
   NumberInput,
   Select,
@@ -25,11 +26,10 @@ import {
   notifyRateLimited,
   notifyOverQuota,
   notifyPaymentFailed,
-  notifyProductIdTaken,
-  notifyProductIdRetired,
 } from '@/lib/notify';
 import { LimitsFieldset } from '@/components/LimitsFieldset';
 import { PortalLinkReveal } from '@/components/PortalLinkReveal';
+import { CopyValueButton } from '@/components/CopyValueButton';
 import { INITIAL_LIMITS, buildLimits, type LimitsFormValues } from '@/lib/limits-form';
 
 type IssueLicenseValues = {
@@ -87,6 +87,7 @@ export function IssueLicenseForm({
     key: string;
     portalToken: string;
     portalLink: string | null;
+    productUuid?: string;
   } | null>(null);
 
   const form = useForm<IssueLicenseValues>({
@@ -134,21 +135,14 @@ export function IssueLicenseForm({
         // SaaS-B4: explicit mapping, not a generic "something went wrong" -
         // over-quota and payment-failed each need their own message since
         // they call for a different next action (upgrade vs. fix billing).
+        // product-id-taken/product-id-retired removed
+        // (PRODUCT_UUID_DESIGN.md, casazium/license): product_id is now
+        // scoped per-tenant, so issueLicense() can no longer fail this
+        // way.
         if (result.reason === 'over-quota') {
           notifyOverQuota();
         } else if (result.reason === 'payment-failed') {
           notifyPaymentFailed();
-        } else if (result.reason === 'product-id-taken') {
-          notifyProductIdTaken();
-          form.setFieldError('product_id', 'Already in use - pick a different product ID');
-        } else if (result.reason === 'product-id-retired') {
-          // Distinct from 'product-id-taken' above (security review
-          // finding, fresh audit, 2026-09 - permanent product_id
-          // retirement, operator follow-up "distinguish the two cases"):
-          // nobody owns this product_id, it's retired, so "already in
-          // use" would be wrong.
-          notifyProductIdRetired();
-          form.setFieldError('product_id', 'This product ID has been retired - contact support or pick a different one');
         } else {
           notifyRateLimited();
         }
@@ -182,6 +176,25 @@ export function IssueLicenseForm({
           <Text size="sm">
             Key: <Text component="span" fw={600}>{issuedLicense.key}</Text>
           </Text>
+          {issuedLicense.productUuid && (
+            <div>
+              <Text size="sm" fw={600} mb={4}>
+                Product UUID
+              </Text>
+              <Group gap="xs" wrap="nowrap">
+                <Code block style={{ flex: 1, wordBreak: 'break-all' }}>
+                  {issuedLicense.productUuid}
+                </Code>
+                <CopyValueButton value={issuedLicense.productUuid} />
+              </Group>
+              <Text size="xs" c="dimmed" mt={4}>
+                Unlike the key above, this is the same for every license under this
+                product_id - copy it once and hard-code it in your SDK integration
+                (<Code>expectedProductUuid</Code>). You can always find it again on this
+                license&apos;s detail page.
+              </Text>
+            </div>
+          )}
           <PortalLinkReveal portalLink={issuedLicense.portalLink} token={issuedLicense.portalToken} />
           <Button
             style={brandButtonStyle}

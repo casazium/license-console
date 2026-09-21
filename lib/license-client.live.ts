@@ -268,7 +268,7 @@ export async function getLicense(key: string, tenantApiKey?: string): Promise<Li
 export async function issueLicense(
   input: IssueLicenseInput,
   tenantApiKey?: string
-): Promise<{ key: string; portalToken: string }> {
+): Promise<{ key: string; portalToken: string; productUuid?: string }> {
   const res = await liveFetch(
     '/issue-license',
     {
@@ -284,8 +284,13 @@ export async function issueLicense(
   // same trust model as the key itself: this is the only place the
   // console can capture it without a separate reissue (which would
   // rotate out a token nobody ever saw).
-  const data: { key: string; portal_token: string } = await res.json();
-  return { key: data.key, portalToken: data.portal_token };
+  //
+  // product_uuid (PRODUCT_UUID_DESIGN.md) - this is also the one place
+  // an integrator issuing their first license can actually learn their
+  // own product's real, immutable identity; see IssueLicenseForm.tsx's
+  // success state, where it's surfaced alongside the key/portal link.
+  const data: { key: string; portal_token: string; product_uuid?: string } = await res.json();
+  return { key: data.key, portalToken: data.portal_token, productUuid: data.product_uuid };
 }
 
 export async function setLicenseRevoked(
@@ -596,11 +601,12 @@ export async function completeStubCheckout(plan: string, tenantApiKey?: string):
 // DELETE /v1/delete-account (casazium/license's own
 // src/routes/delete-tenant-account.js). Permanent, no grace period - the
 // server-side route purges the tenant's license_keys/activations/
-// tenant_auth_log/billing_subscriptions/product_ownership and the tenant
-// row itself in one transaction. The caller (deleteAccountAction) is
-// responsible for the console's own local cleanup afterward (its
-// accounts/tenant_branding rows, session revocation) - this function only
-// covers the license-server side.
+// tenant_auth_log/billing_subscriptions/products (PRODUCT_UUID_DESIGN.md -
+// per-tenant now, cascades off tenants like billing_subscriptions does)
+// and the tenant row itself in one transaction. The caller
+// (deleteAccountAction) is responsible for the console's own local cleanup
+// afterward (its accounts/tenant_branding rows, session revocation) - this
+// function only covers the license-server side.
 export async function deleteAccount(tenantApiKey?: string): Promise<void> {
   // Empty string, not omitted - liveFetch() always sets
   // Content-Type: application/json (every other export needs it), and
@@ -681,10 +687,9 @@ export async function listReleases(
 }
 
 // POST /v1/register-release (casazium/license's
-// src/routes/register-release.js) - 403s with 'product_id is owned by a
-// different tenant' on a collision, surfaced via LicenseApiError the same
-// way issueLicense's own product_id conflict is (lib/errors.ts's
-// isProductIdTaken() matches this exact message text).
+// src/routes/register-release.js) - product_id is scoped per-tenant
+// (PRODUCT_UUID_DESIGN.md), so this can no longer 403 on a cross-tenant
+// product_id collision the way it once did.
 export async function registerRelease(
   input: RegisterReleaseInput,
   tenantApiKey?: string

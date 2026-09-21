@@ -6,7 +6,7 @@ import { requireSessionWithTenantKey, markIfTenantRejected } from '@/lib/tenant-
 import { MockDataNotice } from '@/components/MockDataNotice';
 import { RateLimitNotice } from '@/components/RateLimitNotice';
 import { UnpublishButton } from '../ReleasesTable';
-import { CopyUrlButton } from '../CopyUrlButton';
+import { CopyValueButton } from '@/components/CopyValueButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,8 +21,8 @@ export const dynamic = 'force-dynamic';
 // Plain `href` strings on every Anchor here, not `component={Link}`
 // (caught live during verification, not by lint/typecheck): a Server
 // Component can't pass a function - `Link` itself, or CopyButton's own
-// render-prop children (now isolated into CopyUrlButton.tsx, a real
-// 'use client' component) - across the boundary into a Client Component
+// render-prop children (now isolated into components/CopyValueButton.tsx,
+// a real 'use client' component) - across the boundary into a Client Component
 // prop. A plain string href still navigates correctly, just as a full
 // page load rather than client-side routing - the same tradeoff
 // app/(app)/licenses/[key]/page.tsx's own `<Anchor href="/settings">`
@@ -96,6 +96,25 @@ export default async function ReleaseDetailPage({
         </Text>
       </SimpleGrid>
 
+      {release.product_uuid && (
+        <div>
+          <Text size="sm" fw={700} mb={4}>
+            Product UUID
+          </Text>
+          <Group gap="xs" wrap="nowrap">
+            <Code block style={{ flex: 1, wordBreak: 'break-all' }}>
+              {release.product_uuid}
+            </Code>
+            <CopyValueButton value={release.product_uuid} />
+          </Group>
+          <Text size="xs" c="dimmed" mt={4}>
+            This product&apos;s real, immutable identity - pass it as{' '}
+            <Code>expectedProductUuid</Code> to the SDK&apos;s <Code>checkUpdate()</Code>, or hard-code
+            it in any integration that checks update manifests.
+          </Text>
+        </div>
+      )}
+
       <div>
         <Text size="sm" fw={700} mb={4}>
           Artifact URL
@@ -104,7 +123,7 @@ export default async function ReleaseDetailPage({
           <Code block style={{ flex: 1, wordBreak: 'break-all' }}>
             {release.artifact_url}
           </Code>
-          <CopyUrlButton value={release.artifact_url} />
+          <CopyValueButton value={release.artifact_url} />
         </Group>
         <Text size="xs" c="dimmed" mt={4}>
           A URL you already host - License Server never stores or proxies this file itself.

@@ -9,8 +9,6 @@ import { registerReleaseAction } from './actions';
 import { brandButtonStyle } from '@/components/brandButtonStyle';
 import {
   notifyRateLimited,
-  notifyProductIdTaken,
-  notifyProductIdRetired,
   notifyReleasePaymentFailed,
   notifyReservedProductId,
   notifyInvalidArtifactUrl,
@@ -133,25 +131,19 @@ export function RegisterReleaseForm() {
         release_notes: values.release_notes.trim() || undefined,
       });
       if (!result.ok) {
-        // Mirrors IssueLicenseForm.tsx's own mapping - product_id
-        // ownership is bound to whichever tenant claims it first, so a
-        // collision here can't be fixed by retrying the same input.
+        // Mirrors IssueLicenseForm.tsx's own mapping.
         // 'payment-failed'/'reserved-product-id' added (round-3
         // independent review, finding C-1): both used to fall through to
         // the generic notifyRateLimited() call below, misleading a
         // billing-blocked tenant into thinking a retry would help.
-        if (result.reason === 'product-id-taken') {
-          notifyProductIdTaken();
-          form.setFieldError('product_id', 'Already in use - pick a different product ID');
-        } else if (result.reason === 'product-id-retired') {
-          // Distinct from 'product-id-taken' above (security review
-          // finding, fresh audit, 2026-09 - permanent product_id
-          // retirement, operator follow-up "distinguish the two cases"):
-          // nobody owns this product_id, it's retired, so "already in
-          // use" would be wrong.
-          notifyProductIdRetired();
-          form.setFieldError('product_id', 'This product ID has been retired - contact support or pick a different one');
-        } else if (result.reason === 'reserved-product-id') {
+        //
+        // product-id-taken/product-id-retired removed
+        // (PRODUCT_UUID_DESIGN.md, casazium/license): product_id is now
+        // scoped per-tenant, so registerRelease() can no longer fail
+        // this way - two different tenants using the identical
+        // product_id string both succeed independently, each with their
+        // own product_uuid.
+        if (result.reason === 'reserved-product-id') {
           notifyReservedProductId();
           form.setFieldError('product_id', 'This product ID is reserved - pick a different one');
         } else if (result.reason === 'payment-failed') {

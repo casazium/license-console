@@ -5,6 +5,7 @@ import { isRateLimited } from '@/lib/errors';
 import { requireSessionWithTenantKey, markIfTenantRejected } from '@/lib/tenant-context';
 import { MockDataNotice } from '@/components/MockDataNotice';
 import { RateLimitNotice } from '@/components/RateLimitNotice';
+import { CopyValueButton } from '@/components/CopyValueButton';
 import { ActivationsTable, EditTermsButton, NotesEditor, RevokeDeleteActions } from './LicenseActions';
 
 export const dynamic = 'force-dynamic';
@@ -128,6 +129,25 @@ export default async function LicenseDetailPage({
           </Text>
         )}
       </SimpleGrid>
+
+      {license.product_uuid && (
+        <div>
+          <Text size="sm" fw={700} mb={4}>
+            Product UUID
+          </Text>
+          <Group gap="xs" wrap="nowrap">
+            <Code block style={{ flex: 1, wordBreak: 'break-all' }}>
+              {license.product_uuid}
+            </Code>
+            <CopyValueButton value={license.product_uuid} />
+          </Group>
+          <Text size="xs" c="dimmed" mt={4}>
+            This product&apos;s real, immutable identity - pass it as{' '}
+            <Code>expectedProductUuid</Code> to the SDK&apos;s <Code>verifyKey()</Code>, or hard-code
+            it in any integration that checks this license.
+          </Text>
+        </div>
+      )}
 
       <NotesEditor licenseKey={license.key} notes={license.notes} />
 

@@ -57,8 +57,8 @@ type DeleteAccountFailure = { reason: 'rate-limited' | 'invalid-password' };
  * client.
  *
  * Order matters: the license-server side (license_keys, activations,
- * tenant_auth_log, billing_subscriptions, product_ownership, the tenant
- * row itself) is deleted first, and this console's own local rows only
+ * tenant_auth_log, billing_subscriptions, products, the tenant row
+ * itself) is deleted first, and this console's own local rows only
  * after that succeeds - if the license-server call fails or is rate-
  * limited, the account stays fully intact on both sides rather than
  * this console silently forgetting an account that still has real data

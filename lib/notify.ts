@@ -30,33 +30,13 @@ export function notifyPaymentFailed() {
   });
 }
 
-// Beta-readiness finding: product_id is bound to whichever tenant claims
-// it first (casazium/license's per-tenant ownership check) - a collision
-// here can never be fixed by retrying the same input, so this needs its
-// own message pointing at the actual fix (pick a different product_id)
-// rather than issueLicenseAction's generic catch-all.
-export function notifyProductIdTaken() {
-  notifications.show({
-    color: 'red',
-    title: 'Product ID already in use',
-    message: 'That product ID is already registered to a different account. Pick a different one for this license.',
-  });
-}
-
-// Security review finding, fresh audit, 2026-09 (permanent product_id
-// retirement) - distinct from notifyProductIdTaken above (operator
-// follow-up, "distinguish the two cases"): a retired product_id isn't
-// registered to anyone else, so telling the tenant to "pick a different
-// one" would be half-true at best - it needs an admin to release it
-// specifically, not merely a different account.
-export function notifyProductIdRetired() {
-  notifications.show({
-    color: 'red',
-    title: 'Product ID retired',
-    message:
-      "That product ID has been permanently retired and can't be reused automatically. Pick a different one, or contact support if you specifically need this one released.",
-  });
-}
+// notifyProductIdTaken/notifyProductIdRetired removed
+// (PRODUCT_UUID_DESIGN.md, casazium/license): product_id is now scoped
+// per-tenant (a UUID-keyed `products` table, not a shared claim), so
+// neither the "already registered to a different account" nor the
+// "permanently retired" case can happen any more - two different
+// tenants using the identical product_id string both succeed
+// independently, each with their own product_uuid.
 
 // Round-3 independent review, console finding C-1: registerReleaseAction
 // previously fell through to a generic "Failed to register release"

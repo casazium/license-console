@@ -7,6 +7,13 @@
 export type License = {
   key: string;
   product_id: string;
+  // Optional (PRODUCT_UUID_DESIGN.md, casazium/license) - the license's
+  // real, immutable product identity, distinct from product_id (a
+  // per-tenant display label two different tenants may share). Not
+  // `required` on the backend's own response schema either - the field
+  // is present on every license issued from casazium/license v1.3.0
+  // onward, but the type stays optional to match.
+  product_uuid?: string;
   tier: string;
   status: 'active' | 'revoked';
   issued_to: string;
@@ -267,6 +274,9 @@ export type ListLicensesResult = {
 export type Release = {
   id: number;
   product_id: string;
+  // Optional (PRODUCT_UUID_DESIGN.md, casazium/license) - see License's
+  // matching comment above.
+  product_uuid?: string;
   version: string;
   channel: string;
   platform: string;
@@ -290,6 +300,11 @@ export type RegisterReleaseInput = {
 export type RegisterReleaseResult = {
   id: number;
   status: 'published';
+  // Optional (PRODUCT_UUID_DESIGN.md, casazium/license) - see License's
+  // matching comment above. This is the response an integrator should
+  // actually read this value from: the register-release call they make
+  // anyway, not a separate lookup.
+  product_uuid?: string;
 };
 
 export type ListReleasesParams = {

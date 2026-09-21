@@ -70,53 +70,27 @@ export function isTenantRejected(error: unknown): boolean {
   return error instanceof LicenseApiError && error.status === 403 && error.message === 'Unauthorized';
 }
 
-// The exact 403 message casazium/license's issue-license.js returns when
-// the submitted product_id is already claimed by a different tenant
-// (per-tenant product_id ownership binding). Unlike isTenantRejected
-// above, this isn't a credential problem - the caller's own key is fine,
-// but the specific product_id in this one request is not usable. Retrying
-// the same input can never succeed; the console needs to tell the user to
-// pick a different product_id rather than show a generic "try again"
-// error (beta-readiness finding: this is the first thing a new signup's
-// onboarding form can hit, since a handful of concurrent beta users are
-// likely to type the same obvious product_id, e.g. "demo" or "test").
-export function isProductIdTaken(error: unknown): boolean {
-  return (
-    error instanceof LicenseApiError &&
-    error.status === 403 &&
-    error.message === 'product_id is owned by a different tenant'
-  );
-}
-
-// The exact 403 message casazium/license's issue-license.js/
-// register-release.js return for a permanently retired product_id
-// (security review finding, fresh audit, 2026-09 - permanent product_id
-// retirement; operator follow-up, "distinguish the two cases"). Before
-// that fix, a deleted account's or abandoned last license's product_id
-// was simply freed back to the open pool, indistinguishable from any
-// other fresh claim - now the backend intentionally returns a different
-// message, because "owned by a different tenant" would be actively
-// wrong here: nobody currently owns it, it's retired, and no amount of
-// picking a different account or waiting will change that - only an
-// admin's release-product-id action can. Kept as a separate classifier
-// rather than folded into isProductIdTaken above precisely so the two
-// cases can get different, accurate UI copy.
-export function isProductIdRetired(error: unknown): boolean {
-  return (
-    error instanceof LicenseApiError &&
-    error.status === 403 &&
-    error.message ===
-      'product_id has been retired and is no longer available - contact support to have it released'
-  );
-}
+// isProductIdTaken/isProductIdRetired removed (PRODUCT_UUID_DESIGN.md,
+// casazium/license): both matched exact 403 message text from a
+// global, cross-tenant product_id ownership model that no longer
+// exists. product_id is now scoped per-tenant (a UUID-keyed `products`
+// table, not a shared claim) - two different tenants issuing under the
+// identical product_id string now both succeed independently, and
+// there is no admin release-product-id recovery action left either
+// (deleted server-side: no shared, scarce namespace to recover from).
+// Confirmed directly: neither message string appears anywhere in
+// casazium/license's current src/ - only a stale comment reference.
+// If a future rename feature (PRODUCT_UUID_DESIGN.md §7b) introduces a
+// same-tenant naming conflict, that will need its own classifier and
+// error message - it is not a variant of either removed case.
 
 // The exact 400 message casazium/license's register-release.js returns
 // when the submitted product_id starts with the reserved `_casazium_`
 // prefix (round-3 independent review, console finding C-1's companion -
 // registerReleaseAction fell through this, and the payment-failed 403
 // below, to a generic "something went wrong" that gave the tenant no way
-// to know their own input was the problem). Like isProductIdTaken above,
-// retrying the same input can never succeed.
+// to know their own input was the problem). Retrying the same input can
+// never succeed.
 export function isReservedProductId(error: unknown): boolean {
   return (
     error instanceof LicenseApiError &&
@@ -213,10 +187,10 @@ export function isDuplicateRelease(error: unknown): boolean {
 // The exact 403 message casazium/license's register-release.js returns
 // when a {product_id, channel, platform} bucket has reached its
 // 500-published-release cap (round-5 independent review, finding F5-5).
-// Distinct from isPaymentFailed/isProductIdTaken above - retrying the
-// same input can succeed once an old release in that same bucket is
-// unpublished, so the UI copy for this case should say that, not just
-// "something went wrong."
+// Distinct from isPaymentFailed above - retrying the same input can
+// succeed once an old release in that same bucket is unpublished, so
+// the UI copy for this case should say that, not just "something went
+// wrong."
 export function isReleaseLimitReached(error: unknown): boolean {
   return (
     error instanceof LicenseApiError &&

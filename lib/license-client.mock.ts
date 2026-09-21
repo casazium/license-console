@@ -207,6 +207,22 @@ function generateKey(): string {
   return `CASZ-${segment()}-${segment()}-${segment()}`;
 }
 
+// Mirrors the real backend's per-tenant products table (PRODUCT_UUID_DESIGN.md,
+// casazium/license): the same product_id in this mock "tenant" always
+// resolves to the same product_uuid, generated once on first use. A
+// module-level Map, not part of Store, since it's derived state (product_id
+// -> uuid) rather than a real row a reset-the-store action should clear
+// independently - in practice it only ever lives as long as the dev
+// process anyway, same lifetime as everything else here.
+const mockProductUuids = new Map<string, string>();
+function resolveMockProductUuid(productId: string): string {
+  const existing = mockProductUuids.get(productId);
+  if (existing) return existing;
+  const uuid = crypto.randomUUID();
+  mockProductUuids.set(productId, uuid);
+  return uuid;
+}
+
 // 3-way comparator per sortable column, mirroring the real backend's
 // ORDER BY behavior (casazium/license's src/routes/list-licenses.js) as
 // closely as an in-memory JS sort can:
@@ -297,10 +313,12 @@ export async function getLicense(key: string, _tenantApiKey?: string): Promise<L
 export async function issueLicense(
   input: IssueLicenseInput,
   _tenantApiKey?: string
-): Promise<{ key: string; portalToken: string }> {
+): Promise<{ key: string; portalToken: string; productUuid?: string }> {
+  const productUuid = resolveMockProductUuid(input.product_id);
   const license: License = {
     key: generateKey(),
     product_id: input.product_id,
+    product_uuid: productUuid,
     tier: input.tier,
     status: 'active',
     issued_to: input.issued_to,
@@ -315,7 +333,11 @@ export async function issueLicense(
   getStore().licenses.push(license);
   // TASK_A1_LICENSE_PORTAL.md - real issue-license always returns this
   // now, once, the same trust model as the key itself.
-  return { key: license.key, portalToken: `portal_${Math.random().toString(36).slice(2, 10)}` };
+  return {
+    key: license.key,
+    portalToken: `portal_${Math.random().toString(36).slice(2, 10)}`,
+    productUuid,
+  };
 }
 
 export async function updateLicenseTerms(
@@ -643,6 +665,7 @@ export async function registerRelease(
   const release: Release = {
     id: nextId,
     product_id: input.product_id,
+    product_uuid: resolveMockProductUuid(input.product_id),
     version: input.version,
     channel: input.channel || 'stable',
     platform: input.platform,
@@ -653,7 +676,7 @@ export async function registerRelease(
     created_at: new Date().toISOString(),
   };
   releases.push(release);
-  return { id: release.id, status: 'published' };
+  return { id: release.id, status: 'published', product_uuid: release.product_uuid };
 }
 
 export async function unpublishRelease(id: number, _tenantApiKey?: string): Promise<void> {
