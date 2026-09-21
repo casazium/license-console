@@ -1,7 +1,38 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-20 (§113: follow-up to
+Last updated: 2026-09-21 (§114:
+supported `casazium/license`'s per-tenant `product_uuid` redesign
+(`PRODUCT_UUID_DESIGN.md`), which replaced that repo's global
+`product_ownership` table (first-tenant-to-claim-a-product_id-wins) with
+a per-tenant `products` table keyed by an immutable, server-generated
+`product_uuid`. Two changes followed on this side: (1) `isProductIdTaken`/
+`isProductIdRetired` (added in §113, four days earlier) removed outright,
+not repurposed - both matched exact 403 message text from the ownership
+model that no longer exists, confirmed neither string can be produced by
+the server anymore; removed their call sites in the licenses/releases
+actions and forms, their `notify()` functions, and their dedicated test
+coverage; (2) `product_uuid` surfaced in the UI, closing a real
+discoverability gap found during this session's own verification pass -
+no admin-facing endpoint returned it until `casazium/license`'s
+companion fix landed, so a tenant integrating the SDK's now-required
+`expectedProductUuid` parameter had no way to learn their own product's
+real value. Added to `License`/`Release`/`RegisterReleaseResult` types,
+threaded through both the live client (parses it from `issue-license`'s
+response) and the mock client (`resolveMockProductUuid()`, a
+module-level map generating one UUID per `product_id` on first use,
+mirroring the real per-tenant table's behavior for local dev), and
+displayed with a copy button on the license detail page, the release
+detail page, and the issue-license success screen. The release-only
+`CopyUrlButton` was promoted to `components/CopyValueButton` since it's
+now shared by both features. `npx tsc --noEmit`/`npm run lint`/`npm run
+build`/`npm test` (136/136) all clean. Committed as `8a7489e`, `Status:
+Draft` - not yet pushed, awaiting the operator's go-ahead. Deferred, not
+part of this entry: `RegisterReleaseForm` doesn't yet show `product_uuid`
+inline on its own success state (only the release detail page does), and
+the account-data export omits `product_uuid` - both lower-priority,
+consciously left for a follow-up. See §114 below.)
+2026-09-20 (§113: follow-up to
 `casazium/license`'s §214 permanent-product_id-retirement fix - that
 backend change introduced a new, distinct 403 message for a retired
 product_id instead of reusing "product_id is owned by a different
@@ -7182,4 +7213,108 @@ if this exact name is needed back).
 `npx tsc --noEmit`, `npm run lint`, `npm run build` all clean. `npm
 test`: 139/139 (136 + 3 new), no regressions. Not yet committed -
 awaiting the operator's go-ahead.
+
+## 114. Supported `casazium/license`'s per-tenant `product_uuid` redesign (2026-09-21)
+
+`casazium/license` replaced its global `product_ownership` table (a
+platform-wide `product_id` claim, first tenant to use a given string
+wins it permanently) with a per-tenant `products` table keyed by an
+immutable, server-generated `product_uuid` - the structural fix for the
+whole class of cross-tenant `product_id`-collision issues §113 (four
+days earlier) and `casazium/license`'s own §214/§215 were still
+patching symptoms of. Full design in that repo's
+`PRODUCT_UUID_DESIGN.md`; that repo declared the new schema directly
+(no migration - the platform has no customers yet). Two console-side
+changes followed, both verified against the server's actual behavior
+rather than assumed from its design doc alone.
+
+### Removed: `isProductIdTaken`/`isProductIdRetired`
+
+Both classifiers (the second only just added in §113) matched exact 403
+message text produced by the ownership model - `'product_id is owned by
+a different tenant'` and the retirement variant. Under the new
+per-tenant model two tenants may freely share the identical `product_id`
+string, so neither message can be produced by the server again;
+confirmed by reading the rewritten routes directly rather than trusting
+the design doc. Removed outright, not repurposed: `lib/errors.ts`'s two
+classifier functions, their call sites in
+`issueLicenseAction`/`registerReleaseAction`
+(`app/(app)/licenses/actions.ts`, `app/(app)/releases/actions.ts`) and
+the matching `else if` branches in `IssueLicenseForm.tsx`/
+`RegisterReleaseForm.tsx`, `notifyProductIdTaken()`/
+`notifyProductIdRetired()` (`lib/notify.ts`), and their dedicated
+`describe` block in `tests/lib/license-client-errors.test.ts`. One
+surviving test fixture in that file used the now-impossible ownership
+message to exercise generic body-text passthrough behavior; repointed
+to `'Subscription is not active'` (a still-live 403 case) so the same
+behavior is still covered without implying the retired model still
+exists.
+
+### Added: `product_uuid` surfaced in the UI
+
+A real discoverability gap, found during this session's own
+verification of the redesign rather than reported by the operator: no
+admin-facing endpoint in `casazium/license` returned `product_uuid`
+until its own companion fix landed, so a tenant integrating the SDK's
+now-required `expectedProductUuid` parameter (`verifyKey()`/
+`checkUpdate()`/`verifySignedFile()`, `@casazium/license-sdk` 0.2.0) had
+no documented way to learn their own product's real value.
+
+- `lib/license-types.ts`: `product_uuid?: string` added to `License`,
+  `Release`, and `RegisterReleaseResult` - optional, matching the
+  field-presence convention the server uses (a `NULL` `product_uuid` is
+  omitted from responses entirely, never emitted as `null`/`""`).
+- `lib/license-client.live.ts`: `issueLicense()` now parses and returns
+  `productUuid` from the real server's JSON response.
+- `lib/license-client.mock.ts`: new `resolveMockProductUuid(productId)`
+  helper - a module-level `Map<string, string>` generating one
+  `crypto.randomUUID()` per `product_id` on first use, mirroring the
+  real per-tenant `products` table's behavior so local/mock-mode
+  development sees the same shape of data. Wired into the mock
+  `issueLicense()` and `registerRelease()`.
+- Display: a "Product UUID" block (`<Code>` plus a copy button, with
+  explanatory text mentioning `expectedProductUuid`) added to the
+  license detail page (`app/(app)/licenses/[key]/page.tsx`), the
+  release detail page (`app/(app)/releases/[id]/page.tsx`), and the
+  issue-license success screen (`IssueLicenseForm.tsx`) - each
+  conditionally rendered (`{license.product_uuid && (...)}`) so a
+  license/release with no resolvable product_uuid (shouldn't happen
+  going forward, but matches the field-presence convention) renders
+  nothing rather than an empty block.
+- `components/CopyValueButton.tsx` (new): the release-only
+  `CopyUrlButton.tsx` (deleted) was promoted and renamed, since the
+  identical copy-to-clipboard control is now shared by both the
+  licenses and releases features rather than releases alone.
+- `app/(app)/settings/actions.ts`: the comment listing tables purged on
+  account deletion corrected from `product_ownership` to `products`.
+
+### Verification
+
+`npx tsc --noEmit`, `npm run lint`, `npm run build` all clean. `npm
+test`: 136/136 (139 - 3, from removing `isProductIdRetired`'s dedicated
+tests along with the classifier itself), no regressions. Committed as
+`8a7489e` (`Status: Draft`) - not yet pushed, awaiting the operator's
+go-ahead.
+
+### Deferred, not part of this entry
+
+Two lower-priority gaps found during the same verification pass, both
+consciously left for a follow-up rather than silently skipped:
+`RegisterReleaseForm` doesn't show `product_uuid` inline on its own
+success state (only the release detail page does); the account-data
+export (`app/(app)/settings/actions.ts`'s export path) doesn't include
+`product_uuid` for licenses/releases it lists.
+
+### Also outstanding before this body of work is production-ready
+
+Recorded here for continuity with `casazium/license`'s own
+`PROJECT_STATUS.md` §217 entry, which covers the full cross-repo
+picture: neither this commit nor `casazium/license`'s `f74f600` has
+been pushed to any remote; the production License Server's database
+volume is a persistent Docker volume with no migration path and must be
+deliberately reprovisioned before this schema change can deploy safely;
+`@casazium/license-sdk` 0.2.0 hasn't been published (a deliberate
+`sdk-v0.2.0` tag push, low urgency since it's backward-compatible for
+callers who don't upgrade); and no human has reviewed either repo's diff
+yet.
 
