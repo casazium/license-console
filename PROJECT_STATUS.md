@@ -1,7 +1,30 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-21 (§116:
+Last updated: 2026-09-21 (§117:
+scoped (design only, not implemented) continuous replication via
+Litestream for `console.db`, mirroring `casazium/license`'s own
+`TASK_LITESTREAM_HA.md` - new file of the same name here. Key findings
+recorded rather than assumed: this only meaningfully protects the
+SaaS-tier resource (self-hosted `console.db` is essentially unused by
+design, every real write path is gated behind `MULTI_TENANT`); the
+recovery set is just the DB file itself (no companion secrets file
+exists in this repo, unlike `casazium/license`'s `.secrets.json`/
+Tier-A-license/self-license set); there is no existing `start.sh`
+wrapper here to extend (`Dockerfile`'s `CMD` execs `node server.js`
+directly today); and an explicit open item that the Next.js standalone
+server's `SIGTERM` handling under `-exec` wrapping has not been spiked,
+unlike `casazium/license`'s verified Fastify chain. Also added a
+"Deleting the production database to force a fresh boot" section to
+`DEPLOYMENT.md`, generalizing the live `console.db` wipe run once this
+session (`docker inspect` for the real Coolify-prefixed volume name, a
+throwaway `alpine` container, `rm -f`, restart, verify) and
+cross-referencing `casazium/license`'s own equivalent section - the two
+databases are independent and orphan each other if only one is wiped
+(the real `409` this session hit on `/api/signup` after wiping only
+`license.db`). Committed as `bf5953e`, `Status: Draft`, pushed. See §117
+below.)
+2026-09-21 (§116:
 bumped `package.json`/`package-lock.json` to `1.1.0` (operator's
 explicit instruction) for the `product_uuid` UI/export work in §114/
 §115 - this repo checked its own git history before that work shipped
@@ -7430,6 +7453,94 @@ now correctly says pushed.
 
 ### Verification
 
-`npm test`: 136/136, no regressions. `npm run build` clean. Not yet
-committed - awaiting the operator's go-ahead.
+`npm test`: 136/136, no regressions. `npm run build` clean. Committed
+as `930db82`, `Status: Draft`, pushed (corrected here - originally said
+"not yet committed", stale by the time §117 below was written).
+
+## 117. Scoped Litestream for `console.db` (design only) and documented the live DB-wipe procedure (2026-09-21)
+
+A real design pass, mirroring `casazium/license`'s own
+`TASK_LITESTREAM_HA.md` structure and rigor, for the operator's
+follow-up question ("we should probably setup the litestream for
+console db too, no?") after this session's live production incident on
+`casazium/license` (a redeploy before the old database was wiped,
+recovered via a throwaway container mounting the same Coolify volume).
+Explicitly design-only, per the operator's own scope ("before touching
+any code") - nothing in this entry is implemented.
+
+### Where this repo's design differs from `casazium/license`'s, and why that matters
+
+Copying the other repo's design verbatim would have overstated both who
+benefits and what needs protecting:
+
+- **Audience is narrower than `casazium/license`'s framing suggests.**
+  Every real write path to `console.db` is gated behind `MULTI_TENANT`
+  (`lib/db.ts`) - a self-hosted deployment never actually creates
+  meaningful data in this database. Litestream here only protects the
+  SaaS-tier resource Casazium itself operates, not a self-hosted
+  customer's own independence from Casazium (the framing that motivated
+  the other repo's build). Confirmed against this repo's own code
+  before writing the doc, not assumed.
+- **The recovery set is simpler.** `casazium/license`'s design made "the
+  recovery set, not just the database" its central concept, because
+  `.secrets.json`, a Tier-A license file, and a self-license directory
+  all live on the same volume and a database-only restore silently
+  strands them. This repo has none of that: `ACCOUNT_ENCRYPTION_KEY`,
+  `SESSION_SECRET`, and every other secret are ordinary Coolify
+  environment variables, never written to disk - confirmed by reading
+  `scripts/backup-db.mjs` (backs up `DB_FILE` alone, nothing else,
+  unlike `casazium/license`'s equivalent, which was extended
+  specifically because it wasn't backing up enough). The one real
+  caveat: restoring `console.db` onto an environment whose
+  `ACCOUNT_ENCRYPTION_KEY` doesn't already match produces a database
+  full of undecryptable ciphertext - an operator-discipline point, not
+  a file-capture gap.
+- **No `start.sh` to extend.** `casazium/license`'s on/off branch was
+  inserted ahead of an existing `docker-entrypoint.js` indirection
+  layer. This repo's `Dockerfile` has no wrapper at all today - `CMD
+  ["node", "server.js"]` execs the Next.js standalone server directly.
+  Adding the same mechanism here means writing a *new* `scripts/start.sh`
+  from scratch, not extending one - the resulting chain would be two
+  layers, not three.
+- **An explicit, unresolved open question, not glossed over:**
+  `casazium/license`'s design could call its process/signal integration
+  *verified*, because a real spike ran the actual chain and confirmed
+  clean `SIGTERM` handling. No equivalent spike exists for this repo -
+  whether Next's standalone `server.js` drains an in-flight request on
+  `SIGTERM` is unknown, and the doc says so plainly rather than assuming
+  it by analogy to a different framework in a different repo. Flagged
+  as the first thing to do before implementation, not something this
+  design pass resolved.
+
+### Same mechanism where it does transfer
+
+Litestream v0.5.17 (same pin), same credential precedence
+(`AWS_*` silently wins over `LITESTREAM_*`), same "derive the replica
+path, never hand-set it" rule (reusing this repo's own
+`backup-and-push.sh` two-way `MULTI_TENANT` branch instead of
+`casazium/license`'s three-way one, since this repo has no MLS
+equivalent), same fail-loud-but-boot-anyway reachability check, same
+restore-ordering rule (stop Litestream before any other recovery path
+touches `/app/data`).
+
+### Also: documented the live DB-wipe procedure
+
+Separately, added a "Deleting the production database to force a fresh
+boot" section to `DEPLOYMENT.md`, generalizing the exact live procedure
+this session ran once on `console.db` (immediately after the equivalent
+`casazium/license` wipe): find the real Coolify-prefixed volume name via
+`docker inspect`, delete via a throwaway `alpine` container mounting the
+same volume, restart, verify. Explicitly cross-references
+`casazium/license`'s own equivalent section and the real failure mode
+that made a second wipe necessary here: wiping only `license.db` orphaned
+every pre-existing `console.db` account, surfacing as a `409` on
+`/api/signup` for a returning user. Also notes the separate
+`console-backups` volume needs no action after a wipe - it's untouched,
+and the next scheduled `backup-db.mjs` run simply captures the
+post-wipe state.
+
+### Verification
+
+Documentation and design only - no code changed, `npm test` not
+affected. Committed as `bf5953e`, `Status: Draft`, pushed.
 
