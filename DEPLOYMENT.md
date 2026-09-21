@@ -74,6 +74,36 @@ This matters for self-hosted deployments too, just less acutely — self-hosted 
 docker exec <container> sh scripts/restore-drill-from-b2.sh
 ```
 
+## Deleting the production database to force a fresh boot
+
+Same underlying mechanism as `casazium/license`'s own equivalent section (that repo's `DEPLOYMENT.md`) — deleting the live SQLite file from its named volume so the app recreates it from scratch on next boot. Executed live once this session, immediately after the equivalent wipe on `casazium/license` itself: wiping only `license.db` orphaned every pre-existing `console.db` account (`accounts.tenant_id`/`accounts.tenant_api_key_encrypted` referencing tenants that no longer existed, surfacing as a `409 Conflict` on `/api/signup` for a returning user), which is why this repo needs its own copy of this procedure rather than assuming the other repo's wipe was sufficient — **the two databases are independent and must be wiped together, or not at all, whenever a `license.db` wipe removes tenants this console still has accounts for.**
+
+**No Litestream caveat here today** — unlike `casazium/license`, this repo has no continuous-replication layer yet (see `TASK_LITESTREAM_HA.md`, proposed but not built), so there is no auto-restore-on-boot behavior to disable first. If that changes, this section needs the same pre-wipe disable step `casazium/license`'s version already has.
+
+1. **Find the real volume name** the same way as the other repo — Coolify prefixes it with a per-resource UUID, never literally `console-data`:
+   ```bash
+   docker inspect <container-name-or-id> --format '{{ range .Mounts }}{{ .Name }} -> {{ .Destination }}{{ "\n" }}{{ end }}'
+   ```
+   Look for the mount whose destination is `/app/data`.
+2. **Stop the service in Coolify** if it isn't already down (optional in practice, same reasoning as the other repo's version — the next step works via a throwaway container regardless).
+3. **Delete the database from a throwaway container mounting the same volume:**
+   ```bash
+   docker run --rm -v <real-volume-name>:/data alpine sh -c \
+     "rm -f /data/console.db /data/console.db-wal /data/console.db-shm && ls -la /data"
+   ```
+   Confirm the deletion via the final `ls -la` before moving on.
+4. **Restart the service in Coolify.** `lib/db.ts` creates a fresh database from `lib/db/schema.sql` when it finds none, the same defensive-init path that runs on every boot.
+5. **Verify:**
+   ```bash
+   curl https://<this-service's-domain>/signup
+   ```
+   returning the signup page confirms the process is up under `MULTI_TENANT=true`; signing in / signing up for real confirms the schema itself is usable.
+6. **If this wipe was paired with a `license.db` wipe on `casazium/license`** (the actual scenario this session hit), every account in this console's database now references a tenant that no longer exists on that server — the orphaned-account state this section opened with. Wiping `console.db` too, as described above, is the fix: it clears those stale accounts so new signups against the freshly-empty `license.db` succeed instead of hitting the `409` a stale local account row would otherwise produce.
+
+### `console-backups` volume — nothing extra to do after a wipe
+
+Deleting `console.db` from `console-data` doesn't touch the separate `console-backups` volume (`/app/backups`, where `scripts/backup-db.mjs` writes its daily snapshots) at all — they're independent named volumes on purpose (see this doc's own Backups section above). No action is needed there: the next scheduled `backup-db.mjs` run simply snapshots whatever the fresh, post-wipe database looks like: an empty `accounts` table under a brand-new schema, same as any other day's backup would capture whatever the database actually contains at run time. The pre-wipe backups already in that volume remain exactly as they were — still real, still restorable if the wipe itself turns out to have been a mistake — and age out on the normal `BACKUP_RETENTION_DAYS` schedule, not because of anything the wipe does.
+
 ## 7. Operator notifications (optional, `TASK_ACCOUNT_NOTIFICATIONS.md`)
 
 An optional, off-by-default Discord webhook notification for four events: `account.created`, `account.deleted`, `login`, `logout`. Unset by default in every deployment mode, self-hosted included — nothing changes for anyone who doesn't configure it.
