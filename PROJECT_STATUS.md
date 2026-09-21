@@ -1,7 +1,21 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-21 (§114:
+Last updated: 2026-09-21 (§115:
+closed two UI completeness items deferred from §114's own independent
+review. `RegisterReleaseForm` previously navigated to `/releases`
+immediately on success, so a registered release's `product_uuid` was
+only ever visible on the detail page, not at the moment of creation -
+now shows an inline success panel (mirroring `IssueLicenseForm`'s own
+pattern) with the `product_uuid`, a copy button, and
+`expectedProductUuid` guidance, before continuing on. The account data
+export (`app/api/export-data/route.ts`) omitted `product_uuid` from
+each exported license entirely - added, following the existing
+field-presence convention (undefined when the server omits it, dropped
+by `JSON.stringify` rather than emitted as `null`). `npx tsc --noEmit`/
+`npm run lint`/`npm run build`/`npm test` (136/136) all clean. Committed
+as `5eda2f7`, `Status: Draft` - not yet pushed. See §115 below.)
+2026-09-21 (§114:
 supported `casazium/license`'s per-tenant `product_uuid` redesign
 (`PRODUCT_UUID_DESIGN.md`), which replaced that repo's global
 `product_ownership` table (first-tenant-to-claim-a-product_id-wins) with
@@ -7317,4 +7331,46 @@ deliberately reprovisioned before this schema change can deploy safely;
 `sdk-v0.2.0` tag push, low urgency since it's backward-compatible for
 callers who don't upgrade); and no human has reviewed either repo's diff
 yet.
+
+## 115. Closed two UI completeness items deferred from §114 (2026-09-21)
+
+§114's own independent review deferred two lower-priority gaps rather
+than silently skip them: `RegisterReleaseForm` didn't show
+`product_uuid` inline on its own success state (only the release detail
+page did), and the account-data export omitted `product_uuid` from
+licenses/releases it lists. Both closed here.
+
+### RegisterReleaseForm inline product_uuid
+
+Previously called `router.push('/releases')` immediately on a
+successful registration - a real gap, since `product_uuid` is the one
+value an integrator most needs to copy at the moment of creation, and
+this form threw that moment away. Now holds the registered release in
+state and renders a "Release registered" success panel first (mirroring
+`IssueLicenseForm.tsx`'s own `issuedLicense` pattern exactly): product
+ID/version/channel, a `product_uuid` block with `<Code>` display, a
+`CopyValueButton`, and text pointing at `expectedProductUuid`, then a
+"Continue to releases →" button that does the navigation that used to
+happen unconditionally.
+
+### Data export product_uuid
+
+`app/api/export-data/route.ts`'s per-license export object listed every
+`License` field except `product_uuid` - a tenant downloading "all" their
+data got everything except the one field needed to actually verify
+their own licenses against their SDK integration. Added directly
+(`product_uuid: license.product_uuid`) - when the server omits the
+field (the field-presence convention this repo uses throughout),
+`license.product_uuid` is `undefined`, and `JSON.stringify` drops an
+`undefined` value entirely, so the omission convention holds all the
+way through to the exported file with no extra branching needed.
+
+### Verification
+
+`npx tsc --noEmit`, `npm run lint`, `npm run build` all clean. `npm
+test`: 136/136 (no new tests - no existing coverage exists for either
+this route's payload shape or the license/release forms' success-panel
+UI, matching this repo's own established pattern: `IssueLicenseForm`'s
+equivalent panel isn't component-tested either). Committed as `5eda2f7`,
+`Status: Draft` - not yet pushed.
 
