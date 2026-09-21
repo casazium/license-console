@@ -152,6 +152,14 @@ export async function GET(request: NextRequest) {
     licensesWithActivations = await mapWithConcurrency(licenses, ACTIVATIONS_CONCURRENCY, async (license) => ({
       key: license.key,
       product_id: license.product_id,
+      // Optional (PRODUCT_UUID_DESIGN.md, casazium/license) - undefined
+      // when the server omits it (field-presence convention, never sent
+      // as null), which JSON.stringify below drops entirely, matching
+      // every other surface's handling of this field. Previously missing
+      // from this export outright - a tenant downloading "all" their
+      // data got every license field except the one needed to actually
+      // verify these licenses against their own SDK integration.
+      product_uuid: license.product_uuid,
       tier: license.tier,
       status: license.status,
       issued_to: license.issued_to,

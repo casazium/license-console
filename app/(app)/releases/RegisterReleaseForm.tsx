@@ -2,11 +2,12 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, Stack, Textarea, TextInput, Title } from '@mantine/core';
+import { Button, Code, Group, Stack, Text, Textarea, TextInput, Title } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { registerReleaseAction } from './actions';
 import { brandButtonStyle } from '@/components/brandButtonStyle';
+import { CopyValueButton } from '@/components/CopyValueButton';
 import {
   notifyRateLimited,
   notifyReleasePaymentFailed,
@@ -45,6 +46,18 @@ type RegisterReleaseValues = {
 export function RegisterReleaseForm() {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
+  // Holding the registered release here, instead of navigating away
+  // immediately, is what makes the inline product_uuid reveal below
+  // possible - mirrors IssueLicenseForm.tsx's own issuedLicense state
+  // for the same reason: this was previously the one place in this repo
+  // that surfaced product_uuid only on a later detail-page visit, not at
+  // the moment of creation when an integrator most needs to copy it.
+  const [registeredRelease, setRegisteredRelease] = useState<{
+    productId: string;
+    version: string;
+    channel: string;
+    productUuid?: string;
+  } | null>(null);
 
   const form = useForm<RegisterReleaseValues>({
     initialValues: {
@@ -202,7 +215,13 @@ export function RegisterReleaseForm() {
         title: 'Release registered',
         message: `${values.product_id} ${values.version} (${values.channel})`,
       });
-      router.push('/releases');
+      setRegisteredRelease({
+        productId: values.product_id,
+        version: values.version,
+        channel: values.channel,
+        productUuid: result.data.product_uuid,
+      });
+      setSubmitting(false);
     } catch {
       notifications.show({
         color: 'red',
@@ -211,6 +230,42 @@ export function RegisterReleaseForm() {
       });
       setSubmitting(false);
     }
+  }
+
+  if (registeredRelease) {
+    return (
+      <>
+        <Title order={2} mb="md">
+          Release registered
+        </Title>
+        <Stack maw={480}>
+          <Text size="sm">
+            {registeredRelease.productId} {registeredRelease.version} ({registeredRelease.channel})
+          </Text>
+          {registeredRelease.productUuid && (
+            <div>
+              <Text size="sm" fw={600} mb={4}>
+                Product UUID
+              </Text>
+              <Group gap="xs" wrap="nowrap">
+                <Code block style={{ flex: 1, wordBreak: 'break-all' }}>
+                  {registeredRelease.productUuid}
+                </Code>
+                <CopyValueButton value={registeredRelease.productUuid} />
+              </Group>
+              <Text size="xs" c="dimmed" mt={4}>
+                The same for every release and license under this product_id - copy it once
+                and hard-code it in your SDK integration (<Code>expectedProductUuid</Code>).
+                You can always find it again on this release&apos;s detail page.
+              </Text>
+            </div>
+          )}
+          <Button style={brandButtonStyle} onClick={() => router.push('/releases')}>
+            Continue to releases →
+          </Button>
+        </Stack>
+      </>
+    );
   }
 
   return (
