@@ -1,7 +1,25 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-21 (§115:
+Last updated: 2026-09-21 (§116:
+bumped `package.json`/`package-lock.json` to `1.1.0` (operator's
+explicit instruction) for the `product_uuid` UI/export work in §114/
+§115 - this repo checked its own git history before that work shipped
+and found no per-change version-bump convention (unlike
+`casazium/license`'s 1.2.0 -> 1.3.0 for the same body of work), so it
+had stayed at `1.0.0` through both entries; the operator asked
+specifically why and then asked for the bump. `next.config.mjs` already
+reads `pkg.version` into `APP_VERSION` at build time, so no other file
+needed a matching edit - confirmed via a rebuild, whose footer now
+reads `license-console@1.1.0`. `npm install --package-lock-only`
+regenerated the lockfile's two matching version fields, nothing else in
+the dependency tree changed. `npm test` (136/136) and `npm run build`
+both clean. Also corrected four stale "not yet pushed" claims in §114/
+§115 themselves, left behind when this session's later cross-repo push
+actually shipped `8a7489e`/`22bc359`/`5eda2f7`/`77d75cb` - each now
+says pushed. Not yet committed - awaiting the operator's go-ahead. See
+§116 below.)
+2026-09-21 (§115:
 closed two UI completeness items deferred from §114's own independent
 review. `RegisterReleaseForm` previously navigated to `/releases`
 immediately on success, so a registered release's `product_uuid` was
@@ -14,7 +32,8 @@ each exported license entirely - added, following the existing
 field-presence convention (undefined when the server omits it, dropped
 by `JSON.stringify` rather than emitted as `null`). `npx tsc --noEmit`/
 `npm run lint`/`npm run build`/`npm test` (136/136) all clean. Committed
-as `5eda2f7`, `Status: Draft` - not yet pushed. See §115 below.)
+as `5eda2f7`, `Status: Draft` - pushed to `main` as part of this
+session's cross-repo push. See §115 below.)
 2026-09-21 (§114:
 supported `casazium/license`'s per-tenant `product_uuid` redesign
 (`PRODUCT_UUID_DESIGN.md`), which replaced that repo's global
@@ -41,11 +60,12 @@ detail page, and the issue-license success screen. The release-only
 `CopyUrlButton` was promoted to `components/CopyValueButton` since it's
 now shared by both features. `npx tsc --noEmit`/`npm run lint`/`npm run
 build`/`npm test` (136/136) all clean. Committed as `8a7489e`, `Status:
-Draft` - not yet pushed, awaiting the operator's go-ahead. Deferred, not
-part of this entry: `RegisterReleaseForm` doesn't yet show `product_uuid`
-inline on its own success state (only the release detail page does), and
-the account-data export omits `product_uuid` - both lower-priority,
-consciously left for a follow-up. See §114 below.)
+Draft` - pushed to `main` as part of this session's cross-repo push.
+Deferred, not part of this entry: `RegisterReleaseForm` doesn't yet show
+`product_uuid` inline on its own success state (only the release detail
+page does), and the account-data export omits `product_uuid` - both
+lower-priority, consciously left for a follow-up (closed in §115). See
+§114 below.)
 2026-09-20 (§113: follow-up to
 `casazium/license`'s §214 permanent-product_id-retirement fix - that
 backend change introduced a new, distinct 403 message for a retired
@@ -7307,14 +7327,14 @@ no documented way to learn their own product's real value.
 `npx tsc --noEmit`, `npm run lint`, `npm run build` all clean. `npm
 test`: 136/136 (139 - 3, from removing `isProductIdRetired`'s dedicated
 tests along with the classifier itself), no regressions. Committed as
-`8a7489e` (`Status: Draft`) - not yet pushed, awaiting the operator's
-go-ahead.
+`8a7489e` (`Status: Draft`) - pushed to `main` as part of this session's
+cross-repo push.
 
 ### Deferred, not part of this entry
 
 Two lower-priority gaps found during the same verification pass, both
-consciously left for a follow-up rather than silently skipped:
-`RegisterReleaseForm` doesn't show `product_uuid` inline on its own
+consciously left for a follow-up rather than silently skipped (closed in
+§115): `RegisterReleaseForm` doesn't show `product_uuid` inline on its own
 success state (only the release detail page does); the account-data
 export (`app/(app)/settings/actions.ts`'s export path) doesn't include
 `product_uuid` for licenses/releases it lists.
@@ -7372,5 +7392,44 @@ test`: 136/136 (no new tests - no existing coverage exists for either
 this route's payload shape or the license/release forms' success-panel
 UI, matching this repo's own established pattern: `IssueLicenseForm`'s
 equivalent panel isn't component-tested either). Committed as `5eda2f7`,
-`Status: Draft` - not yet pushed.
+`Status: Draft` - pushed to `main` as part of this session's cross-repo
+push.
+
+## 116. Bumped to 1.1.0 for the product_uuid UI/export work (2026-09-21)
+
+The operator asked directly whether `casazium/license-console`'s own
+version had been bumped for §114/§115's work, the same way
+`casazium/license`'s own `package.json` went 1.2.0 -> 1.3.0 for the
+identical body of work. Checked before answering, not assumed: this
+repo's `package.json` was still `1.0.0`, untouched since `9337d37`
+("Bump version to 1.0.0"), well before either entry - confirmed this
+repo has never followed a per-change version-bump convention (unlike
+`casazium/license`'s), so §114/§115 shipping without a bump was
+consistent with prior practice, not an oversight specific to this work.
+The operator then asked for the bump explicitly.
+
+### Change
+
+`package.json`'s `version` field: `1.0.0` -> `1.1.0`.
+`package-lock.json` regenerated via `npm install --package-lock-only`
+(only its own two matching `version` fields changed - no dependency
+version changed). No other file needed editing: `next.config.mjs`
+already reads `pkg.version` into the `APP_VERSION` env var at build
+time (`lib/version.ts`'s `getAppVersion()`), which the footer's
+`VersionStamp` component displays - confirmed via a rebuild, whose
+`postbuild` step and rendered footer both now read
+`license-console@1.1.0`. No `CHANGELOG.md` exists in this repo to
+update (confirmed - none has ever existed).
+
+### Also fixed while here
+
+Four stale "not yet pushed" claims in §114 and §115 themselves,
+left behind when this session's later cross-repo push actually shipped
+`8a7489e`, `22bc359`, `5eda2f7`, and `77d75cb` to `origin/main` - each
+now correctly says pushed.
+
+### Verification
+
+`npm test`: 136/136, no regressions. `npm run build` clean. Not yet
+committed - awaiting the operator's go-ahead.
 
