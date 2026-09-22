@@ -1,7 +1,22 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-21 (§117:
+Last updated: 2026-09-22 (§126: real
+Stripe billing verified end to end on a fresh Test-mode sandbox for the
+test environment. Before that: Litestream actually built (§122,
+superseding §117's design-only status) and live-verified on the
+SaaS-tier resource (§123), sharing a bucket with `casazium/license`'s
+own replica; a real production incident closed by making
+`new Database()` fail loud under `MULTI_TENANT=true` unless
+`DB_ALLOW_INIT=true` is explicit (§120), with the identical bug found
+and fixed in `casazium/license` as a direct result; boot-time logging
+added for both directions of that flag (§121); a real Backblaze
+retention bug fixed (`rclone delete` was hiding, not erasing, pruned
+backups - §124); and a new `ENVIRONMENT_LABEL` banner, whose first
+implementation was hidden on every authenticated page by Mantine's
+fixed-position `AppShell` header until fixed (§125). See §118-126
+below.)
+2026-09-21 (§117:
 scoped (design only, not implemented) continuous replication via
 Litestream for `console.db`, mirroring `casazium/license`'s own
 `TASK_LITESTREAM_HA.md` - new file of the same name here. Key findings
@@ -7543,4 +7558,170 @@ post-wipe state.
 
 Documentation and design only - no code changed, `npm test` not
 affected. Committed as `bf5953e`, `Status: Draft`, pushed.
+
+## 118. Updated Pro plan license limit copy: 100 -> 1,000 (2026-09-21)
+
+Mirrors `casazium/license`'s own `PLAN_LIMITS.pro` change (that repo's
+`PROJECT_STATUS.md` §226): `PLanSelector.tsx`'s Pro tier copy updated
+from "Up to 100 active licenses" to "Up to 1,000" to match the real
+enforced limit after `PRODUCT_RESEARCH.md`'s competitive comparison
+found the actual gap against newer indie competitors was volume, not
+price.
+
+## 119. Fail loud when console.db is missing in notify-expiring.mjs (2026-09-22)
+
+First of three related fixes this session, prompted by real production
+error emails (a Backblaze Class C cap warning, a `backup-db.js`
+`SQLITE_CANTOPEN`, and this script logging "no such table: accounts").
+`scripts/notify-expiring.mjs`'s own `new Database()` call had no
+`fileMustExist` guard - added `{ fileMustExist: true }`, matching the
+pattern `backup-db.mjs` already used correctly via `readonly: true`.
+Narrowest of the three fixes: this script only runs on a schedule and
+only reads, so the blast radius of the underlying gap was smallest
+here.
+
+## 120. Fail loud when console.db is missing under `MULTI_TENANT=true` (2026-09-22)
+
+The real incident, not hypothetical: a restart of this repo's SaaS-tier
+resource hit a missing/detached volume, and with no guard on the main
+app's own `new Database()` call in `lib/db.ts`, better-sqlite3 silently
+created a fresh empty file - the console booted looking perfectly
+healthy while every account was gone. `fileMustExist: true` now applies
+whenever `isMultiTenant()` is true, **unless** `DB_ALLOW_INIT=true` is
+also explicitly set. A first attempt at this fix (`fileMustExist`
+unconditional under `MULTI_TENANT=true`) broke 10 legitimate tests that
+bootstrap a fresh database under `MULTI_TENANT=true` stubs - caught by
+running the suite before committing, not by review. `DB_ALLOW_INIT` was
+added as the explicit opt-in instead, with only the 2 affected test
+files stubbing it (this repo's much smaller test suite made a per-file
+approach the better tradeoff vs. `casazium/license`'s global
+`tests/setup.js` default - that repo's own `PROJECT_STATUS.md` §228).
+New `tests/lib/db-fail-loud-on-missing-file.test.ts` (3 cases: throws,
+allows with the flag, self-hosted unaffected). `DEPLOYMENT.md`'s
+"Deleting the production database to force a fresh boot" procedure
+updated with the corresponding `DB_ALLOW_INIT=true`-then-unset steps.
+The identical bug and fix pattern was found and applied to
+`casazium/license`'s own `src/app.js` in the same session (that repo's
+`PROJECT_STATUS.md` §228) once the question "why wasn't this bug in
+`license` too?" was asked and checked directly rather than assumed
+absent. 139/139 tests passing, typecheck/lint clean.
+
+## 121. Logged whether `DB_ALLOW_INIT` created a fresh database or was left on unnecessarily (2026-09-22)
+
+Same operator questions asked live during the fresh-install work as
+`casazium/license`'s §230, applied here too: `lib/db.ts` now checks
+file existence before opening and logs one of two `console.warn()`
+messages when `DB_ALLOW_INIT=true` - one for "didn't exist, creating
+fresh, remove the flag once this boot succeeds," one for "already
+exists, opened as-is, turn the flag back off now." Two new tests in
+`tests/lib/db-fail-loud-on-missing-file.test.ts` (now 5 cases) spy on
+`console.warn` to confirm both fire correctly. 141/141 tests passing.
+
+## 122. Built Litestream continuous replication for console.db (2026-09-22)
+
+Supersedes §117's "design only" status - the design doc's own two
+console-specific adjustments (a two-way `saas`/`standalone` mode branch
+instead of `casazium/license`'s three-way `mls`/`saas`/`standalone`; no
+existing `start.sh`/`docker-entrypoint.js` layer to preserve underneath,
+since this repo's `Dockerfile` execs `node server.js` directly) were
+implemented as written. New: `scripts/start.sh` (the on/off branch
+decided before Litestream is ever invoked, same reasoning as
+`casazium/license`'s own), `litestream.yml`, `scripts/
+restore-drill-litestream.sh`. Changed: `Dockerfile` (pinned Litestream
+binary fetch + `sha256sum` verification - needed an explicit `apk add
+curl`, since plain `node:22-alpine` doesn't ship it unlike
+`casazium/license`'s Wolfi-based image; `CMD` switched to the new
+wrapper), `.env.example`, `DEPLOYMENT.md` (new Litestream section, plus
+disable-before-wipe/re-enable-after steps added to the existing DB-wipe
+procedure). **Resolved the design doc's one blocking open question
+before implementing, not after**: whether Next's standalone `server.js`
+drains an in-flight request on `SIGTERM` or drops it. Confirmed by
+reading `next/dist/server/lib/start-server.js`'s own `cleanup()`
+handler (calls `server.close()` before exiting) and by a live spike -
+built the real standalone server, opened a slow-reading request, sent
+`SIGTERM` mid-transfer, and the full response completed intact. Full
+test suite (141/141), typecheck, lint, and `docker compose config` all
+clean - no Docker daemon available in this environment to verify the
+actual image build/binary-fetch chain end to end, flagged as the one
+remaining item before live verification (closed by §123 below).
+
+## 123. Live-verified Litestream on the SaaS-tier resource (2026-09-22)
+
+The one item §122 couldn't close locally. Confirmed live against the
+production SaaS-tier resource, sharing the same Backblaze bucket
+(`licenseLitestream`) `casazium/license`'s own Litestream replica
+already uses, namespaced apart by the derived
+`licenseServer/console/${mode}/litestream` path: boot logs showed the
+reachability check passing (`bucket=licenseLitestream, mode=saas`),
+correct version (`0.5.17`), db path (`/app/data/console.db`), replica
+path (`licenseServer/console/saas/litestream`), endpoint/region
+(`s3.us-east-005.backblazeb2.com`/`us-east-005`), and the widened
+5m/5m/1h/5m-retention compaction intervals from `litestream.yml`,
+followed by a clean Next.js boot through the `-exec` handoff. Confirms
+the reachability/config path end to end; a completed write-replication
+cycle and a real `restore-drill-litestream.sh` run against real data
+remain the one still-open item in `TASK_LITESTREAM_HA.md`.
+
+## 124. Hard-delete pruned B2 backups instead of only hiding them (2026-09-22)
+
+Same bug, same fix, as `casazium/license`'s own §231 (that repo's
+`PROJECT_STATUS.md`) - found live in the shared `licenseServer` bucket
+both repos push daily backups to. `rclone`'s B2 backend hides a deleted
+file rather than erasing it unless `--b2-hard-delete` is passed;
+`backup-and-push.sh`'s `rclone delete --min-age` call was missing it,
+so every "pruned" backup was actually just accumulating a hidden
+version at full storage cost, forever, since retention was added.
+Fixed by adding the flag. The already-accumulated backlog (affecting
+both repos' paths in the same bucket) was purged live in one pass via
+`rclone backend cleanup-hidden`, run from `casazium/license`'s side
+(see that repo's own record).
+
+## 125. Added and fixed the `ENVIRONMENT_LABEL` banner for non-production resources (2026-09-22)
+
+Prompted by setting up the test/sandbox environment
+(`license-test-cloud.casazium.com`): production/test confusion is a
+real failure mode (an admin acting against the wrong tenant because
+nothing on screen said which deployment they were on). New optional
+`ENVIRONMENT_LABEL` env var (`lib/config.ts`'s `environmentLabel()`)
+drives a persistent, hard-to-miss banner (`components/
+EnvironmentBanner.tsx`) - off by default, so every existing deployment,
+production included, is unaffected unless an operator explicitly sets
+it. **First implementation had a real bug, caught live on the actual
+test deployment, not in testing**: rendering it once from the root
+layout worked on `/login` but was completely hidden on every
+authenticated page, because Mantine's `AppShell` renders its header as
+`position: fixed` to the true viewport top and paints directly over
+anything placed above it in normal document flow. Fixed by rendering it
+from the two shells that actually need it instead of the root layout:
+`AuthShell.tsx` (pre-auth pages, normal flow, no conflict) and
+`AppShellClient.tsx` (embedded inside `AppShell.Header`, growing
+`header.height` by the banner's exact height so Mantine's own layout
+math - `Main`'s padding, `Navbar`'s top offset - accounts for it
+correctly instead of fighting the fixed positioning). Full test suite
+(143/143), typecheck, lint, and build all clean; re-confirmed live on
+the built standalone server that `/login` still shows exactly one
+banner instance after the refactor, and the operator confirmed live on
+the real deployed test environment that the banner now shows correctly
+across every page.
+
+## 126. Real Stripe billing verified end to end on the test environment (2026-09-22)
+
+Operational milestone, no code change in this repo. A fresh Stripe
+Test-mode sandbox was set up specifically for this test environment
+(separate Product/Prices/webhook endpoint/API keys from production's
+live-mode Stripe account, per `casazium/license`'s existing "One-time
+Stripe Dashboard setup" procedure) - webhook registered at
+`https://license-test-api.casazium.com/v1/billing-webhook`,
+`BILLING_PROVIDER=stripe` set on the test API resource. One real bug
+surfaced and self-resolved during setup: a `POST /billing/checkout/
+confirm?plan=pro` `500` traced to the test API not yet having
+redeployed with the new Stripe env vars, so the console was still
+routing through the stub-billing fallback path
+(`createCheckoutSessionAction`'s `stub-billing.invalid` hostname
+detection) - resolved once the redeploy actually took effect. Confirmed
+working end to end afterward: real Stripe Checkout using test card
+`4242 4242 4242 4242`, the webhook firing against the license API (not
+this console - the console's only role is `CONSOLE_BILLING_URL`, the
+post-Checkout browser redirect target, never a webhook recipient
+itself).
 
