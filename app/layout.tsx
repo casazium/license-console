@@ -7,9 +7,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import type { Metadata } from 'next';
 import { ColorSchemeScript, MantineProvider, mantineHtmlProps } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
-import { EnvironmentBanner } from '@/components/EnvironmentBanner';
 import { getBranding } from '@/lib/branding';
-import { environmentLabel } from '@/lib/config';
 import { getSession } from '@/lib/session';
 import { theme } from '@/lib/theme';
 
@@ -59,7 +57,6 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       */}
       <body style={brandColorStyle} suppressHydrationWarning>
         <MantineProvider theme={theme}>
-          <EnvironmentBanner label={environmentLabel()} />
           <Notifications />
           {children}
         </MantineProvider>

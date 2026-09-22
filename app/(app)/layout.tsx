@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { getBranding } from '@/lib/branding';
+import { environmentLabel } from '@/lib/config';
 import { getBackendVersion } from '@/lib/license-client';
 import { getAppVersion } from '@/lib/version';
 import { requireSession } from '@/lib/session';
@@ -48,6 +49,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       showBilling={showBilling}
       showSettingsNav={showSettingsNav}
       showEmailVerificationBanner={showEmailVerificationBanner}
+      environmentLabel={environmentLabel()}
     >
       {children}
     </AppShellClient>

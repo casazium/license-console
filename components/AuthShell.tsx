@@ -5,7 +5,9 @@ import type { AppVersion } from '@/lib/version';
 import { BrandLogo } from '@/components/BrandLogo';
 import { BrandTitle } from '@/components/BrandTitle';
 import { BrandCopyright } from '@/components/BrandCopyright';
+import { EnvironmentBanner } from '@/components/EnvironmentBanner';
 import { VersionStamp } from '@/components/VersionStamp';
+import { environmentLabel } from '@/lib/config';
 
 /**
  * Shared header/form-card/footer shell for the four pre-auth pages
@@ -45,6 +47,7 @@ export function AuthShell({
         color: 'var(--cz-ink)',
       }}
     >
+      <EnvironmentBanner label={environmentLabel()} />
       {branding.logoUrl && (
         <Box component="header" p="md">
           <BrandLogo logoUrl={branding.logoUrl} linkUrl={branding.logoLinkUrl} size={40} />

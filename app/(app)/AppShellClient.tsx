@@ -12,6 +12,7 @@ import { BrandLogo } from '@/components/BrandLogo';
 import { BrandCopyright } from '@/components/BrandCopyright';
 import { VersionStamp } from '@/components/VersionStamp';
 import { EmailVerificationBanner } from '@/components/EmailVerificationBanner';
+import { EnvironmentBanner, ENVIRONMENT_BANNER_HEIGHT } from '@/components/EnvironmentBanner';
 import { brandTextButtonStyle } from '@/components/brandButtonStyle';
 
 const BASE_NAV_ITEMS = [
@@ -20,6 +21,8 @@ const BASE_NAV_ITEMS = [
   { href: '/releases', label: 'Releases' },
 ];
 
+const HEADER_HEIGHT = 60;
+
 export function AppShellClient({
   branding,
   appVersion,
@@ -27,6 +30,7 @@ export function AppShellClient({
   showBilling,
   showSettingsNav,
   showEmailVerificationBanner,
+  environmentLabel,
   children,
 }: {
   branding: Branding;
@@ -45,6 +49,14 @@ export function AppShellClient({
   // app/(app)/layout.tsx) - self-hosted has no email/verification
   // concept at all.
   showEmailVerificationBanner: boolean;
+  // Rendered inside AppShell.Header, not as a sibling above <AppShell>
+  // (components/AuthShell.tsx's approach for pre-auth pages) - Mantine's
+  // AppShell.Header is `position: fixed` to the true viewport top and
+  // paints directly over anything placed before it in normal document
+  // flow, confirmed live. Embedding it here and growing `header.height`
+  // by its exact size instead lets Mantine's own layout math (Main's
+  // padding, Navbar's top offset) account for it correctly.
+  environmentLabel: string | null;
   children: ReactNode;
 }) {
   const navItems = [
@@ -69,9 +81,11 @@ export function AppShellClient({
   // light-variant active fill).
   const shellSurfaceStyle = { backgroundColor: 'var(--cz-paper)', boxShadow: 'none' };
 
+  const totalHeaderHeight = environmentLabel ? HEADER_HEIGHT + ENVIRONMENT_BANNER_HEIGHT : HEADER_HEIGHT;
+
   return (
     <AppShell
-      header={{ height: 60 }}
+      header={{ height: totalHeaderHeight }}
       navbar={{ width: 220, breakpoint: 'sm', collapsed: { mobile: !opened } }}
       footer={{ height: 36 }}
       padding="md"
@@ -82,7 +96,8 @@ export function AppShellClient({
       }}
     >
       <AppShell.Header>
-        <Group h="100%" px="md" justify="space-between">
+        <EnvironmentBanner label={environmentLabel} />
+        <Group h={HEADER_HEIGHT} px="md" justify="space-between">
           <Group gap="xs">
             <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" color="var(--cz-ink)" />
             <BrandLogo logoUrl={branding.logoUrl} linkUrl={branding.logoLinkUrl} size={28} />
