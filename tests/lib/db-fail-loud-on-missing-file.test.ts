@@ -9,7 +9,7 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 // make the other two cases' "file was missing" premise depend on
 // execution order rather than each being independently true.
 const dbFileFor = (name: string) => path.resolve(dirname, `test-db-fail-loud-${name}-${process.pid}.db`);
-const allTestDbFiles = ['throws', 'allow-init', 'self-hosted'].map(dbFileFor);
+const allTestDbFiles = ['throws', 'allow-init', 'self-hosted', 'warn-create', 'warn-existing'].map(dbFileFor);
 
 // Real production incident, not hypothetical: a restart of the SaaS-tier
 // resource hit a missing console.db and, with no guard on the
@@ -71,5 +71,47 @@ describe('lib/db.ts fails loud on a missing file under MULTI_TENANT=true', () =>
 
     const { getDb } = await import('@/lib/db');
     expect(() => getDb()).not.toThrow();
+  });
+
+  // Mirrors casazium/license's own equivalent tests in
+  // tests/db-allow-init-boot-guard.test.js, added for the same operator
+  // question during live incident response: "is there any log that it
+  // created the database?" / "are there log messages on a restart
+  // against an existing database?" - neither existed here either.
+  it('warns that it is creating a fresh database when the file is missing and DB_ALLOW_INIT=true', async () => {
+    vi.stubEnv('MULTI_TENANT', 'true');
+    vi.stubEnv('DB_FILE', dbFileFor('warn-create'));
+    vi.stubEnv('DB_ALLOW_INIT', 'true');
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const { getDb } = await import('@/lib/db');
+    getDb();
+
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringMatching(/did not exist - creating a fresh database/i));
+    warnSpy.mockRestore();
+  });
+
+  it('warns that DB_ALLOW_INIT should be turned off when the file already exists', async () => {
+    const dbFile = dbFileFor('warn-existing');
+    vi.stubEnv('MULTI_TENANT', 'true');
+    vi.stubEnv('DB_FILE', dbFile);
+    vi.stubEnv('DB_ALLOW_INIT', 'true');
+
+    // Seed a real, schema-applied file first (simulating a resource that
+    // already successfully initialized) - exactly the "restart again
+    // with DB_ALLOW_INIT still set" scenario asked about live.
+    const { getDb: seedGetDb } = await import('@/lib/db');
+    seedGetDb();
+    delete (globalThis as Record<string, unknown>).__consoleDb;
+    vi.resetModules();
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { getDb } = await import('@/lib/db');
+    getDb();
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/already exists[\s\S]*will be opened as-is[\s\S]*Set DB_ALLOW_INIT=false/i)
+    );
+    warnSpy.mockRestore();
   });
 });

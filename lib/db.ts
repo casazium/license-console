@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { isMultiTenant } from './config';
 
@@ -81,6 +81,29 @@ function openDatabase(): Database.Database {
   // table is expected to start empty and hold nothing worth protecting
   // (TASK_LITESTREAM_HA.md's own reasoning) - unaffected either way.
   const requireExistingFile = isMultiTenant() && process.env.DB_ALLOW_INIT !== 'true';
+
+  // Checked before opening, not inferred afterward (better-sqlite3 gives
+  // no way to tell "opened existing" from "just created" once the handle
+  // is open) - mirrors casazium/license's own src/app.js fix, added for
+  // the same reason: an operator restarting this service under
+  // DB_ALLOW_INIT=true had no log line telling them whether it just
+  // created a fresh database or opened the existing one as-is.
+  const dbFileExistedBeforeOpen = existsSync(absoluteDbPath);
+  if (isMultiTenant() && process.env.DB_ALLOW_INIT === 'true') {
+    if (dbFileExistedBeforeOpen) {
+      console.warn(
+        `DB_ALLOW_INIT=true is set but ${absoluteDbPath} already exists - it will be opened as-is, not created. ` +
+          'Set DB_ALLOW_INIT=false (or unset it) now that this deployment is initialized - leaving it set silently ' +
+          'disables the guard that would otherwise catch a future missing/detached volume.'
+      );
+    } else {
+      console.warn(
+        `${absoluteDbPath} did not exist - creating a fresh database because DB_ALLOW_INIT=true is set. ` +
+          'Remove DB_ALLOW_INIT (or set it to false) once this boot succeeds.'
+      );
+    }
+  }
+
   const database = new Database(
     absoluteDbPath,
     requireExistingFile ? { fileMustExist: true } : undefined
