@@ -74,33 +74,76 @@ This matters for self-hosted deployments too, just less acutely — self-hosted 
 docker exec <container> sh scripts/restore-drill-from-b2.sh
 ```
 
+## Continuous replication with Litestream (optional, `TASK_LITESTREAM_HA.md`)
+
+An **optional, off-by-default** second backup layer alongside the daily snapshot pipeline above, cutting realistic data-loss exposure on `console.db` from "up to a day" to "a few seconds." Mirrors `casazium/license`'s own Litestream setup mechanically (same binary, same version pin, same derived-path/credential-precedence rules — see that repo's `DEPLOYMENT.md` for the full detail, which applies here verbatim), but the audience is different and worth stating plainly rather than assuming this reads the same as that repo's version:
+
+**Who this actually protects.** Every real write path to `console.db` is gated behind `MULTI_TENANT` (`lib/db.ts`; step 4 above) — a self-hosted deployment never actually creates the DB file during normal operation, so it has essentially nothing in this database worth protecting. `console.db` is only load-bearing on the **SaaS-tier resource Casazium itself operates**, where it holds the only copy of every hosted tenant's encrypted `casazium/license` API key. In practice, only that one Coolify resource will ever set `LITESTREAM_REPLICA_BUCKET` here — a self-hosted deployer who enables it anyway just replicates an empty-or-near-empty database, harmless but not useful.
+
+**The recovery set is simpler here than in `casazium/license`.** That repo's design made "the recovery set, not just the database" the central concept, because its own secrets and a self-license file live on the same volume a database-only restore would silently leave behind. None of that applies to this console: `ACCOUNT_ENCRYPTION_KEY`, `SESSION_SECRET`, `LICENSE_ADMIN_API_KEY`, and every other secret this console needs are ordinary Coolify environment variables, never written to disk — `scripts/backup-db.mjs` already confirms this by omission, backing up `DB_FILE` alone. So the recovery set is the database file itself, full stop — **provided** the environment being restored into already has the correct `ACCOUNT_ENCRYPTION_KEY` (the key that decrypts `accounts.tenant_api_key_encrypted`). Restoring onto the *same* running resource (the overwhelmingly common case) never hits this, since the env vars never move; it only matters when rebuilding the SaaS resource from scratch on new infrastructure.
+
+**Off by default, and this is verified, not assumed:** leave `LITESTREAM_REPLICA_BUCKET` unset and Litestream is never invoked at all — `scripts/start.sh` decides this before Litestream is ever run, so an unconfigured deployment boots through the exact same `node server.js` command it always has.
+
+**Enabling it:**
+
+1. Set `LITESTREAM_REPLICA_BUCKET` (Coolify env var UI) to your own S3-compatible bucket.
+2. Set `LITESTREAM_REPLICA_ENDPOINT`/`LITESTREAM_REPLICA_REGION` — effectively required for any provider that isn't real AWS S3 (Backblaze B2, Cloudflare R2, MinIO, etc.). Leave both blank only for real AWS S3.
+3. Set credentials as `LITESTREAM_ACCESS_KEY_ID`/`LITESTREAM_SECRET_ACCESS_KEY`. If `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` are *also* set in this container for any other reason, they silently win over the `LITESTREAM_*` pair.
+4. The replica's object-storage path is **derived automatically at boot** (the same `saas`/`standalone` branch `scripts/backup-and-push.sh` already uses for its own B2 destination) — there is no path variable to set.
+
+**Verify it's actually reachable, not just configured:** every boot, `scripts/start.sh` runs `litestream restore -if-replica-exists` against the configured destination before starting Litestream for real. A broken/unreachable destination logs loudly and boots anyway — it never blocks this console from starting. Look for one of these two lines in the boot logs:
+
+```
+litestream: replica destination reachable (bucket=..., mode=...)
+litestream: WARNING - replica destination unreachable or misconfigured (bucket=..., mode=...) - continuing boot anyway, ...
+```
+
+**Ongoing observability — load-bearing, not optional, for the same reason as `casazium/license`:** boot succeeding once says nothing about a credential revoked or a bucket deleted days later. Watch Litestream's own `level=ERROR` lines (`consecutive_errors`/`backoff` climbing) and `du -sh /app/data/.*-litestream` for unbounded growth during an outage.
+
+**A real, Litestream-specific restore drill:** `scripts/restore-drill-litestream.sh` runs a real `litestream restore` against the actual configured replica, into a scratch location that never touches the live database, handed off to `restore-drill.mjs`'s existing integrity/row-count/migration checks:
+
+```bash
+docker exec <container> sh scripts/restore-drill-litestream.sh
+```
+
+**Restoring from Litestream — ordering matters relative to the daily-snapshot procedure above**, identically to `casazium/license`: stop Litestream before any other recovery path touches `/app/data`, or it will resync the replica back down to match an older restored snapshot, undoing the restore.
+
+**Known limitations** (identical to `casazium/license`'s own list — see that repo's `DEPLOYMENT.md` for the full reasoning behind each): no client-side encryption (pinned v0.5.17 dropped it — rely on the storage provider's own server-side encryption at rest); Litestream writes its own bookkeeping (`_litestream_seq`/`_litestream_lock` tables, a hidden `.console.db-litestream/` directory) into the live database and volume; the boot-time check proves read/list access, not write access; `-restore-if-db-not-exists` is deliberately left off in Phase 1.
+
+**SIGTERM / graceful-shutdown verification — resolved, not left open.** `TASK_LITESTREAM_HA.md` flagged an open question before this could ship: whether Next's standalone `server.js` drains an in-flight request on `SIGTERM` before exiting, or drops it. Confirmed directly (both by reading `next/dist/server/lib/start-server.js`'s own `cleanup()` handler and by a live spike — start the real standalone server, open a slow-reading connection, send `SIGTERM` mid-transfer): it registers `SIGTERM`/`SIGINT` handlers that call `server.close()` (stop accepting new connections, let in-flight ones finish) before exiting with the signal-based code (143 for `SIGTERM`). The live spike's in-flight response completed in full (27KB delivered intact) despite `SIGTERM` arriving mid-transfer. See `TASK_LITESTREAM_HA.md`'s own record of this result.
+
 ## Deleting the production database to force a fresh boot
 
 Same underlying mechanism as `casazium/license`'s own equivalent section (that repo's `DEPLOYMENT.md`) — deleting the live SQLite file from its named volume so the app recreates it from scratch on next boot. Executed live once this session, immediately after the equivalent wipe on `casazium/license` itself: wiping only `license.db` orphaned every pre-existing `console.db` account (`accounts.tenant_id`/`accounts.tenant_api_key_encrypted` referencing tenants that no longer existed, surfacing as a `409 Conflict` on `/api/signup` for a returning user), which is why this repo needs its own copy of this procedure rather than assuming the other repo's wipe was sufficient — **the two databases are independent and must be wiped together, or not at all, whenever a `license.db` wipe removes tenants this console still has accounts for.**
 
-**No Litestream caveat here today** — unlike `casazium/license`, this repo has no continuous-replication layer yet (see `TASK_LITESTREAM_HA.md`, proposed but not built), so there is no auto-restore-on-boot behavior to disable first. If that changes, this section needs the same pre-wipe disable step `casazium/license`'s version already has.
+**If Litestream is enabled on this resource** (`LITESTREAM_REPLICA_BUCKET` set — check Coolify's environment variables UI for this service), **disable it first, before touching the volume**, same reasoning as `casazium/license`'s own equivalent section: Litestream restores from its replica automatically on next boot if it doesn't find a local database that already matches (`scripts/start.sh`'s own `-if-replica-exists` boot check) — delete the local file and restart with Litestream still pointed at the old replica, and it silently repopulates the exact data you just deleted.
 
-1. **Find the real volume name** the same way as the other repo — Coolify prefixes it with a per-resource UUID, never literally `console-data`:
+1. **If Litestream is enabled, disable it before touching the volume:**
+   - Unset `LITESTREAM_REPLICA_BUCKET` in Coolify's environment variables UI for this service and redeploy (not just restart) so the change actually reaches the container.
+   - The hidden `.console.db-litestream/` metadata directory on the volume also needs removing (see step 4 below) — otherwise a later re-enable can get confused about generation history. Delete it in the same pass as the database file itself.
+   - Skip this step entirely if Litestream was never enabled on this resource — every deployment before this feature existed, and every self-hosted deployment today.
+2. **Find the real volume name** the same way as the other repo — Coolify prefixes it with a per-resource UUID, never literally `console-data`:
    ```bash
    docker inspect <container-name-or-id> --format '{{ range .Mounts }}{{ .Name }} -> {{ .Destination }}{{ "\n" }}{{ end }}'
    ```
    Look for the mount whose destination is `/app/data`.
-2. **Stop the service in Coolify** if it isn't already down (optional in practice, same reasoning as the other repo's version — the next step works via a throwaway container regardless).
-3. **Delete the database from a throwaway container mounting the same volume:**
+3. **Stop the service in Coolify** if it isn't already down (optional in practice, same reasoning as the other repo's version — the next step works via a throwaway container regardless).
+4. **Delete the database from a throwaway container mounting the same volume:**
    ```bash
    docker run --rm -v <real-volume-name>:/data alpine sh -c \
-     "rm -f /data/console.db /data/console.db-wal /data/console.db-shm && ls -la /data"
+     "rm -f /data/console.db /data/console.db-wal /data/console.db-shm && rm -rf /data/.console.db-litestream && ls -la /data"
    ```
    Confirm the deletion via the final `ls -la` before moving on.
-4. **Under `MULTI_TENANT=true`, set `DB_ALLOW_INIT=true` in Coolify's environment variables for this service before restarting** — added after a real incident where a restart hit a missing/detached volume and `lib/db.ts` silently recreated an empty database with nothing in the logs to say so; `MULTI_TENANT=true` alone now requires the file to already exist. This deliberate wipe is exactly the one legitimate case that needs the explicit opt-in. Self-hosted (`MULTI_TENANT` unset/false) needs no such step — it always recreates a missing file.
-5. **Restart the service in Coolify.** `lib/db.ts` creates a fresh database from `lib/db/schema.sql` when it finds none, the same defensive-init path that runs on every boot.
-6. **Remove `DB_ALLOW_INIT` from the service's environment variables again once the restart has succeeded.** Leaving it set on the long-running resource defeats the guard step 4 just relied on — the next *unintentional* missing-volume incident would once again recreate silently instead of failing loud.
-7. **Verify:**
+5. **Under `MULTI_TENANT=true`, set `DB_ALLOW_INIT=true` in Coolify's environment variables for this service before restarting** — added after a real incident where a restart hit a missing/detached volume and `lib/db.ts` silently recreated an empty database with nothing in the logs to say so; `MULTI_TENANT=true` alone now requires the file to already exist. This deliberate wipe is exactly the one legitimate case that needs the explicit opt-in. Self-hosted (`MULTI_TENANT` unset/false) needs no such step — it always recreates a missing file.
+6. **Restart the service in Coolify.** `lib/db.ts` creates a fresh database from `lib/db/schema.sql` when it finds none, the same defensive-init path that runs on every boot.
+7. **Remove `DB_ALLOW_INIT` from the service's environment variables again once the restart has succeeded.** Leaving it set on the long-running resource defeats the guard step 5 just relied on — the next *unintentional* missing-volume incident would once again recreate silently instead of failing loud.
+8. **Verify:**
    ```bash
    curl https://<this-service's-domain>/signup
    ```
    returning the signup page confirms the process is up under `MULTI_TENANT=true`; signing in / signing up for real confirms the schema itself is usable.
-8. **If this wipe was paired with a `license.db` wipe on `casazium/license`** (the actual scenario this session hit), every account in this console's database now references a tenant that no longer exists on that server — the orphaned-account state this section opened with. Wiping `console.db` too, as described above, is the fix: it clears those stale accounts so new signups against the freshly-empty `license.db` succeed instead of hitting the `409` a stale local account row would otherwise produce.
+9. **If this wipe was paired with a `license.db` wipe on `casazium/license`** (the actual scenario this session hit), every account in this console's database now references a tenant that no longer exists on that server — the orphaned-account state this section opened with. Wiping `console.db` too, as described above, is the fix: it clears those stale accounts so new signups against the freshly-empty `license.db` succeed instead of hitting the `409` a stale local account row would otherwise produce.
+10. **If you disabled Litestream in step 1, re-enable it now** — set `LITESTREAM_REPLICA_BUCKET` back in Coolify's UI and redeploy. This starts a **fresh replication generation** against the now-empty (or newly-repopulated) database; it will not try to resync the deleted data, since the metadata directory that remembered the old generation was removed in step 4.
 
 ### `console-backups` volume — nothing extra to do after a wipe
 

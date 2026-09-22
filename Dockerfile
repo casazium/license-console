@@ -81,6 +81,53 @@ COPY --from=builder --chown=node:node /app/scripts/check-db-integrity.mjs ./scri
 # Coolify injects, referenced directly on the Scheduled Task's command line.
 RUN apk add --no-cache rclone
 
+# litestream (TASK_LITESTREAM_HA.md - optional, off-by-default continuous
+# WAL replication of console.db): same pinned-version + TARGETARCH +
+# sha256sum-verified fetch pattern as casazium/license's own Dockerfile,
+# a second instance of the rclone precedent immediately above, not a new
+# one. litestream's own release asset naming differs from rclone's in two
+# ways: architectures are x86_64/arm64, not amd64/arm64 (Docker's own
+# TARGETARCH spelling amd64 - LITESTREAM_ARCH below maps between the two),
+# and the release archive itself is flat (a bare `litestream` binary at
+# its top level, no nested directory) - both confirmed against the
+# published release assets, not assumed.
+ARG TARGETARCH
+ARG LITESTREAM_VERSION=0.5.17
+RUN apk add --no-cache curl \
+  && case "${TARGETARCH}" in \
+      amd64) LITESTREAM_ARCH=x86_64 ;; \
+      arm64) LITESTREAM_ARCH=arm64 ;; \
+      *) echo "unsupported TARGETARCH for litestream: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+  && curl -fsSLO "https://github.com/benbjohnson/litestream/releases/download/v${LITESTREAM_VERSION}/litestream-${LITESTREAM_VERSION}-linux-${LITESTREAM_ARCH}.tar.gz" \
+  && curl -fsSLO "https://github.com/benbjohnson/litestream/releases/download/v${LITESTREAM_VERSION}/checksums.txt" \
+  && grep " litestream-${LITESTREAM_VERSION}-linux-${LITESTREAM_ARCH}.tar.gz\$" checksums.txt | sha256sum -c - \
+  && tar -xzf "litestream-${LITESTREAM_VERSION}-linux-${LITESTREAM_ARCH}.tar.gz" -C /usr/local/bin litestream \
+  && chmod +x /usr/local/bin/litestream \
+  && rm -f "litestream-${LITESTREAM_VERSION}-linux-${LITESTREAM_ARCH}.tar.gz" checksums.txt
+
+# scripts/start.sh + litestream.yml (TASK_LITESTREAM_HA.md): the real CMD
+# below is this wrapper script, not `node server.js` directly - the on/off
+# branch that decides whether litestream runs at all must happen before
+# litestream is ever invoked, not inside litestream's own config
+# validation. litestream.yml is a static, ${VAR}-interpolated template
+# (litestream itself expands it at parse time) - a syntactically-valid
+# but semantically-empty config would still fail to parse if
+# LITESTREAM_REPLICA_BUCKET is unset.
+COPY --from=builder --chown=node:node /app/scripts/start.sh ./scripts/start.sh
+RUN chmod +x ./scripts/start.sh
+COPY --from=builder --chown=node:node /app/litestream.yml ./litestream.yml
+
+# scripts/restore-drill-litestream.sh (TASK_LITESTREAM_HA.md): same
+# "not part of the Next standalone trace" gap as the other operational
+# scripts above, but exercises litestream's own replicate/restore path
+# instead of the daily-snapshot/B2 one restore-drill-from-b2.sh covers -
+# both are needed. Only meaningful when LITESTREAM_REPLICA_BUCKET is set;
+# see the script's own header comment for the clear-error behavior when
+# it isn't.
+COPY --from=builder --chown=node:node /app/scripts/restore-drill-litestream.sh ./scripts/restore-drill-litestream.sh
+RUN chmod +x ./scripts/restore-drill-litestream.sh
+
 # Run as the non-root `node` user this base image already provides, rather
 # than root. /app/data and /app/backups must be chowned ahead of time so
 # the named volumes Coolify mounts there (docker-compose-coolify.yml,
@@ -90,4 +137,4 @@ RUN mkdir -p /app/data /app/backups && chown -R node:node /app
 USER node
 
 EXPOSE 3000
-CMD ["node", "server.js"]
+CMD ["sh", "scripts/start.sh"]

@@ -1,0 +1,54 @@
+# litestream.yml - continuous WAL-replication config (TASK_LITESTREAM_HA.md)
+#
+# Baked into the runtime image at /app/litestream.yml, never referenced at
+# all unless LITESTREAM_REPLICA_BUCKET is set (see scripts/start.sh's own
+# on/off branch, which happens before litestream is ever invoked with this
+# file). Every ${VAR} below is expanded by litestream itself at parse time
+# (its own default behavior), not by a separate templating step. Mirrors
+# casazium/license's own litestream.yml verbatim except for the two-way
+# (not three-way) mode branch and the replica path - see that repo's
+# comments for the full reasoning behind the config-file choice, the
+# endpoint/region requirement for non-AWS providers, and the widened
+# compaction/retention intervals below.
+#
+# endpoint/region are effectively REQUIRED for every non-AWS S3-compatible
+# provider (Backblaze B2, Cloudflare R2, MinIO, etc.) - an absent endpoint
+# makes the S3 client silently select AWS-specific addressing semantics,
+# not a neutral/generic default (confirmed live in casazium/license's own
+# rollout). Leave both blank only when the replica destination is real AWS
+# S3. See DEPLOYMENT.md's Litestream section for the full setup and
+# credential-precedence notes (AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY win
+# over LITESTREAM_ACCESS_KEY_ID/LITESTREAM_SECRET_ACCESS_KEY if both are
+# set - a property of the litestream binary itself).
+#
+# LITESTREAM_REPLICA_MODE is not an operator-facing variable - scripts/
+# start.sh derives and exports it at boot the same way
+# scripts/backup-and-push.sh already derives REMOTE_MODE for the daily
+# snapshot's own B2 destination (MULTI_TENANT=true -> saas, else
+# standalone), so two unrelated databases (e.g. a self-hosted instance and
+# the SaaS-tier resource, or a copied .env) can never collide on the same
+# replica path.
+#
+# Widened from litestream's own defaults (l0-retention-check-interval:
+# 15s, level-1 compaction interval: 30s), same reasoning and same values
+# as casazium/license's own litestream.yml: both issue a real,
+# unconditional S3 List call on every tick regardless of whether there's
+# anything to do, which drove that repo's own Backblaze Class C usage to
+# a meaningful fraction of its daily cap from idle housekeeping alone.
+# This console's write volume is lower than the license server's, but
+# there is no reason to run it at a tighter interval than the sibling
+# service that shares the same bucket and Class C budget.
+l0-retention-check-interval: 5m
+levels:
+  - interval: 5m # level 1 - was 30s
+  - interval: 5m # level 2 - unchanged (already 5m by default)
+  - interval: 1h # level 3 - unchanged (already 1h by default)
+
+dbs:
+  - path: ${DB_FILE}
+    replicas:
+      - type: s3
+        bucket: ${LITESTREAM_REPLICA_BUCKET}
+        path: licenseServer/console/${LITESTREAM_REPLICA_MODE}/litestream
+        endpoint: ${LITESTREAM_REPLICA_ENDPOINT}
+        region: ${LITESTREAM_REPLICA_REGION}

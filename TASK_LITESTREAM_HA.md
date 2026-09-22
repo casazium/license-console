@@ -1,6 +1,6 @@
 # Task scope: continuous replication via Litestream (console.db)
 
-Status: **Proposed — design only, not yet built.** Scoped by request, mirroring `casazium/license`'s own `TASK_LITESTREAM_HA.md` (Built, Phase 1, verified live in production — PROJECT_STATUS.md §197-201 in that repo). Nothing in this document has been implemented; no code, Dockerfile, or compose changes exist yet. Do not treat any command or file shown below as already present in this repo.
+Status: **Built, Phase 1.** The SIGTERM spike this document originally gated implementation on (see "Open question" below) has been run and resolved in the affirmative — implementation proceeded on that basis. `scripts/start.sh`, `litestream.yml`, the Dockerfile changes, `.env.example` entries, `scripts/restore-drill-litestream.sh`, and the `DEPLOYMENT.md` Litestream section all exist now, mirroring `casazium/license`'s own `TASK_LITESTREAM_HA.md` (Built, Phase 1). **Not yet verified live against a real S3-compatible bucket on the actual SaaS-tier Coolify resource** — that remains the bar to clear before this is exercised in anger; see "What done would look like" below for what's still outstanding.
 
 **Why a separate document, not just "do the same thing again":** the two databases share a mechanism (same Litestream binary, same off-by-default branch, same credential/path-derivation conventions) but differ enough in what depends on them that copying `casazium/license`'s design verbatim would misstate the risk in two places — who actually benefits from this, and what the "recovery set" contains. Both differences are worked out below rather than assumed.
 
@@ -53,13 +53,16 @@ This is the one place a straight copy of `casazium/license`'s design would be wr
 2. Changing `Dockerfile`'s `CMD` from `["node", "server.js"]` to `["sh", "scripts/start.sh"]`, with the unset-bucket branch `exec`-ing directly into `node server.js` — byte-identical to today's behavior for every deployment that never sets the bucket var.
 3. The resulting chain is **two layers, not three** (`start.sh` → `litestream replicate -exec "node server.js"` → the app directly) — one fewer process hop than `casazium/license`'s chain, since this repo has no separate entrypoint script to preserve underneath the app itself.
 
-## Open question, not yet spiked: does `server.js` actually shut down cleanly on SIGTERM?
+## Open question, now resolved: does `server.js` actually shut down cleanly on SIGTERM?
 
 `casazium/license`'s design doc could state its process/signal integration as *verified*, because a real spike ran the actual three-layer chain against a live Fastify instance and confirmed `SIGTERM` propagates cleanly, `app.js`'s graceful-shutdown handler fires, and a restore reproduced every issued license exactly.
 
-**No equivalent spike has been run for this repo, and this document does not claim one.** The relevant uncertainty is narrower than it sounds — Litestream's own replication correctness doesn't depend on the app shutting down gracefully at all; SQLite's WAL is durable one transaction at a time regardless of how the process exits, and Litestream watches the WAL file, not the app's own lifecycle. What *does* depend on the app handling `SIGTERM` well is Coolify's ordinary redeploy/restart behavior: whether an in-flight request gets to finish before the process dies. Next.js's standalone `server.js` output is a plain Node `http.Server` — whether it registers its own `SIGTERM` handler to call `server.close()` is a property of that specific generated file in the pinned Next.js version (`^16.2.12`), not something this design doc can verify without running it.
+**Resolved for this repo, by both source inspection and a live spike, not assumed by analogy to `casazium/license`'s different app framework:**
 
-**Before implementing**, run the equivalent of `casazium/license`'s first spike: build the real chain (`litestream replicate -exec "node server.js"`) locally, send it real traffic, send `SIGTERM` mid-request, and confirm the connection drains rather than resetting. If it doesn't, that's a pre-existing gap in this repo's shutdown behavior independent of Litestream (Coolify already sends `SIGTERM` on every redeploy today), worth fixing either way — but it should be *found* by this spike rather than assumed away by analogy to a different app framework in a different repo.
+- **Source**: `node_modules/next/dist/server/lib/start-server.js` (the module `.next/standalone/server.js` calls into) registers `process.on('SIGTERM', cleanup)` and `process.on('SIGINT', cleanup)` unless `NEXT_MANUAL_SIG_HANDLE` is set (it isn't, in this deployment). `cleanup()` calls `server.close()` — Node's standard "stop accepting new connections, let in-flight ones finish" — awaits it, then runs Next's own internal teardown, and only then calls `process.exit(143)` for `SIGTERM` (the signal-based exit code, same convention `casazium/license`'s own spike found). This is real graceful shutdown, not an immediate kill — nothing about it depends on Litestream, dev-mode-only behavior (`closeAllConnections()` is gated behind `isDev`, which is `false` in the production build), or this specific route's code.
+- **Live spike**: built the actual standalone output (`npm run build`), ran `node .next/standalone/server.js` directly (outside Docker/Litestream, since the question is specifically about `server.js`'s own signal handling, which neither Docker nor Litestream's `-exec` wrapping changes), opened a request against `/login` with `curl --limit-rate 2k` to force a slow, still-in-flight read, and sent `SIGTERM` to the server process mid-transfer. Result: the full response (27,060 bytes, HTTP 200) was delivered intact and the process then exited — confirming the connection drains rather than resets, exactly the outcome this document required before treating this as safe to ship.
+
+The relevant uncertainty was narrower than it looked — Litestream's own replication correctness never depended on this (SQLite's WAL is durable one transaction at a time regardless of how the process exits, and Litestream watches the WAL file, not the app's lifecycle). What depended on it was Coolify's ordinary redeploy/restart behavior: whether an in-flight request gets to finish before the process dies. It does.
 
 ## Non-goals (same posture as `casazium/license`, restated for this repo)
 
@@ -78,19 +81,19 @@ These mirror `casazium/license`'s own settled decisions rather than reopening th
 
 ## Open questions
 
-1. **The SIGTERM spike above** — must be run and its result recorded here before this moves from "proposed" to "built."
-2. **Is Phase 1 worth building at all given the audience is effectively "the SaaS-tier resource only"?** The daily `backup-db.mjs`/B2 pipeline already exists and is verified live for this database (`PROJECT_STATUS.md` §57/§58 in this repo). Litestream buys "a few seconds" of exposure instead of "up to a day" — worth confirming with the operator that this improvement is worth the added moving part (a second replication mechanism, a second thing to monitor) for a database whose blast radius, while real, is bounded to re-linking tenants to already-intact licenses rather than losing the licenses themselves. `casazium/license`'s equivalent tradeoff was decided in that repo's favor already; this document does not assume the same answer applies here without the operator saying so.
-3. Same config-file-vs-CLI-args question `casazium/license` already resolved in favor of a config file (auditability, multiple fields at once) — presumably the same answer here, not reopened, but noted as inherited rather than independently decided.
+1. ~~**The SIGTERM spike above** — must be run and its result recorded here before this moves from "proposed" to "built."~~ Resolved — see the section above.
+2. ~~**Is Phase 1 worth building at all given the audience is effectively "the SaaS-tier resource only"?**~~ Resolved by direct operator instruction: build and enable it, alongside re-enabling `casazium/license`'s own Litestream setup in the same session. Not reopened further.
+3. Same config-file-vs-CLI-args question `casazium/license` already resolved in favor of a config file (auditability, multiple fields at once) — same answer here, not reopened, inherited rather than independently decided.
 
-## What done would look like (not yet true — nothing below is built)
+## What done would look like
 
-- [ ] SIGTERM spike run against the real chain, result recorded above
-- [ ] `scripts/start.sh` written (new file, this repo has none today)
-- [ ] `litestream.yml` template written, following `casazium/license`'s exact structure with the two-way (not three-way) mode branch
-- [ ] Litestream binary fetch added to `Dockerfile`, same pinned-version + `TARGETARCH` + `sha256sum -c` pattern
-- [ ] `Dockerfile`'s `CMD` changed to `["sh", "scripts/start.sh"]`
-- [ ] New env vars documented in `.env.example`: `LITESTREAM_REPLICA_BUCKET`, `LITESTREAM_REPLICA_ENDPOINT`, `LITESTREAM_REPLICA_REGION`, `LITESTREAM_ACCESS_KEY_ID`, `LITESTREAM_SECRET_ACCESS_KEY`
-- [ ] A real restore-drill-against-Litestream script, mirroring `casazium/license`'s `restore-drill-litestream.sh` wired to this repo's own `restore-drill.mjs`
-- [ ] `DEPLOYMENT.md` gains a Litestream section for this repo, including the recovery-set note above (console.db alone is sufficient, provided the target's env vars already match) and the restore-ordering rule
-- [ ] Verified live against a real S3-compatible bucket on the actual SaaS-tier Coolify resource, the same bar `casazium/license`'s rollout was held to before it was marked Built
+- [x] SIGTERM spike run against the real chain, result recorded above
+- [x] `scripts/start.sh` written
+- [x] `litestream.yml` template written, following `casazium/license`'s exact structure with the two-way (not three-way) mode branch
+- [x] Litestream binary fetch added to `Dockerfile`, same pinned-version + `TARGETARCH` + `sha256sum -c` pattern
+- [x] `Dockerfile`'s `CMD` changed to `["sh", "scripts/start.sh"]`
+- [x] New env vars documented in `.env.example`: `LITESTREAM_REPLICA_BUCKET`, `LITESTREAM_REPLICA_ENDPOINT`, `LITESTREAM_REPLICA_REGION`, `LITESTREAM_ACCESS_KEY_ID`, `LITESTREAM_SECRET_ACCESS_KEY`
+- [x] A real restore-drill-against-Litestream script, mirroring `casazium/license`'s `restore-drill-litestream.sh` wired to this repo's own `restore-drill.mjs`
+- [x] `DEPLOYMENT.md` gains a Litestream section for this repo, including the recovery-set note above (console.db alone is sufficient, provided the target's env vars already match) and the restore-ordering rule
+- [ ] Verified live against a real S3-compatible bucket on the actual SaaS-tier Coolify resource, the same bar `casazium/license`'s rollout was held to before it was marked Built — **the one remaining item**, an operator action (set the Coolify env vars, redeploy, confirm the "replica destination reachable" boot log line) rather than something buildable in advance.
 - [ ] `PROJECT_STATUS.md` entry recording the above, once done
