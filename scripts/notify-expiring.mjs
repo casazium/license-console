@@ -171,7 +171,15 @@ async function fetchExtract() {
 // CREATE TABLE IF NOT EXISTS convention as every other table in this
 // repo.
 function openDb() {
-  const db = new Database(absoluteDbPath);
+  // fileMustExist: true - without it, better-sqlite3 silently creates a
+  // fresh empty database when DB_FILE doesn't exist, which then fails
+  // opaquely on the first real query ("no such table: accounts") instead
+  // of failing loud on the actual problem (the volume/file is missing).
+  // Matches backup-db.mjs's own readonly-mode guard, which fails the
+  // same way for the same reason - confirmed as a real production
+  // incident, not a hypothetical: both scripts hit a missing console.db
+  // in the same run, and only backup-db.mjs's guard caught it clearly.
+  const db = new Database(absoluteDbPath, { fileMustExist: true });
   db.exec(
     `CREATE TABLE IF NOT EXISTS notification_log (
       id TEXT PRIMARY KEY,
