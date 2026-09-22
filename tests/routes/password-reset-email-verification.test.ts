@@ -37,6 +37,7 @@ describe('password-reset and email-verification token security', () => {
   beforeAll(() => {
     vi.stubEnv('DB_FILE', testDbFile);
     vi.stubEnv('MULTI_TENANT', 'true');
+    vi.stubEnv('DB_ALLOW_INIT', 'true'); // fresh per-PID temp file, no prior init step
     vi.stubEnv('SESSION_SECRET', 'a'.repeat(32));
     vi.stubEnv('PUBLIC_BASE_URL', PUBLIC_BASE_URL);
   });

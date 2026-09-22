@@ -58,6 +58,7 @@ describe('getBranding() titleIsHtml trust level (lib/branding.ts)', () => {
 
   it('a tenant with no tenant_branding row falls back to the platform value AND its trust level (true)', async () => {
     vi.stubEnv('MULTI_TENANT', 'true');
+    vi.stubEnv('DB_ALLOW_INIT', 'true'); // fresh per-test file, no prior init step
     vi.stubEnv('DB_FILE', testDbFile);
 
     // No tenant_branding row will exist for a tenant id nothing ever

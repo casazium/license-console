@@ -55,7 +55,36 @@ function openDatabase(): Database.Database {
   // pointed at a not-yet-created path) crashed on first open instead.
   mkdirSync(path.dirname(absoluteDbPath), { recursive: true });
 
-  const database = new Database(absoluteDbPath);
+  // fileMustExist under MULTI_TENANT=true, unless DB_ALLOW_INIT=true is
+  // also set (real production incident, not hypothetical): a restart of
+  // the SaaS-tier resource hit a missing console.db and, with no guard,
+  // better-sqlite3 silently created a fresh empty file - which the
+  // CREATE TABLE IF NOT EXISTS below then populated with a valid,
+  // completely empty schema. The app booted looking perfectly healthy
+  // while every account, encrypted tenant_api_key_encrypted, and session
+  // was gone, with nothing in the logs to say so.
+  //
+  // MULTI_TENANT=true alone isn't enough to require an existing file -
+  // this repo's own test suite legitimately bootstraps a fresh SQLite
+  // file under MULTI_TENANT=true for isolated test runs (confirmed:
+  // tests/routes/password-reset-email-verification.test.ts and others
+  // stub a brand-new per-PID temp path with no separate init step), and
+  // a genuine first-ever launch of the SaaS resource (or a from-scratch
+  // disaster-recovery redeploy, per TASK_LITESTREAM_HA.md's own recovery
+  // notes) needs the same one-time bootstrap. DB_ALLOW_INIT=true is that
+  // explicit, deliberate opt-in - tests set it alongside their other env
+  // stubs, and DEPLOYMENT.md documents it as a one-time step for a
+  // genuine first launch, never left set on the long-running resource
+  // afterward. A self-hosted deployment is the case this file's own
+  // header comment already documents as a deliberate design goal (no
+  // migration framework, zero-friction fresh install) and its accounts
+  // table is expected to start empty and hold nothing worth protecting
+  // (TASK_LITESTREAM_HA.md's own reasoning) - unaffected either way.
+  const requireExistingFile = isMultiTenant() && process.env.DB_ALLOW_INIT !== 'true';
+  const database = new Database(
+    absoluteDbPath,
+    requireExistingFile ? { fileMustExist: true } : undefined
+  );
 
   // WAL mode: casazium/license's own C2 spike (scripts/bench-concurrency.js
   // in that repo) measured a real, modest tail-latency improvement with no

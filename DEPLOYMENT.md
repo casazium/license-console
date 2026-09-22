@@ -92,13 +92,15 @@ Same underlying mechanism as `casazium/license`'s own equivalent section (that r
      "rm -f /data/console.db /data/console.db-wal /data/console.db-shm && ls -la /data"
    ```
    Confirm the deletion via the final `ls -la` before moving on.
-4. **Restart the service in Coolify.** `lib/db.ts` creates a fresh database from `lib/db/schema.sql` when it finds none, the same defensive-init path that runs on every boot.
-5. **Verify:**
+4. **Under `MULTI_TENANT=true`, set `DB_ALLOW_INIT=true` in Coolify's environment variables for this service before restarting** — added after a real incident where a restart hit a missing/detached volume and `lib/db.ts` silently recreated an empty database with nothing in the logs to say so; `MULTI_TENANT=true` alone now requires the file to already exist. This deliberate wipe is exactly the one legitimate case that needs the explicit opt-in. Self-hosted (`MULTI_TENANT` unset/false) needs no such step — it always recreates a missing file.
+5. **Restart the service in Coolify.** `lib/db.ts` creates a fresh database from `lib/db/schema.sql` when it finds none, the same defensive-init path that runs on every boot.
+6. **Remove `DB_ALLOW_INIT` from the service's environment variables again once the restart has succeeded.** Leaving it set on the long-running resource defeats the guard step 4 just relied on — the next *unintentional* missing-volume incident would once again recreate silently instead of failing loud.
+7. **Verify:**
    ```bash
    curl https://<this-service's-domain>/signup
    ```
    returning the signup page confirms the process is up under `MULTI_TENANT=true`; signing in / signing up for real confirms the schema itself is usable.
-6. **If this wipe was paired with a `license.db` wipe on `casazium/license`** (the actual scenario this session hit), every account in this console's database now references a tenant that no longer exists on that server — the orphaned-account state this section opened with. Wiping `console.db` too, as described above, is the fix: it clears those stale accounts so new signups against the freshly-empty `license.db` succeed instead of hitting the `409` a stale local account row would otherwise produce.
+8. **If this wipe was paired with a `license.db` wipe on `casazium/license`** (the actual scenario this session hit), every account in this console's database now references a tenant that no longer exists on that server — the orphaned-account state this section opened with. Wiping `console.db` too, as described above, is the fix: it clears those stale accounts so new signups against the freshly-empty `license.db` succeed instead of hitting the `409` a stale local account row would otherwise produce.
 
 ### `console-backups` volume — nothing extra to do after a wipe
 
