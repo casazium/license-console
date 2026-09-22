@@ -32,6 +32,18 @@
 # remote retention can never drift out of sync with each other. Runs
 # after the push, not before, so an interrupted run never leaves the
 # remote with zero backups.
+#
+# --b2-hard-delete (bug found live, 2026-09-22, same fix applied to
+# casazium/license's identical script): without it, rclone's B2 backend
+# "hides" a deleted file rather than erasing it - matching B2's own
+# two-step versioning delete model - so every "pruned" backup was
+# actually just gaining a hidden version and staying fully stored and
+# billed, forever, unbounded. Confirmed directly against the real
+# license.db bucket contents: four backups from four days in a row each
+# showed a second version timestamped ~14 days after their filename's
+# own date - the exact moment retention first caught up to them. This
+# flag makes the delete permanent, matching what BACKUP_RETENTION_DAYS
+# was always supposed to mean.
 set -e
 
 RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-14}"
@@ -46,4 +58,4 @@ REMOTE_PATH=":b2,account=$blazeKeyID,key=$blazeLicenseServerAppKey:licenseServer
 
 node scripts/backup-db.mjs
 rclone copy /app/backups "$REMOTE_PATH"
-rclone delete "$REMOTE_PATH" --min-age "${RETENTION_DAYS}d"
+rclone delete "$REMOTE_PATH" --min-age "${RETENTION_DAYS}d" --b2-hard-delete
