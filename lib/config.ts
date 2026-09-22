@@ -104,3 +104,19 @@ export function isSameOrigin(request: {
   }
   return origin === publicBaseUrl(request);
 }
+
+/**
+ * Optional operator-set text rendered as a persistent banner across every
+ * page (components/EnvironmentBanner.tsx, wired in app/layout.tsx).
+ * Production/test confusion is a real failure mode this exists to
+ * prevent - nothing else on screen says which deployment an admin is
+ * actually acting against. Off by default, same posture as every other
+ * optional flag in this file: unset means no banner at all, so every
+ * existing deployment - production included - renders unchanged unless
+ * an operator explicitly opts in by setting this on a non-production
+ * resource (e.g. "TEST ENVIRONMENT").
+ */
+export function environmentLabel(): string | null {
+  const raw = process.env.ENVIRONMENT_LABEL;
+  return raw && raw.trim() ? raw.trim() : null;
+}
