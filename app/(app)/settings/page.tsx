@@ -1,11 +1,17 @@
 import { notFound } from 'next/navigation';
 import { Alert, Anchor, Box, Stack, Text, Title } from '@mantine/core';
-import { requireSessionWithTenantKey } from '@/lib/tenant-context';
+import { listStorefrontWebhooks } from '@/lib/license-client';
+import type { StorefrontWebhook } from '@/lib/license-client';
+import { isRateLimited } from '@/lib/errors';
+import { requireSessionWithTenantKey, markIfTenantRejected } from '@/lib/tenant-context';
 import { getBranding } from '@/lib/branding';
 import { getAccountEmail } from '@/lib/auth';
+import { MockDataNotice } from '@/components/MockDataNotice';
+import { RateLimitNotice } from '@/components/RateLimitNotice';
 import { ApiKeyReveal } from './ApiKeyReveal';
 import { ApiBaseUrlDisplay } from './ApiBaseUrlDisplay';
 import { RotateApiKeySection } from './RotateApiKeySection';
+import { StorefrontWebhooksSection } from './StorefrontWebhooksSection';
 import { ChangePasswordSection } from './ChangePasswordSection';
 import { ChangeEmailSection } from './ChangeEmailSection';
 import { ExportDataSection } from './ExportDataSection';
@@ -51,6 +57,36 @@ export default async function SettingsPage({
   const apiBaseUrl = (process.env.LICENSE_API_URL ?? '').replace(/\/+$/, '');
   const { supportEmail } = getBranding(identity.tenantId ?? undefined);
   const currentEmail = getAccountEmail(identity.id);
+
+  // STOREFRONT_WEBHOOK_PLAN.md - fetched here (Server Component), not
+  // via a Server Action, matching releases/page.tsx's own convention for
+  // the one list this page needs on first render; every other
+  // create/list-nested/mutate call StorefrontWebhooksSection itself needs
+  // goes through settings/actions.ts's Server Actions instead.
+  //
+  // Independent-review finding (H1): unlike releases/page.tsx - where a
+  // list failure IS the whole page's content, so re-throwing is the
+  // right call - this Settings page also holds API key management,
+  // password/email changes, data export, and account deletion, all
+  // unrelated to storefront webhooks. Re-throwing here (the original
+  // code did, on anything but a 429) meant ANY failure of this one
+  // section - including a plain 404 from a license-server deployment
+  // that predates this feature - took down the entire page via the
+  // (app)/error.tsx boundary. Every outcome is now contained to this
+  // section instead; markIfTenantRejected still runs as a side effect
+  // (it only marks local state, never throws).
+  let storefrontWebhooks: StorefrontWebhook[] = [];
+  let storefrontWebhooksError: 'rate-limited' | 'unavailable' | null = null;
+  try {
+    storefrontWebhooks = await listStorefrontWebhooks(tenantApiKey);
+  } catch (err) {
+    if (isRateLimited(err)) {
+      storefrontWebhooksError = 'rate-limited';
+    } else {
+      markIfTenantRejected(err, identity.tenantId);
+      storefrontWebhooksError = 'unavailable';
+    }
+  }
 
   // Email-change confirmation (app/api/verify-email/route.ts's new_email
   // branch) has no always-on banner to fall back on the way signup
@@ -137,6 +173,31 @@ export default async function SettingsPage({
       </Text>
 
       <RotateApiKeySection />
+
+      <Box mt="xl" pt="lg" style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>
+        <Stack gap={4}>
+          <Text size="sm" fw={700} tt="uppercase" c="dimmed" style={{ letterSpacing: '0.05em' }}>
+            Storefront
+          </Text>
+          <Title order={3}>Storefront webhooks</Title>
+        </Stack>
+        <Text size="sm" c="dimmed" mt={4} mb="md">
+          Connect your storefront (Stripe Payment Links today) so a completed purchase
+          automatically issues a license and emails your buyer their key — no integration code
+          required.
+        </Text>
+        {storefrontWebhooksError === 'rate-limited' ? (
+          <RateLimitNotice />
+        ) : storefrontWebhooksError === 'unavailable' ? (
+          <Alert color="gray" variant="light" title="Couldn't load storefront webhooks">
+            This may be temporary, or your license server may not support this feature yet. Try
+            reloading the page.
+          </Alert>
+        ) : (
+          <StorefrontWebhooksSection initialWebhooks={storefrontWebhooks} apiBaseUrl={apiBaseUrl} />
+        )}
+        <MockDataNotice />
+      </Box>
 
       <Box mt="xl" pt="lg" style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>
         <Text size="sm" fw={700} tt="uppercase" c="dimmed" style={{ letterSpacing: '0.05em' }}>

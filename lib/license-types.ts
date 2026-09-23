@@ -356,3 +356,107 @@ export type BillingStatus = {
 export type BackendVersion = {
   version: string;
 } | null;
+
+// STOREFRONT_WEBHOOK_PLAN.md - inbound purchase-webhook auto-fulfillment.
+// Mirrors casazium/license's src/routes/admin-storefront-webhooks.js
+// response shapes exactly. Only 'stripe' exists today (Stripe Payment
+// Links) - a second storefront provider adds a second value here, not a
+// new type.
+export type StorefrontWebhookProvider = 'stripe';
+
+// 'pending' - row exists, webhook URL can be shown, but no secret has
+// been saved yet (POST .../secret hasn't succeeded), so the route
+// rejects every real delivery with a signature-verification failure.
+// 'disabled' is soft (DELETE .../:id never hard-deletes - schema.sql's
+// own comment on storefront_purchase_events/storefront_product_mappings
+// needing a stable FK target to survive under).
+export type StorefrontWebhookStatus = 'pending' | 'active' | 'disabled';
+
+export type StorefrontWebhook = {
+  id: string;
+  provider: StorefrontWebhookProvider;
+  status: StorefrontWebhookStatus;
+  created_at: string;
+  last_event_at: string | null;
+};
+
+// A Payment Link's own id, or a value the tenant sets themselves via
+// Stripe's `casazium_ref` Checkout Session metadata key (useful when
+// several Payment Links should resolve to the same mapping) -
+// storefront-webhook.js's own MAPPING_METADATA_KEY.
+export type StorefrontMappingRefKind = 'payment_link' | 'metadata';
+
+export type StorefrontMapping = {
+  id: string;
+  webhook_id: string;
+  tenant_id: string;
+  provider: StorefrontWebhookProvider;
+  ref_kind: StorefrontMappingRefKind;
+  external_ref: string;
+  product_id: string;
+  tier: string;
+  // Raw JSON text, exactly as stored (storefront_product_mappings.limits_json) -
+  // never parsed/re-validated client-side beyond what the create form
+  // itself already sent past the server's own validateLicenseLimits.js.
+  limits_json: string | null;
+  max_activations: number | null;
+  duration_days: number | null;
+  notes: string | null;
+  created_at: string;
+};
+
+export type CreateStorefrontMappingInput = {
+  ref_kind: StorefrontMappingRefKind;
+  external_ref: string;
+  product_id: string;
+  tier: string;
+  // Raw JSON text from the form's own textarea - parsed once, here in
+  // this console, only to catch a malformed-JSON typo before it reaches
+  // the server at all; the server is still the real source of truth for
+  // whether the parsed object is a *valid* limits shape (validateLicenseLimits.js).
+  limitsJson?: string;
+  max_activations?: number;
+  duration_days?: number;
+  notes?: string;
+};
+
+// The outcome vocabulary storefront-webhook.js's own claim ledger writes
+// to storefront_purchase_events.outcome - see that file's header comment.
+// 'processing'/'awaiting_payment' are non-terminal (a claim in flight, or
+// a delayed payment method not yet confirmed) - every other value is
+// terminal for re-issuance purposes.
+export type StorefrontDeliveryOutcome =
+  | 'processing'
+  | 'awaiting_payment'
+  | 'issued'
+  | 'unmapped'
+  | 'over_quota'
+  | 'invalid_input'
+  | 'error';
+
+export type StorefrontDeliveryStatus = 'pending' | 'sending' | 'sent';
+
+export type StorefrontDelivery = {
+  tenant_id: string;
+  checkout_session_id: string;
+  outcome: StorefrontDeliveryOutcome;
+  attempts: number;
+  license_key: string | null;
+  delivery_status: StorefrontDeliveryStatus;
+  processed_at: string | null;
+};
+
+export type ListStorefrontDeliveriesParams = {
+  limit?: number;
+  offset?: number;
+};
+
+// GET .../deliveries has no server-side COUNT, only LIMIT/OFFSET
+// (admin-storefront-webhooks.js) - unlike every other paginated list in
+// this console (listLicenses/listReleases both return a real `total`).
+// hasMore is derived client-side instead: a full page back
+// (`deliveries.length === limit requested`) means there may be more.
+export type ListStorefrontDeliveriesResult = {
+  deliveries: StorefrontDelivery[];
+  hasMore: boolean;
+};

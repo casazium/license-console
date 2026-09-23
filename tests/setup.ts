@@ -27,3 +27,17 @@ if (typeof window !== 'undefined' && !window.matchMedia) {
     dispatchEvent: () => false,
   }) as unknown as MediaQueryList;
 }
+
+// jsdom doesn't implement ResizeObserver either. Mantine's Select/Combobox
+// (and anything using its ScrollArea internally) calls it from a layout
+// effect on mount - needed for any component test that renders one of
+// those, not just ones that care about scroll/resize behavior. Same
+// reasoning as matchMedia above; first hit while testing
+// StorefrontWebhookMappings's mapping form (a Select + two NumberInputs).
+if (typeof window !== 'undefined' && !window.ResizeObserver) {
+  window.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+}

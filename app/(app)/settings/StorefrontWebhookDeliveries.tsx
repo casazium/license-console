@@ -1,0 +1,217 @@
+'use client';
+
+import { useEffect, useRef, useState } from 'react';
+import { Alert, Badge, Button, Code, Group, Stack, Table, Text } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
+import { notifyRateLimited } from '@/lib/notify';
+import { formatDateTime } from '@/lib/format';
+import type { StorefrontDelivery } from '@/lib/license-client';
+import { listStorefrontDeliveriesAction } from './actions';
+
+const PAGE_SIZE = 20;
+
+// storefront-webhook.js's own delivery lease reclaims a stalled 'sending'
+// attempt after 30 seconds - anything still 'pending' this much longer
+// after its own processed_at is genuinely stuck, not mid-flight, and
+// worth flagging.
+const STUCK_THRESHOLD_MS = 5 * 60 * 1000;
+
+function outcomeBadge(delivery: StorefrontDelivery): { label: string; color: string } {
+  switch (delivery.outcome) {
+    case 'issued':
+      return delivery.delivery_status === 'sent'
+        ? { label: 'Issued & sent', color: 'green' }
+        : { label: 'Issued', color: 'blue' };
+    case 'processing':
+      return { label: 'Processing', color: 'blue' };
+    case 'awaiting_payment':
+      return { label: 'Awaiting payment', color: 'yellow' };
+    case 'unmapped':
+      return { label: 'No matching mapping', color: 'orange' };
+    case 'over_quota':
+      return { label: 'Over quota', color: 'orange' };
+    case 'invalid_input':
+      return { label: 'Invalid input', color: 'red' };
+    case 'error':
+      return { label: 'Error', color: 'red' };
+    default:
+      return { label: delivery.outcome, color: 'gray' };
+  }
+}
+
+// Independent-review finding (M1): casazium/license's own processed_at
+// column is written via SQLite's CURRENT_TIMESTAMP, which produces
+// "YYYY-MM-DD HH:MM:SS" - genuinely UTC, but with no 'T' or 'Z' marker.
+// `new Date()` parses that exact shape as the *viewer's local* time, not
+// UTC - confirmed directly (a delivery 10 minutes old computed as -401
+// minutes under America/Los_Angeles). Mock mode's own seeded
+// toISOString() values already carry a 'T'/'Z' and were never affected,
+// which is exactly why this went unnoticed in standalone-mode testing.
+function parseTimestamp(value: string): number {
+  const isoLike = value.includes('T') ? value : `${value.replace(' ', 'T')}Z`;
+  return new Date(isoLike).getTime();
+}
+
+function isStuck(delivery: StorefrontDelivery): boolean {
+  if (delivery.outcome !== 'issued' || delivery.delivery_status === 'sent') return false;
+  if (!delivery.processed_at) return false;
+  return Date.now() - parseTimestamp(delivery.processed_at) > STUCK_THRESHOLD_MS;
+}
+
+/**
+ * STOREFRONT_WEBHOOK_PLAN.md's own console spec: "the tenant's only
+ * visibility into 'did this actually work.'" No in-app resend action
+ * (operator decision, this session): the platform never persists a
+ * buyer's email anywhere (only available transiently from the Stripe
+ * event body at delivery time), so a real one-click resend would require
+ * a new permanent buyer-PII retention point this feature doesn't have
+ * elsewhere. Stripe's own event redelivery already works today with no
+ * server-side change - storefront-webhook.js's existing delivery-retry
+ * path (outcome 'issued', delivery_status not yet 'sent') picks it back
+ * up correctly - so a stuck row here just points the tenant at that.
+ */
+export function StorefrontWebhookDeliveries({ webhookId, active }: { webhookId: string; active: boolean }) {
+  const [deliveries, setDeliveries] = useState<StorefrontDelivery[] | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [offset, setOffset] = useState(0);
+  // Only for the "Load more" button's own busy state - the initial
+  // fetch's in-flight guard is a ref instead (see fetchingRef below),
+  // since calling setState synchronously in an effect body risks a
+  // cascading-render loop (react-hooks/set-state-in-effect). "Still
+  // loading the first page" for display is derived below instead, from
+  // `active && deliveries === null`.
+  const [loading, setLoading] = useState(false);
+  const fetchingRef = useRef(false);
+
+  useEffect(() => {
+    if (!active || deliveries !== null || fetchingRef.current) return;
+    fetchingRef.current = true;
+    listStorefrontDeliveriesAction(webhookId, { limit: PAGE_SIZE, offset: 0 })
+      .then((result) => {
+        if (!result.ok) {
+          notifyRateLimited();
+          return;
+        }
+        setDeliveries(result.data.deliveries);
+        setHasMore(result.data.hasMore);
+        setOffset(result.data.deliveries.length);
+      })
+      .catch(() => {
+        // Independent-review finding (M2): same gap as
+        // StorefrontWebhookMappings's own initial fetch - an unhandled
+        // rejection here left the panel stuck on "Loading deliveries..."
+        // forever, with fetchingRef never reset. Collapsing and
+        // re-expanding now retries.
+        notifications.show({
+          color: 'red',
+          title: "Couldn't load deliveries",
+          message: 'Collapse and re-expand this webhook to try again.',
+        });
+      })
+      .finally(() => {
+        fetchingRef.current = false;
+      });
+  }, [active, webhookId, deliveries]);
+
+  const initialLoading = active && deliveries === null;
+
+  async function loadMore() {
+    setLoading(true);
+    try {
+      const result = await listStorefrontDeliveriesAction(webhookId, { limit: PAGE_SIZE, offset });
+      if (!result.ok) {
+        notifyRateLimited();
+        return;
+      }
+      setDeliveries((prev) => [...(prev ?? []), ...result.data.deliveries]);
+      setHasMore(result.data.hasMore);
+      setOffset((prev) => prev + result.data.deliveries.length);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const stuckCount = deliveries?.filter(isStuck).length ?? 0;
+
+  return (
+    <Stack gap="xs">
+      <Text size="sm" fw={600}>
+        Deliveries
+      </Text>
+
+      {stuckCount > 0 && (
+        <Alert color="orange" variant="light" title="Needs attention">
+          {stuckCount === 1 ? 'One purchase issued a license' : `${stuckCount} purchases issued a license`}{' '}
+          but its confirmation email hasn&apos;t gone out. Redeliver the matching event from your Stripe
+          dashboard (Developers → Webhooks → this endpoint) to retry — no license will be issued twice.
+        </Alert>
+      )}
+
+      {initialLoading && (
+        <Text size="sm" c="dimmed">
+          Loading deliveries…
+        </Text>
+      )}
+
+      {deliveries && deliveries.length === 0 && (
+        <Text size="sm" c="dimmed">
+          No purchases through this webhook yet.
+        </Text>
+      )}
+
+      {deliveries && deliveries.length > 0 && (
+        <Table striped withTableBorder>
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>Checkout session</Table.Th>
+              <Table.Th>Outcome</Table.Th>
+              <Table.Th>License</Table.Th>
+              <Table.Th>Processed</Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {deliveries.map((delivery) => {
+              const badge = outcomeBadge(delivery);
+              const stuck = isStuck(delivery);
+              return (
+                <Table.Tr key={delivery.checkout_session_id}>
+                  <Table.Td>
+                    <Code fz="xs">{delivery.checkout_session_id}</Code>
+                  </Table.Td>
+                  <Table.Td>
+                    <Group gap={4} wrap="nowrap">
+                      <Badge color={badge.color} variant="light">
+                        {badge.label}
+                      </Badge>
+                      {stuck && (
+                        <Badge color="orange" variant="outline">
+                          Needs attention
+                        </Badge>
+                      )}
+                    </Group>
+                  </Table.Td>
+                  <Table.Td>{delivery.license_key ? <Code fz="xs">{delivery.license_key}</Code> : '—'}</Table.Td>
+                  <Table.Td>{formatDateTime(delivery.processed_at)}</Table.Td>
+                </Table.Tr>
+              );
+            })}
+          </Table.Tbody>
+        </Table>
+      )}
+
+      {hasMore && (
+        <Group justify="center">
+          <Button variant="default" size="xs" loading={loading} onClick={loadMore}>
+            Load more
+          </Button>
+        </Group>
+      )}
+
+      {deliveries && deliveries.some((d) => d.license_key) && (
+        <Text size="xs" c="dimmed">
+          To revoke a license issued here, find it by key in License Management.
+        </Text>
+      )}
+    </Stack>
+  );
+}

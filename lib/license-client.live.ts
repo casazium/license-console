@@ -40,6 +40,7 @@ import type {
   Activation,
   BackendVersion,
   BillingStatus,
+  CreateStorefrontMappingInput,
   DashboardStats,
   ExpiringLicense,
   IssueLicenseInput,
@@ -49,6 +50,8 @@ import type {
   ListLicensesResult,
   ListReleasesParams,
   ListReleasesResult,
+  ListStorefrontDeliveriesParams,
+  ListStorefrontDeliveriesResult,
   RawLicenseListRow,
   RecentActivation,
   RecentlyIssuedLicense,
@@ -57,6 +60,10 @@ import type {
   ReleaseDetail,
   SeatUtilization,
   SelfLicenseStatus,
+  StorefrontDelivery,
+  StorefrontMapping,
+  StorefrontWebhook,
+  StorefrontWebhookProvider,
   TierAStatus,
   UpdateLicenseTermsInput,
   UpdateLicenseTermsResult,
@@ -743,4 +750,170 @@ export async function getRelease(id: number, tenantApiKey?: string): Promise<Rel
     await throwForFailedResponse(res, 'Failed to get release');
   }
   return res.json();
+}
+
+// STOREFRONT_WEBHOOK_PLAN.md - casazium/license's
+// src/routes/admin-storefront-webhooks.js. All six functions below are
+// tenant-scoped CRUD, gated the same way as every other admin-* route
+// above (requireTenantScopedAccess under MULTI_TENANT, the self-hosted
+// singleton tenant otherwise) - resolveApiKey() already handles that
+// distinction transparently, same as every function above it.
+
+export async function listStorefrontWebhooks(tenantApiKey?: string): Promise<StorefrontWebhook[]> {
+  const res = await liveFetch('/admin/storefront-webhooks', {}, tenantApiKey);
+  if (!res.ok) {
+    await throwForFailedResponse(res, 'Failed to list storefront webhooks');
+  }
+  return res.json();
+}
+
+// 409 (an active webhook for this provider already exists) is the one
+// realistic failure the "Connect Stripe" button can hit - surfaced via
+// throwForFailedResponse's own preserved-message handling so the caller
+// can show the server's exact text rather than a generic failure.
+export async function createStorefrontWebhook(
+  provider: StorefrontWebhookProvider,
+  tenantApiKey?: string
+): Promise<StorefrontWebhook> {
+  const res = await liveFetch(
+    '/admin/storefront-webhooks',
+    { method: 'POST', body: JSON.stringify({ provider }) },
+    tenantApiKey
+  );
+  if (!res.ok) {
+    await throwForFailedResponse(res, 'Failed to create storefront webhook');
+  }
+  return res.json();
+}
+
+// Saving the signing secret is what flips a 'pending' row to 'active'
+// (admin-storefront-webhooks.js) - false on a 404 (webhook_id not found
+// or not owned by this tenant), matching setLicenseRevoked/deleteLicense's
+// own "boolean outcome, not an exception" convention for a caller-facing
+// not-found that isn't really exceptional.
+export async function setStorefrontWebhookSecret(
+  webhookId: string,
+  secret: string,
+  tenantApiKey?: string
+): Promise<boolean> {
+  const res = await liveFetch(
+    `/admin/storefront-webhooks/${encodeURIComponent(webhookId)}/secret`,
+    { method: 'POST', body: JSON.stringify({ secret }) },
+    tenantApiKey
+  );
+  if (res.status === 404) return false;
+  if (!res.ok) {
+    await throwForFailedResponse(res, 'Failed to save storefront webhook secret');
+  }
+  return true;
+}
+
+// Soft-disable only (DELETE .../:id never hard-deletes server-side) -
+// see StorefrontWebhookStatus's own doc comment.
+export async function disableStorefrontWebhook(webhookId: string, tenantApiKey?: string): Promise<boolean> {
+  const res = await liveFetch(
+    `/admin/storefront-webhooks/${encodeURIComponent(webhookId)}`,
+    { method: 'DELETE' },
+    tenantApiKey
+  );
+  if (res.status === 404) return false;
+  if (!res.ok) {
+    await throwForFailedResponse(res, 'Failed to disable storefront webhook');
+  }
+  return true;
+}
+
+// [] on a 404 (webhook not found/not owned), matching listActivations'
+// own convention above - an empty list either way is what the UI wants
+// to show, and this section only ever calls it after already fetching
+// the parent webhook row, so the 404 case is effectively unreachable
+// in practice, not silently hiding a real error.
+export async function listStorefrontMappings(webhookId: string, tenantApiKey?: string): Promise<StorefrontMapping[]> {
+  const res = await liveFetch(`/admin/storefront-webhooks/${encodeURIComponent(webhookId)}/mappings`, {}, tenantApiKey);
+  if (res.status === 404) return [];
+  if (!res.ok) {
+    await throwForFailedResponse(res, 'Failed to list storefront product mappings');
+  }
+  return res.json();
+}
+
+// 400 (validateLicenseLimits.js's own rejection text) and 409 (a mapping
+// for this exact reference already exists) both need their server-given
+// message preserved for inline display - throwForFailedResponse already
+// covers both.
+export async function createStorefrontMapping(
+  webhookId: string,
+  input: CreateStorefrontMappingInput,
+  tenantApiKey?: string
+): Promise<{ id: string }> {
+  const { ref_kind, external_ref, product_id, tier, limitsJson, max_activations, duration_days, notes } = input;
+
+  // Parsed here only to catch a malformed-JSON typo before spending a
+  // round trip on it - the parsed value is still fully re-validated
+  // server-side (validateLicenseLimits.js), which stays the real source
+  // of truth for whether it's a *valid* limits shape.
+  let limits: unknown;
+  if (limitsJson && limitsJson.trim()) {
+    try {
+      limits = JSON.parse(limitsJson);
+    } catch {
+      throw new Error('Limits must be valid JSON');
+    }
+  }
+
+  const res = await liveFetch(
+    `/admin/storefront-webhooks/${encodeURIComponent(webhookId)}/mappings`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ ref_kind, external_ref, product_id, tier, limits, max_activations, duration_days, notes }),
+    },
+    tenantApiKey
+  );
+  if (!res.ok) {
+    await throwForFailedResponse(res, 'Failed to create storefront product mapping');
+  }
+  return res.json();
+}
+
+// false on a 404 - either the parent webhook or the mapping itself
+// wasn't found/owned (admin-storefront-webhooks.js checks both, nested).
+export async function deleteStorefrontMapping(
+  webhookId: string,
+  mappingId: string,
+  tenantApiKey?: string
+): Promise<boolean> {
+  const res = await liveFetch(
+    `/admin/storefront-webhooks/${encodeURIComponent(webhookId)}/mappings/${encodeURIComponent(mappingId)}`,
+    { method: 'DELETE' },
+    tenantApiKey
+  );
+  if (res.status === 404) return false;
+  if (!res.ok) {
+    await throwForFailedResponse(res, 'Failed to delete storefront product mapping');
+  }
+  return true;
+}
+
+// No server-side total count (admin-storefront-webhooks.js's own
+// GET .../deliveries has no COUNT query) - hasMore is derived here from
+// whether a full page came back, see ListStorefrontDeliveriesResult's
+// own doc comment.
+export async function listStorefrontDeliveries(
+  webhookId: string,
+  params: ListStorefrontDeliveriesParams = {},
+  tenantApiKey?: string
+): Promise<ListStorefrontDeliveriesResult> {
+  const { limit = 20, offset = 0 } = params;
+  const query = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  const res = await liveFetch(
+    `/admin/storefront-webhooks/${encodeURIComponent(webhookId)}/deliveries?${query.toString()}`,
+    {},
+    tenantApiKey
+  );
+  if (res.status === 404) return { deliveries: [], hasMore: false };
+  if (!res.ok) {
+    await throwForFailedResponse(res, 'Failed to list storefront deliveries');
+  }
+  const deliveries: StorefrontDelivery[] = await res.json();
+  return { deliveries, hasMore: deliveries.length === limit };
 }

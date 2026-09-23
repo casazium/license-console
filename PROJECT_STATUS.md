@@ -1,7 +1,21 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-22 (§126: real
+Last updated: 2026-09-23 (§127: new
+StorefrontWebhooksSection.tsx on Settings - the console-side half of
+casazium/license's storefront-webhook auto-fulfillment feature
+(STOREFRONT_WEBHOOK_PLAN.md), built entirely against the admin API that
+feature already ships, no backend changes needed. A real, user-facing
+crash was found and fixed via an actual browser (Playwright) smoke test
+against a real license server, not just typecheck/lint/mock-mode
+review: every text field in the "Add mapping" form read
+`e.currentTarget.value` lazily inside a `setForm` functional updater,
+which crashed with "Cannot read properties of null" the instant a
+tenant typed a single character, taking down the whole Settings page.
+A follow-up independent (Opus) review of this same branch, before
+committing, found one more page-crashing bug and two more real bugs, all
+fixed the same session - see §127 below.)
+2026-09-22 (§126: real
 Stripe billing verified end to end on a fresh Test-mode sandbox for the
 test environment. Before that: Litestream actually built (§122,
 superseding §117's design-only status) and live-verified on the
@@ -7725,3 +7739,142 @@ this console - the console's only role is `CONSOLE_BILLING_URL`, the
 post-Checkout browser redirect target, never a webhook recipient
 itself).
 
+
+## 127. StorefrontWebhooksSection.tsx - console UI for storefront-webhook auto-fulfillment (2026-09-23)
+
+Branch `storefront-webhooks-console-ui`, off `main`. This is the
+`casazium/license-console` half of `STOREFRONT_WEBHOOK_PLAN.md`'s
+inbound purchase-webhook auto-fulfillment feature - the plan's own
+status line had explicitly flagged this UI as "not yet started" since
+that feature's own casazium/license work (that repo's own §235/§236)
+landed. Built entirely against `admin-storefront-webhooks.js`'s existing
+API; no changes needed in `casazium/license` for this session's scope
+(see below for the one piece that was considered and deliberately not
+built).
+
+**Client + types**: `StorefrontWebhook`/`StorefrontMapping`/
+`StorefrontDelivery` and related types added to `lib/license-types.ts`;
+eight new live functions in `lib/license-client.live.ts`
+(list/create/disable webhook, set secret, list/create/delete mapping,
+list deliveries) mirroring the admin API's own 404-as-`false`/`[]`
+convention already used throughout that file (a 404 is a normal "not
+found/not owned" outcome, not an exception); matching mock
+implementations in `lib/license-client.mock.ts` with a seeded demo
+webhook/mapping/delivery set (including one deliberately stuck
+'issued'-but-not-'sent' row, so the "needs attention" UI state has
+something to show in standalone mode); both re-exported through
+`lib/license-client.ts`'s mode dispatcher.
+
+**Server Actions**: appended to `app/(app)/settings/actions.ts` (this
+directory's existing one-actions-file-per-route convention, matching
+`billing/actions.ts`/`licenses/actions.ts`/`releases/actions.ts`).
+Two result shapes: `SimpleActionResult<T>` (only a 429 is a real
+failure - list/secret/disable/delete calls all have their 404 case
+already absorbed into a normal return value) and
+`ValidatedActionResult<T>` (createStorefrontWebhookAction's 409,
+createStorefrontMappingAction's 400/409 - both need the server's own
+message text surfaced verbatim as an inline form error, safe to do here
+since every message on this admin-only CRUD describes the tenant's own
+configuration mistake back to them, not buyer-facing content).
+
+**UI**: three new components in `app/(app)/settings/` -
+`StorefrontWebhooksSection.tsx` (Connect Stripe flow + webhook
+list/Accordion), `StorefrontWebhookMappings.tsx` (mappings table + add
+form), `StorefrontWebhookDeliveries.tsx` (paginated deliveries list,
+stuck-delivery flagging). Wired into `app/(app)/settings/page.tsx`
+alongside `RotateApiKeySection`/`ApiKeyReveal`, per the plan's own
+placement. The initial webhook list is fetched server-side in
+`page.tsx` (matching `releases/page.tsx`'s own
+try/isRateLimited/markIfTenantRejected pattern for its one initial
+list) - everything else (mappings, deliveries, mutations) goes through
+the new Server Actions, fetched on-demand only for whichever webhook's
+Accordion item is currently expanded (a ref-guarded effect keyed on an
+`active` prop, not on Accordion mount/unmount - Mantine keeps every
+`Accordion.Panel` in the DOM regardless of open state, so a naive
+mount-time effect would have fetched every webhook's data at once).
+
+**Resend, deliberately not built**: the plan's own spec called for an
+in-app "resend" button on stuck deliveries. Investigated before
+building it and found a real constraint the plan didn't account for:
+the platform never persists a buyer's email anywhere (`storefront_
+purchase_events` has no such column) - it only ever exists transiently,
+in the Stripe event body at the moment a webhook fires. A real
+in-console resend button would require either a new permanent
+buyer-email retention point (a schema change, and a new kind of PII
+retention this feature's every other fix this session was specifically
+about *avoiding*) or restricting it to require Stripe's own event
+redelivery anyway. Operator decision: ship without the button - Stripe's
+own event redelivery (an operator clicking "Resend" on the event in
+their own Stripe dashboard) already works correctly today, with zero
+code changes, confirmed by reading `storefront-webhook.js`'s actual
+delivery-retry path. `StorefrontWebhookDeliveries.tsx` instead flags a
+stuck row and tells the tenant to redeliver from Stripe. Revisit if this
+becomes a real support burden - persisting buyer email would be a
+deliberate, separate decision at that point, not a default.
+
+**A real bug found live, not by typecheck/lint/tests**: verified this
+whole feature with an actual browser (Playwright, driven against Chromium)
+against a real `casazium/license` dev server (not just mock mode) -
+signed up a real SaaS tenant, connected a real Stripe-shaped webhook,
+saved a secret, and hit "Add mapping." Typing a single character into
+any of the form's text fields crashed the entire Settings page into its
+error boundary: `TypeError: Cannot read properties of null (reading
+'value')`. Root cause: every text-field `onChange` read
+`e.currentTarget.value` *inside* the `setForm` functional updater
+(`setForm((f) => ({ ...f, external_ref: e.currentTarget.value }))`)
+rather than capturing it synchronously first - React nulls a
+SyntheticEvent's fields once the handler that received it returns, and
+the updater callback runs after that point. `npm run lint`/`tsc
+--noEmit` both stayed green through this the whole time; neither
+catches this class of bug. Fixed in all five affected fields (capture
+the value into a local first, reference that inside the updater).
+Re-verified live afterward: the full Connect → save secret → add
+mapping → duplicate-mapping 409 flow all worked correctly end to end
+against the real server, confirmed via screenshots at each step.
+
+**Tests**: `tests/lib/storefront-webhook-client.test.ts` (14 tests,
+mocked-fetch pattern matching `license-client-errors.test.ts`'s own -
+404-as-false/[] for every relevant function, 400/409 body preservation,
+malformed-JSON-limits guard, `hasMore` pagination derivation).
+`tests/components/StorefrontWebhookMappings.test.tsx` (6 tests) was
+written as the regression test for the crash above, but an independent
+review's own empirical check (reintroducing the exact original bug into
+the `notes` field and rerunning just that field's test) found it does
+NOT reliably catch it: a single `fireEvent.change` doesn't reproduce
+whatever real-browser timing gap actually nulled `e.currentTarget`, so
+5 of these 6 tests pass identically whether the fix is present or not -
+confirmed directly, not just asserted. Only the full fill-and-submit
+round trip test would fail, and only for the two fields (`product_id`,
+`tier`) it happens to submit. The fix itself is still correct and was
+separately verified live (real browser, real crash reproduced, real
+fix confirmed via screenshots) - this is a gap in this suite's
+protection against a regression, not in the fix. Left as a known
+limitation for now (out of this round's agreed scope); a reliable
+regression test for this specific class of bug likely needs a real
+browser test (Playwright), not jsdom + fireEvent. Needed a new
+`ResizeObserver` polyfill in `tests/setup.ts` (jsdom doesn't implement
+it; Mantine's Select/Combobox needs it) - same reasoning and pattern as
+that file's existing `matchMedia` polyfill, first hit here since no
+earlier component test rendered a Mantine `Select`/`NumberInput`.
+
+Full suite: 19 files, 163 tests passing (up from 143). `npx tsc
+--noEmit`, `npm run lint`, `npm run build` all clean.
+`casazium/license`'s own working tree is untouched - confirmed via
+`git status` before and after this session's work, matching the "no
+backend changes needed" finding above. Not yet committed - awaiting
+explicit instruction per this repo's own CLAUDE.md §4 Git discipline
+rule.
+
+**Independent (Opus) review before committing, requested directly ("have opus review just your new work")** - scoped to this branch's own diff, adversarial focus on tenant isolation, XSS/injection, other instances of the same event-handling bug class, error-handling gaps, and race conditions in the on-demand Accordion fetching. Ran the test suite/typecheck/lint itself rather than trusting the claims above, and verified findings empirically (wrote throwaway repros, then cleaned up - confirmed via `git status`/`cmp` that nothing was left behind). No tenant-isolation or XSS findings - confirmed every Server Action threads `tenantApiKey` server-side only, every user string renders as React text, no `dangerouslySetInnerHTML`. Three real findings, all verified independently before fixing (not taken on faith):
+
+- **H1 (High)**: `casazium/license`'s storefront-webhook backend genuinely isn't on that repo's `main` yet (confirmed directly: `git merge-base --is-ancestor af02f4d origin/main` fails) - still only on its own feature branch there. `settings/page.tsx`'s initial `listStorefrontWebhooks` call re-threw anything but a 429, and this Settings page also holds API key management, password/email changes, data export, and account deletion - all unrelated to storefront webhooks. A plain 404 from a license-server deployment that predates this feature (exactly today's real state) would have taken down the *entire* Settings page via the `(app)/error.tsx` boundary, not just the new section. Fixed: every outcome is now contained to the storefront section (a "couldn't load" alert in place of the section, same visual footprint as the existing rate-limit case) - `markIfTenantRejected` still runs as a side effect, it just no longer re-throws.
+- **M1 (Medium)**: the "needs attention" stuck-delivery check in `StorefrontWebhookDeliveries.tsx` was timezone-broken. `processed_at` comes from SQLite's own `CURRENT_TIMESTAMP` - `"YYYY-MM-DD HH:MM:SS"`, genuinely UTC but with no `T`/`Z` marker - which `new Date()` parses as the *viewer's local* time. Confirmed directly with Node: a delivery genuinely 10 minutes old computed as -401 minutes under `America/Los_Angeles`. Mock mode's own seeded `toISOString()` fixtures already carry `T`/`Z` and were never affected, which is exactly why this went unnoticed in standalone-mode testing. Fixed with a `parseTimestamp()` helper that normalizes the SQLite shape to explicit UTC before parsing, used only by `isStuck()`.
+- **M2 (Medium)**: both on-demand initial-fetch effects (`StorefrontWebhookMappings.tsx`, `StorefrontWebhookDeliveries.tsx`) had no `.catch()` - confirmed via repro. A rejected Server Action call (a 5xx, a network error, or a tenant-rejected error the action re-throws after marking) left the panel stuck on "Loading..." forever (an unhandled rejection, and `fetchingRef` never reset so collapsing/re-expanding never retried either). Fixed: both now `.catch()` into a toast notification and `.finally()` reset `fetchingRef`, so collapsing and re-expanding the row retries - the same recovery path the rate-limited case already had.
+
+**Two more findings, deliberately left out of this round** (operator: fix H1/M1/M2 only, defer the rest):
+- **M3**: a real gap, but in the already-shipped `casazium/license` backend, not this branch's own code - the 409 duplicate-mapping check (`admin-storefront-webhooks.js`) is scoped tenant-wide (`tenant_id, provider, ref_kind, external_ref`), while purchase-time mapping resolution (`resolveMapping` in `storefront-webhook.js`) is scoped per-webhook. Disabling a webhook and reconnecting traps a Payment Link's mapping on the dead webhook, where it can never match again, while blocking re-adding it on the new one. Needs either a console-side mitigation (hide "Add mapping" on a disabled webhook, fix this section's own disable-dialog copy, which currently implies mappings carry forward) or a backend fix in `casazium/license` - not decided yet.
+- **L1**: this session's own regression test for the original `e.currentTarget`-in-updater crash (`tests/components/StorefrontWebhookMappings.test.tsx`) does not reliably catch it - the review reintroduced the exact original bug into the `notes` field and reran just that field's test; it still passed (verified independently, not just taken on the review's word: reverted `notes` to the buggy pattern myself, ran `-t "Notes"`, confirmed green, then restored the fix - `git diff` on that file is clean). A single `fireEvent.change` doesn't reproduce whatever real-browser timing gap actually nulled `e.currentTarget`; only the full fill-and-submit round-trip test would fail, and only for the two fields it happens to submit. The underlying fix is still correct (verified live, in a real browser, against a real crash) - this is a test-suite gap, not a code gap. A reliable regression test for this specific bug class likely needs a real browser test (Playwright), not jsdom + `fireEvent`. Left as a known, documented limitation.
+- The rest of that review's Low/Informational list (signing secret using `TextInput` not `PasswordInput`, no secret-rotation UI, `limits`/`notes` not shown in the mappings table, `allowDecimal` missing on the two `NumberInput`s, error-message passthrough in the two `ValidatedActionResult` actions, stale-refresh/duplicate-key races in the deliveries list, mock-mode divergences from live) were explicitly deferred too.
+
+Full suite re-run after these three fixes: 19 files, 163 tests still
+passing. `npx tsc --noEmit`, `npm run lint`, `npm run build` all clean.

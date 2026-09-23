@@ -19,6 +19,7 @@ export type {
   Activation,
   BackendVersion,
   BillingStatus,
+  CreateStorefrontMappingInput,
   DashboardStats,
   ExpiringLicense,
   IssueLicenseInput,
@@ -29,6 +30,8 @@ export type {
   ListLicensesResult,
   ListReleasesParams,
   ListReleasesResult,
+  ListStorefrontDeliveriesParams,
+  ListStorefrontDeliveriesResult,
   RecentActivation,
   RecentlyIssuedLicense,
   RegisterReleaseInput,
@@ -37,6 +40,14 @@ export type {
   ReleaseDetail,
   SeatUtilization,
   SelfLicenseStatus,
+  StorefrontDelivery,
+  StorefrontDeliveryOutcome,
+  StorefrontDeliveryStatus,
+  StorefrontMapping,
+  StorefrontMappingRefKind,
+  StorefrontWebhook,
+  StorefrontWebhookProvider,
+  StorefrontWebhookStatus,
   TierAStatus,
   UpdateLicenseTermsInput,
   UpdateLicenseTermsResult,
@@ -167,3 +178,21 @@ export const getRelease: typeof mock.getRelease = (id, tenantApiKey) =>
   client().getRelease(id, tenantApiKey);
 export const getTierAStatus: typeof mock.getTierAStatus = (tenantApiKey) =>
   client().getTierAStatus(tenantApiKey);
+
+// STOREFRONT_WEBHOOK_PLAN.md
+export const listStorefrontWebhooks: typeof mock.listStorefrontWebhooks = (tenantApiKey) =>
+  client().listStorefrontWebhooks(tenantApiKey);
+export const createStorefrontWebhook: typeof mock.createStorefrontWebhook = (provider, tenantApiKey) =>
+  client().createStorefrontWebhook(provider, tenantApiKey);
+export const setStorefrontWebhookSecret: typeof mock.setStorefrontWebhookSecret = (webhookId, secret, tenantApiKey) =>
+  client().setStorefrontWebhookSecret(webhookId, secret, tenantApiKey);
+export const disableStorefrontWebhook: typeof mock.disableStorefrontWebhook = (webhookId, tenantApiKey) =>
+  client().disableStorefrontWebhook(webhookId, tenantApiKey);
+export const listStorefrontMappings: typeof mock.listStorefrontMappings = (webhookId, tenantApiKey) =>
+  client().listStorefrontMappings(webhookId, tenantApiKey);
+export const createStorefrontMapping: typeof mock.createStorefrontMapping = (webhookId, input, tenantApiKey) =>
+  client().createStorefrontMapping(webhookId, input, tenantApiKey);
+export const deleteStorefrontMapping: typeof mock.deleteStorefrontMapping = (webhookId, mappingId, tenantApiKey) =>
+  client().deleteStorefrontMapping(webhookId, mappingId, tenantApiKey);
+export const listStorefrontDeliveries: typeof mock.listStorefrontDeliveries = (webhookId, params, tenantApiKey) =>
+  client().listStorefrontDeliveries(webhookId, params, tenantApiKey);

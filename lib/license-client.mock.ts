@@ -8,6 +8,7 @@ import type {
   Activation,
   BackendVersion,
   BillingStatus,
+  CreateStorefrontMappingInput,
   DashboardStats,
   ExpiringLicense,
   IssueLicenseInput,
@@ -17,6 +18,8 @@ import type {
   ListLicensesResult,
   ListReleasesParams,
   ListReleasesResult,
+  ListStorefrontDeliveriesParams,
+  ListStorefrontDeliveriesResult,
   RecentActivation,
   RecentlyIssuedLicense,
   RegisterReleaseInput,
@@ -25,6 +28,10 @@ import type {
   ReleaseDetail,
   SeatUtilization,
   SelfLicenseStatus,
+  StorefrontDelivery,
+  StorefrontMapping,
+  StorefrontWebhook,
+  StorefrontWebhookProvider,
   TierAStatus,
   UpdateLicenseTermsInput,
   UpdateLicenseTermsResult,
@@ -34,6 +41,9 @@ type Store = {
   licenses: License[];
   activations: Record<string, Activation[]>;
   releases: Release[];
+  storefrontWebhooks: StorefrontWebhook[];
+  storefrontMappings: StorefrontMapping[];
+  storefrontDeliveries: StorefrontDelivery[];
 };
 
 const globalForMockStore = globalThis as unknown as { __licenseMockStore?: Store };
@@ -140,6 +150,68 @@ function seedStore(): Store {
         release_notes: null,
         status: 'unpublished',
         created_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+    ],
+    // STOREFRONT_WEBHOOK_PLAN.md's console UI - one connected, active demo
+    // webhook with a mapping and a mixed set of deliveries, deliberately
+    // including one 'issued'-but-not-'sent' row so the "needs attention"
+    // state (StorefrontWebhooksSection's own flagging logic) has
+    // something to actually show in standalone/demo mode.
+    storefrontWebhooks: [
+      {
+        id: 'sfwh_demo0001',
+        provider: 'stripe',
+        status: 'active',
+        created_at: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString(),
+        last_event_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+      },
+    ],
+    storefrontMappings: [
+      {
+        id: 'sfmap_demo0001',
+        webhook_id: 'sfwh_demo0001',
+        tenant_id: 'demo-tenant',
+        provider: 'stripe',
+        ref_kind: 'payment_link',
+        external_ref: 'plink_demo0001',
+        product_id: 'widget-pro',
+        tier: 'pro',
+        limits_json: JSON.stringify({ api_calls_per_day: 10000 }),
+        max_activations: 3,
+        duration_days: 365,
+        notes: 'Demo Payment Link - Widget Pro annual',
+        created_at: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+    ],
+    storefrontDeliveries: [
+      {
+        tenant_id: 'demo-tenant',
+        checkout_session_id: 'cs_test_demo_issued_and_sent',
+        outcome: 'issued',
+        attempts: 1,
+        license_key: 'CASZ-DEMO-ALPHA-0001',
+        delivery_status: 'sent',
+        processed_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+      },
+      {
+        tenant_id: 'demo-tenant',
+        checkout_session_id: 'cs_test_demo_stuck_delivery',
+        outcome: 'issued',
+        attempts: 1,
+        license_key: 'CASZ-DEMO-BETA-0002',
+        // Deliberately old and still 'pending' - exercises the "needs
+        // attention, redeliver from Stripe" flagging.
+        delivery_status: 'pending',
+        processed_at: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
+      },
+      {
+        tenant_id: 'demo-tenant',
+        checkout_session_id: 'cs_test_demo_unmapped',
+        outcome: 'unmapped',
+        attempts: 1,
+        license_key: null,
+        delivery_status: 'pending',
+        processed_at: new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString(),
       },
     ],
   };
@@ -696,4 +768,142 @@ export async function getRelease(id: number, _tenantApiKey?: string): Promise<Re
   const release = getStore().releases.find((entry) => entry.id === id);
   if (!release) return null;
   return { ...release, signature: 'mock-signature-not-cryptographically-real' };
+}
+
+// STOREFRONT_WEBHOOK_PLAN.md - standalone/demo counterpart to the six
+// live functions above. Mock mode has no real per-tenant isolation
+// concept (same posture as registerRelease's own mock, above) - every
+// row in the seeded store is simply "this demo tenant's."
+
+export async function listStorefrontWebhooks(_tenantApiKey?: string): Promise<StorefrontWebhook[]> {
+  return [...getStore().storefrontWebhooks].reverse();
+}
+
+export async function createStorefrontWebhook(
+  provider: StorefrontWebhookProvider,
+  _tenantApiKey?: string
+): Promise<StorefrontWebhook> {
+  const { storefrontWebhooks } = getStore();
+  // Mirrors the real route's own partial-unique-index rule (at most one
+  // non-disabled webhook per {tenant, provider}) so the "Connect Stripe"
+  // button's 409 path is demonstrable in standalone mode too.
+  const existing = storefrontWebhooks.find((w) => w.provider === provider && w.status !== 'disabled');
+  if (existing) {
+    throw new Error(`An active ${provider} storefront webhook already exists`);
+  }
+
+  const webhook: StorefrontWebhook = {
+    id: `sfwh_${crypto.randomUUID().slice(0, 12)}`,
+    provider,
+    status: 'pending',
+    created_at: new Date().toISOString(),
+    last_event_at: null,
+  };
+  storefrontWebhooks.push(webhook);
+  return webhook;
+}
+
+export async function setStorefrontWebhookSecret(
+  webhookId: string,
+  _secret: string,
+  _tenantApiKey?: string
+): Promise<boolean> {
+  const webhook = getStore().storefrontWebhooks.find((w) => w.id === webhookId);
+  if (!webhook) return false;
+  webhook.status = 'active';
+  return true;
+}
+
+export async function disableStorefrontWebhook(webhookId: string, _tenantApiKey?: string): Promise<boolean> {
+  const webhook = getStore().storefrontWebhooks.find((w) => w.id === webhookId);
+  if (!webhook) return false;
+  webhook.status = 'disabled';
+  return true;
+}
+
+export async function listStorefrontMappings(webhookId: string, _tenantApiKey?: string): Promise<StorefrontMapping[]> {
+  return getStore()
+    .storefrontMappings.filter((m) => m.webhook_id === webhookId)
+    .reverse();
+}
+
+export async function createStorefrontMapping(
+  webhookId: string,
+  input: CreateStorefrontMappingInput,
+  _tenantApiKey?: string
+): Promise<{ id: string }> {
+  const { storefrontMappings, storefrontWebhooks } = getStore();
+  const webhook = storefrontWebhooks.find((w) => w.id === webhookId);
+  if (!webhook) {
+    throw new Error('Storefront webhook not found');
+  }
+
+  const { ref_kind, external_ref, product_id, tier, limitsJson, max_activations, duration_days, notes } = input;
+
+  // Same malformed-JSON guard as the live client, and the same real
+  // duplicate-reference check the server enforces - both are worth
+  // replicating here (unlike registerRelease's own looser mock) since
+  // they're exactly the two error paths this form's inline-error display
+  // needs to exercise in standalone mode.
+  if (limitsJson && limitsJson.trim()) {
+    try {
+      JSON.parse(limitsJson);
+    } catch {
+      throw new Error('Limits must be valid JSON');
+    }
+  }
+
+  const existing = storefrontMappings.find(
+    (m) => m.webhook_id === webhookId && m.ref_kind === ref_kind && m.external_ref === external_ref
+  );
+  if (existing) {
+    throw new Error('A mapping for this reference already exists');
+  }
+
+  const mapping: StorefrontMapping = {
+    id: `sfmap_${crypto.randomUUID().slice(0, 12)}`,
+    webhook_id: webhookId,
+    tenant_id: 'demo-tenant',
+    provider: webhook.provider,
+    ref_kind,
+    external_ref,
+    product_id,
+    tier,
+    limits_json: limitsJson && limitsJson.trim() ? limitsJson : null,
+    max_activations: typeof max_activations === 'number' ? max_activations : null,
+    duration_days: typeof duration_days === 'number' ? duration_days : null,
+    notes: notes || null,
+    created_at: new Date().toISOString(),
+  };
+  storefrontMappings.push(mapping);
+  return { id: mapping.id };
+}
+
+export async function deleteStorefrontMapping(
+  webhookId: string,
+  mappingId: string,
+  _tenantApiKey?: string
+): Promise<boolean> {
+  const { storefrontMappings } = getStore();
+  const index = storefrontMappings.findIndex((m) => m.id === mappingId && m.webhook_id === webhookId);
+  if (index === -1) return false;
+  storefrontMappings.splice(index, 1);
+  return true;
+}
+
+export async function listStorefrontDeliveries(
+  _webhookId: string,
+  params: ListStorefrontDeliveriesParams = {},
+  _tenantApiKey?: string
+): Promise<ListStorefrontDeliveriesResult> {
+  const { limit = 20, offset = 0 } = params;
+  // The live route's own response rows don't carry webhook_id either
+  // (admin-storefront-webhooks.js's SELECT list) - scoping happens
+  // server-side via the WHERE clause instead. This store only ever seeds
+  // one demo webhook (same "one of everything" posture as the rest of
+  // this file's fixtures), so there's nothing to filter by here.
+  const all = getStore().storefrontDeliveries;
+  const sorted = [...all].reverse();
+  const page = sorted.slice(offset, offset + limit);
+  return { deliveries: page, hasMore: offset + limit < sorted.length };
 }

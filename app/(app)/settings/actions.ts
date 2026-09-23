@@ -2,7 +2,24 @@
 
 import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
-import { deleteAccount as deleteAccountOnServer, rotateApiKey as rotateApiKeyOnServer } from '@/lib/license-client';
+import {
+  deleteAccount as deleteAccountOnServer,
+  rotateApiKey as rotateApiKeyOnServer,
+  createStorefrontWebhook as createStorefrontWebhookOnServer,
+  setStorefrontWebhookSecret as setStorefrontWebhookSecretOnServer,
+  disableStorefrontWebhook as disableStorefrontWebhookOnServer,
+  listStorefrontMappings as listStorefrontMappingsOnServer,
+  createStorefrontMapping as createStorefrontMappingOnServer,
+  deleteStorefrontMapping as deleteStorefrontMappingOnServer,
+  listStorefrontDeliveries as listStorefrontDeliveriesOnServer,
+} from '@/lib/license-client';
+import type {
+  CreateStorefrontMappingInput,
+  ListStorefrontDeliveriesResult,
+  StorefrontMapping,
+  StorefrontWebhook,
+  StorefrontWebhookProvider,
+} from '@/lib/license-client';
 import { verifyAccountPassword } from '@/lib/auth';
 import { encrypt } from '@/lib/crypto';
 import { hashPassword } from '@/lib/password';
@@ -282,4 +299,128 @@ export async function changePasswordAction(
   store.set(SESSION_COOKIE_NAME, sessionToken, sessionCookieOptions);
 
   return { ok: true };
+}
+
+// STOREFRONT_WEBHOOK_PLAN.md - Server Actions backing StorefrontWebhooksSection.
+//
+// Two result shapes, matching the two distinct failure profiles among
+// these calls (same reasoning as billing/actions.ts's own single
+// ActionResult<T>, split in two here since two of these calls have a
+// second, genuinely distinct failure mode worth telling apart from an
+// opaque "something went wrong"):
+// - SimpleActionResult: the only realistic failure is a 429 - true for
+//   every list/secret/disable/delete call, since a 404 there ("that
+//   webhook/mapping no longer exists") is already handled as a normal
+//   `false`/`[]` return by the client functions themselves, not an error.
+// - ValidatedActionResult: createStorefrontWebhookAction (409, an active
+//   webhook already exists) and createStorefrontMappingAction (400 from
+//   validateLicenseLimits.js, or 409, a duplicate mapping reference) can
+//   both fail on genuinely retryable-with-different-input user error -
+//   the server's own message text is safe to show verbatim here (unlike
+//   a buyer-facing surface, every message on this admin-only CRUD
+//   describes the tenant's own configuration mistake back to them).
+type SimpleActionResult<T> = { ok: true; data: T } | { ok: false; reason: 'rate-limited' };
+type ValidatedActionResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; reason: 'rate-limited' }
+  | { ok: false; reason: 'validation'; message: string };
+
+export async function createStorefrontWebhookAction(
+  provider: StorefrontWebhookProvider
+): Promise<ValidatedActionResult<StorefrontWebhook>> {
+  const { identity, tenantApiKey } = await requireSessionWithTenantKey();
+  try {
+    const data = await createStorefrontWebhookOnServer(provider, tenantApiKey);
+    return { ok: true, data };
+  } catch (err) {
+    if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
+    markIfTenantRejected(err, identity.tenantId);
+    if (err instanceof Error) return { ok: false, reason: 'validation', message: err.message };
+    throw err;
+  }
+}
+
+export async function setStorefrontWebhookSecretAction(
+  webhookId: string,
+  secret: string
+): Promise<SimpleActionResult<boolean>> {
+  const { identity, tenantApiKey } = await requireSessionWithTenantKey();
+  try {
+    const data = await setStorefrontWebhookSecretOnServer(webhookId, secret, tenantApiKey);
+    return { ok: true, data };
+  } catch (err) {
+    if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
+    markIfTenantRejected(err, identity.tenantId);
+    throw err;
+  }
+}
+
+export async function disableStorefrontWebhookAction(webhookId: string): Promise<SimpleActionResult<boolean>> {
+  const { identity, tenantApiKey } = await requireSessionWithTenantKey();
+  try {
+    const data = await disableStorefrontWebhookOnServer(webhookId, tenantApiKey);
+    return { ok: true, data };
+  } catch (err) {
+    if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
+    markIfTenantRejected(err, identity.tenantId);
+    throw err;
+  }
+}
+
+export async function listStorefrontMappingsAction(webhookId: string): Promise<SimpleActionResult<StorefrontMapping[]>> {
+  const { identity, tenantApiKey } = await requireSessionWithTenantKey();
+  try {
+    const data = await listStorefrontMappingsOnServer(webhookId, tenantApiKey);
+    return { ok: true, data };
+  } catch (err) {
+    if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
+    markIfTenantRejected(err, identity.tenantId);
+    throw err;
+  }
+}
+
+export async function createStorefrontMappingAction(
+  webhookId: string,
+  input: CreateStorefrontMappingInput
+): Promise<ValidatedActionResult<{ id: string }>> {
+  const { identity, tenantApiKey } = await requireSessionWithTenantKey();
+  try {
+    const data = await createStorefrontMappingOnServer(webhookId, input, tenantApiKey);
+    return { ok: true, data };
+  } catch (err) {
+    if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
+    markIfTenantRejected(err, identity.tenantId);
+    if (err instanceof Error) return { ok: false, reason: 'validation', message: err.message };
+    throw err;
+  }
+}
+
+export async function deleteStorefrontMappingAction(
+  webhookId: string,
+  mappingId: string
+): Promise<SimpleActionResult<boolean>> {
+  const { identity, tenantApiKey } = await requireSessionWithTenantKey();
+  try {
+    const data = await deleteStorefrontMappingOnServer(webhookId, mappingId, tenantApiKey);
+    return { ok: true, data };
+  } catch (err) {
+    if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
+    markIfTenantRejected(err, identity.tenantId);
+    throw err;
+  }
+}
+
+export async function listStorefrontDeliveriesAction(
+  webhookId: string,
+  params: { limit?: number; offset?: number }
+): Promise<SimpleActionResult<ListStorefrontDeliveriesResult>> {
+  const { identity, tenantApiKey } = await requireSessionWithTenantKey();
+  try {
+    const data = await listStorefrontDeliveriesOnServer(webhookId, params, tenantApiKey);
+    return { ok: true, data };
+  } catch (err) {
+    if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
+    markIfTenantRejected(err, identity.tenantId);
+    throw err;
+  }
 }
