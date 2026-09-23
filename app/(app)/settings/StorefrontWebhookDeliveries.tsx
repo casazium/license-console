@@ -160,20 +160,31 @@ export function StorefrontWebhookDeliveries({ webhookId, active }: { webhookId: 
       )}
 
       {deliveries && deliveries.length > 0 && (
-        // Same layout bug as StorefrontWebhookMappings's own table - real
-        // checkout_session_id/license_key values pushed this table's
-        // natural width past its container, and with no scroll
-        // container the overflow rendered `visible`, spilling the
-        // table's own border past the webhook card's edge. Found live
-        // on a real Coolify deployment, not by any local review.
+        // Layout bug found live on a real Coolify deployment, in two
+        // parts, not caught by any local review:
+        // 1. With real checkout_session_id/license_key values, this
+        //    table's natural width exceeded the webhook card's width,
+        //    and with no scroll container the overflow rendered
+        //    `visible`, spilling the table's own border past the card's
+        //    edge. Fixed with Table.ScrollContainer below.
+        // 2. That alone wasn't enough: Mantine's Code component already
+        //    sets overflow-wrap: break-word, but table-layout: auto
+        //    (the default) sizes each column to its content's natural,
+        //    UNWRAPPED width before ever considering that property - so
+        //    inside a horizontally-scrollable, otherwise-unconstrained
+        //    container, the browser just kept growing the table instead
+        //    of ever wrapping a long id, leaving genuinely cut-off-
+        //    looking content. table-layout: fixed with explicit column
+        //    widths forces the browser to respect those widths and
+        //    actually wrap long ids within their cell instead.
         <Table.ScrollContainer minWidth={500}>
-          <Table striped withTableBorder>
+          <Table striped withTableBorder style={{ tableLayout: 'fixed', width: '100%' }}>
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>Checkout session</Table.Th>
-                <Table.Th>Outcome</Table.Th>
-                <Table.Th>License</Table.Th>
-                <Table.Th>Processed</Table.Th>
+                <Table.Th style={{ width: '35%' }}>Checkout session</Table.Th>
+                <Table.Th style={{ width: '20%' }}>Outcome</Table.Th>
+                <Table.Th style={{ width: '25%' }}>License</Table.Th>
+                <Table.Th style={{ width: '20%' }}>Processed</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -183,7 +194,9 @@ export function StorefrontWebhookDeliveries({ webhookId, active }: { webhookId: 
                 return (
                   <Table.Tr key={delivery.checkout_session_id}>
                     <Table.Td>
-                      <Code fz="xs">{delivery.checkout_session_id}</Code>
+                      <Code fz="xs" style={{ wordBreak: 'break-all' }}>
+                        {delivery.checkout_session_id}
+                      </Code>
                     </Table.Td>
                     <Table.Td>
                       <Group gap={4} wrap="nowrap">
@@ -197,7 +210,15 @@ export function StorefrontWebhookDeliveries({ webhookId, active }: { webhookId: 
                         )}
                       </Group>
                     </Table.Td>
-                    <Table.Td>{delivery.license_key ? <Code fz="xs">{delivery.license_key}</Code> : '—'}</Table.Td>
+                    <Table.Td>
+                      {delivery.license_key ? (
+                        <Code fz="xs" style={{ wordBreak: 'break-all' }}>
+                          {delivery.license_key}
+                        </Code>
+                      ) : (
+                        '—'
+                      )}
+                    </Table.Td>
                     <Table.Td>{formatDateTime(delivery.processed_at)}</Table.Td>
                   </Table.Tr>
                 );

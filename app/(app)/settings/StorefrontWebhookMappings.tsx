@@ -158,37 +158,41 @@ export function StorefrontWebhookMappings({ webhookId, active }: { webhookId: st
       )}
 
       {mappings && mappings.length > 0 && (
-        // Layout bug found live (real Coolify test deployment, not caught
-        // by any local review): this table's natural (layout: auto)
-        // width regularly exceeds the Accordion.Panel's own width once
-        // real Payment Link IDs/product names are long enough - with no
-        // scroll container, the overflow rendered as `visible`, so the
-        // table (and its own withTableBorder box) spilled out past the
-        // webhook card's right edge, visually crossing over neighboring
-        // content. Table.ScrollContainer contains that overflow with its
-        // own horizontal scrollbar instead.
+        // Layout bug found live on a real Coolify deployment, in two
+        // parts, not caught by any local review (see
+        // StorefrontWebhookDeliveries.tsx's matching table for the full
+        // explanation): the table's natural width exceeded the webhook
+        // card's width (fixed with Table.ScrollContainer), and
+        // table-layout: auto (the default) never actually wraps long,
+        // unbroken values like a Payment Link id even with wrapping
+        // styles present, because column widths are computed from
+        // unwrapped content first. table-layout: fixed with explicit
+        // column widths forces real wrapping instead of an ever-growing
+        // table.
         <Table.ScrollContainer minWidth={500}>
-          <Table striped withTableBorder>
+          <Table striped withTableBorder style={{ tableLayout: 'fixed', width: '100%' }}>
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>Reference</Table.Th>
-                <Table.Th>Product</Table.Th>
-                <Table.Th>Tier</Table.Th>
-                <Table.Th>Seats</Table.Th>
-                <Table.Th>Duration</Table.Th>
-                <Table.Th />
+                <Table.Th style={{ width: '30%' }}>Reference</Table.Th>
+                <Table.Th style={{ width: '25%' }}>Product</Table.Th>
+                <Table.Th style={{ width: '12%' }}>Tier</Table.Th>
+                <Table.Th style={{ width: '11%' }}>Seats</Table.Th>
+                <Table.Th style={{ width: '14%' }}>Duration</Table.Th>
+                <Table.Th style={{ width: '8%' }} />
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
               {mappings.map((mapping) => (
                 <Table.Tr key={mapping.id}>
                   <Table.Td>
-                    <Text size="sm">{mapping.external_ref}</Text>
+                    <Text size="sm" style={{ wordBreak: 'break-all' }}>
+                      {mapping.external_ref}
+                    </Text>
                     <Text size="xs" c="dimmed">
                       {mapping.ref_kind === 'payment_link' ? 'Payment Link' : 'Metadata'}
                     </Text>
                   </Table.Td>
-                  <Table.Td>{mapping.product_id}</Table.Td>
+                  <Table.Td style={{ wordBreak: 'break-word' }}>{mapping.product_id}</Table.Td>
                   <Table.Td>{mapping.tier}</Table.Td>
                   <Table.Td>{mapping.max_activations ?? 'Unlimited'}</Table.Td>
                   <Table.Td>{mapping.duration_days ? `${mapping.duration_days} days` : 'Perpetual'}</Table.Td>
