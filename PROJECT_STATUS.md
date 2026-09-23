@@ -1,7 +1,24 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-23 (§127: new
+Last updated: 2026-09-23 (§128: three
+real layout bugs in the storefront-webhook Settings tables, all found
+live on a deployed Coolify test environment with real seeded data, none
+caught by typecheck/lint/tests - (1) the mappings/deliveries tables'
+natural width overflowed the webhook card (fixed with
+Table.ScrollContainer); (2) table-layout: auto never actually wrapped
+long unbroken values (a Payment Link ID, a Stripe checkout session ID)
+even with wrapping CSS present, since column widths are computed from
+unwrapped content first (fixed with table-layout: fixed + explicit
+column widths); (3) - reported after both of those already shipped -
+percentage column widths still starved short, non-wrapping columns (a
+"Remove" button, an outcome Badge) once the real card neared the low
+end of the scrollable range, and a first attempt at fixing it by simply
+raising Table.ScrollContainer's minWidth silently regressed the same
+symptom by forcing hidden horizontal scroll on Mantine's own overlay
+scrollbar. Fixed with explicit pixel widths on the short columns instead
+of percentages, minWidth left alone. See §128 below.)
+2026-09-23 (§127: new
 StorefrontWebhooksSection.tsx on Settings - the console-side half of
 casazium/license's storefront-webhook auto-fulfillment feature
 (STOREFRONT_WEBHOOK_PLAN.md), built entirely against the admin API that
@@ -7878,3 +7895,109 @@ rule.
 
 Full suite re-run after these three fixes: 19 files, 163 tests still
 passing. `npx tsc --noEmit`, `npm run lint`, `npm run build` all clean.
+
+## 128. Three real layout bugs in the storefront-webhook Settings tables, found live on the deployed test environment (2026-09-23)
+
+Same `storefront-webhooks-console-ui` branch as §127, after the operator
+deployed it to a Coolify test environment and connected a real Stripe
+webhook with real mappings/deliveries. None of these three bugs were
+caught by typecheck/lint/tests/mock-mode review, or by the earlier
+independent (Opus) review in §127 - all three were reported by the
+operator from the live deployment, each reproduced directly against
+seeded data (a real license API dev server plus a real console dev
+server, a signed-up SaaS tenant, a connected webhook, mapping/delivery
+rows seeded via `better-sqlite3` to match what the operator actually
+saw) before being fixed, per this session's own established discipline
+of never fixing a UI bug blind.
+
+**Bug 1 - overlapping card boxes.** Reported with a screenshot: the
+mappings/deliveries tables' correctly-displayed data rendered with
+overlapping boxes. Reproduced via `getBoundingClientRect()`/
+`getComputedStyle()`: both tables' natural (unwrapped) width - 630px and
+933px - exceeded their ~606px parent card, and with no scroll container
+the overflow rendered `visible`, so each table's own `withTableBorder`
+border spilled past the card's edge. Fixed by wrapping both tables in
+`Table.ScrollContainer`.
+
+**Bug 2 - content cut off/truncated despite fix 1.** Reported again
+after redeploy ("best we can do?"). Reproduced the same way: Mantine's
+`Code` component already sets `overflow-wrap: break-word`, but
+`table-layout: auto` (the default) sizes each column to its content's
+natural *unwrapped* width before ever considering that property - so
+inside the now-scrollable-but-otherwise-unconstrained container, the
+browser just kept growing the table instead of ever wrapping a long
+Stripe checkout session ID or license key, leaving genuinely
+cut-off-looking content. Fixed with `table-layout: fixed` plus explicit
+percentage column widths and explicit `wordBreak` styles on the
+long-value cells - verified numerically (affected element widths
+shrank from 485px/240px to 187px/127px, confirming real wrapping) and
+visually (a full screenshot with everything contained, no scroll
+needed).
+
+**Bug 3 - a "Remove" button and an Outcome badge both cut off, and a
+self-inflicted regression while fixing it.** Reported with a screenshot
+showing the mappings table's "Remove" button clipped to "Rem" at the
+card's right edge. Reproduced live (real Playwright session against
+real seeded data, not assumed from the screenshot): the percentage
+column widths from Bug 2's own fix still starve a short, non-wrapping
+column once the real card is near the low end of the scrollable
+range - 8% of a real ~606px card is ~48px, well under the "Remove"
+button's own ~74px, and `table-layout: fixed` makes a cell's width a
+hard constraint its content doesn't shrink to fit, so the button simply
+rendered past the cell (confirmed via `getBoundingClientRect()`: a
+48px cell under a 74px button). The same mechanism explained a second,
+related symptom in the Deliveries table not yet reported but present
+in the same data: the "Issued & sent"/"No matching mapping" Outcome
+badges were silently truncated by Mantine Badge's own default
+`text-overflow: ellipsis` ("ISSUED & SE...") at 20% of that same card
+width.
+
+A first fix attempt - switching the short columns (Tier/Seats/
+Duration/Remove in Mappings; Outcome/Processed in Deliveries) from
+percentages to explicit pixel widths, which is the correct fix - also
+raised each table's `Table.ScrollContainer minWidth` from 500 to 640,
+reasoning that the fixed-column budget (366px/330px) plus room for the
+remaining flexible columns needed more headroom. Verified via the same
+Playwright reproduction that this raise **silently reintroduced the
+identical symptom**: it made each table's own computed width (640px)
+wider than the real card (606px), pushing `Table.ScrollContainer`'s
+underlying Mantine `ScrollArea` into horizontal-scroll mode - confirmed
+via `scrollWidth`/`clientWidth` on the `ScrollArea-viewport` (640 vs
+606). Mantine's `ScrollArea` renders an overlay scrollbar that's
+essentially invisible in a static screenshot and, in practice,
+undiscoverable to a tenant with no reason to expect a settings table to
+scroll sideways - so the "fix" reproduced the exact bug being fixed,
+just for a different reason. Caught only because this session re-ran
+the live reproduction after the change instead of trusting the
+per-cell width math alone, matching this repository's own §7-era
+verification-discipline lesson (check the *actual rendered* state, not
+just the property being chased).
+
+Corrected by reverting `minWidth` back to 500 in both tables (below the
+real card width, so the table renders at the card's own 606px with no
+scroll needed) while keeping the explicit pixel widths for the short
+columns - `minWidth`'s only real job is a floor for genuinely narrow
+(mobile) viewports, and it must never be raised above a realistic
+desktop card width. Re-verified live at the real ~606px card width:
+`tableWidth` now exactly matches `clientWidth` (606 = 606, zero
+overflow) for both tables, the "Remove" button (74px) fits its column
+(96px), and all three Outcome-badge cases (a single "Issued & sent", a
+stuck delivery's two badges wrapping onto their own lines after
+`wrap="nowrap"` was dropped from that `Group`, and the longest label
+"No matching mapping") render fully - confirmed both via
+`getBoundingClientRect()` measurements and a full-page screenshot.
+Separately re-verified at a genuinely narrow (480px) viewport that the
+pre-existing, accepted mobile behavior (horizontal scroll required
+below the 500px floor) is unchanged - not a new regression, the same
+tradeoff `Table.ScrollContainer` already made before this session's
+work.
+
+Full suite: 19 files, 163 tests passing (no change - these are pure
+CSS/layout fixes with no new test surface). `npx tsc --noEmit`, `npm
+run lint`, `npm run build` all clean. Both dev servers, the seeded test
+databases, and every throwaway script used for reproduction were
+cleaned up afterward, confirmed via `git status` showing no residue
+beyond the two intended component files.
+
+Not yet committed - awaiting explicit instruction per this repo's own
+CLAUDE.md §4 Git discipline rule.

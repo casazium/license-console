@@ -160,8 +160,8 @@ export function StorefrontWebhookDeliveries({ webhookId, active }: { webhookId: 
       )}
 
       {deliveries && deliveries.length > 0 && (
-        // Layout bug found live on a real Coolify deployment, in two
-        // parts, not caught by any local review:
+        // Layout bug found live on a real Coolify deployment, in three
+        // parts, none caught by any local review:
         // 1. With real checkout_session_id/license_key values, this
         //    table's natural width exceeded the webhook card's width,
         //    and with no scroll container the overflow rendered
@@ -177,14 +177,44 @@ export function StorefrontWebhookDeliveries({ webhookId, active }: { webhookId: 
         //    looking content. table-layout: fixed with explicit column
         //    widths forces the browser to respect those widths and
         //    actually wrap long ids within their cell instead.
+        // 3. Found only after both of those (same root cause as the
+        //    matching fix in StorefrontWebhookMappings.tsx, confirmed
+        //    the same way - a live Playwright reproduction against real
+        //    seeded data, not assumed from a screenshot): a percentage
+        //    width still starves a short, non-wrapping column once the
+        //    card is near the low end of the scrollable range - 20% of a
+        //    real ~606px card is ~121px, under what Mantine's own
+        //    uppercased Badge needs for "Issued & sent"/"No matching
+        //    mapping", so the Badge's own default text-overflow:
+        //    ellipsis silently truncated it ("ISSUED & SE..."). Outcome
+        //    and Processed get explicit pixel widths instead - a literal
+        //    width the browser can't renegotiate, the same fix as the
+        //    Remove-button column above. Checkout session/License keep
+        //    no explicit width, absorbing whatever table-layout: fixed
+        //    leaves over for their existing wordBreak wrapping. The
+        //    Outcome Group also drops wrap="nowrap": a second "Needs
+        //    attention" badge now wraps to its own line inside the cell
+        //    instead of needing a column wide enough for both badges on
+        //    one line in the common case.
+        //
+        // minWidth stays at 500, not raised to comfortably fit both
+        // fixed columns (330px) plus the two flexible ones - a first
+        // attempt at raising it (640) silently regressed this same bug:
+        // it made the table wider than the real ~606px card, pushing
+        // Table.ScrollContainer's Mantine ScrollArea into horizontal-
+        // scroll mode with its overlay scrollbar, invisible in a static
+        // screenshot and undiscoverable to a tenant with no reason to
+        // expect this table to scroll sideways. minWidth here is only a
+        // floor for genuinely narrow (mobile) viewports; it must never
+        // exceed a realistic desktop card width.
         <Table.ScrollContainer minWidth={500}>
           <Table striped withTableBorder style={{ tableLayout: 'fixed', width: '100%' }}>
             <Table.Thead>
               <Table.Tr>
-                <Table.Th style={{ width: '35%' }}>Checkout session</Table.Th>
-                <Table.Th style={{ width: '20%' }}>Outcome</Table.Th>
-                <Table.Th style={{ width: '25%' }}>License</Table.Th>
-                <Table.Th style={{ width: '20%' }}>Processed</Table.Th>
+                <Table.Th>Checkout session</Table.Th>
+                <Table.Th style={{ width: 180 }}>Outcome</Table.Th>
+                <Table.Th>License</Table.Th>
+                <Table.Th style={{ width: 150 }}>Processed</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -199,7 +229,7 @@ export function StorefrontWebhookDeliveries({ webhookId, active }: { webhookId: 
                       </Code>
                     </Table.Td>
                     <Table.Td>
-                      <Group gap={4} wrap="nowrap">
+                      <Group gap={4}>
                         <Badge color={badge.color} variant="light">
                           {badge.label}
                         </Badge>

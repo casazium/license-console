@@ -158,27 +158,57 @@ export function StorefrontWebhookMappings({ webhookId, active }: { webhookId: st
       )}
 
       {mappings && mappings.length > 0 && (
-        // Layout bug found live on a real Coolify deployment, in two
-        // parts, not caught by any local review (see
-        // StorefrontWebhookDeliveries.tsx's matching table for the full
-        // explanation): the table's natural width exceeded the webhook
-        // card's width (fixed with Table.ScrollContainer), and
-        // table-layout: auto (the default) never actually wraps long,
-        // unbroken values like a Payment Link id even with wrapping
-        // styles present, because column widths are computed from
-        // unwrapped content first. table-layout: fixed with explicit
-        // column widths forces real wrapping instead of an ever-growing
-        // table.
+        // Layout bug found live on a real Coolify deployment, in three
+        // parts, none caught by any local review (see
+        // StorefrontWebhookDeliveries.tsx's matching table for the
+        // first two): the table's natural width exceeded the webhook
+        // card's width (fixed with Table.ScrollContainer); table-layout:
+        // auto (the default) never actually wraps long, unbroken values
+        // like a Payment Link id even with wrapping styles present,
+        // because column widths are computed from unwrapped content
+        // first (fixed with table-layout: fixed); and - found only
+        // after both of those - percentage column widths still starve a
+        // short, non-wrapping column (a "Remove" button, here) whenever
+        // the card itself is near the low end of the scrollable range:
+        // 8% of a real ~606px card is ~48px, well under a "Remove"
+        // button's own ~74px, and with table-layout: fixed a table
+        // cell's width is a hard constraint its content doesn't shrink
+        // to fit - the button simply rendered past the cell (and the
+        // card's own edge), confirmed directly via
+        // getBoundingClientRect() (a 48px cell under a 74px button) with
+        // a live Playwright reproduction against real seeded data,
+        // rather than assumed from the screenshot alone. Explicit pixel
+        // widths for every short, non-wrapping column (Tier/Seats/
+        // Duration/Remove) fix this the same way table-layout: fixed
+        // itself fixed the earlier bug: a literal width the browser
+        // can't silently renegotiate. Reference/Product keep no explicit
+        // width - table-layout: fixed's own algorithm gives every
+        // unspecified column an equal share of whatever's left, which is
+        // exactly what their existing wordBreak wrapping needs.
+        //
+        // minWidth stays at 500, not raised to fit every column's own
+        // width comfortably (366px of fixed columns would suggest
+        // ~550-600+) - a first attempt at that raise (640) silently
+        // regressed this same bug: it made the table wider than the
+        // real ~606px card, so Table.ScrollContainer's own
+        // Mantine ScrollArea went into horizontal-scroll mode with its
+        // overlay scrollbar - invisible in both a static screenshot and,
+        // in practice, to a tenant who has no reason to expect a
+        // settings-page table to scroll sideways. minWidth here is only
+        // a floor for genuinely narrow (mobile) viewports; it must never
+        // exceed a realistic desktop card width, which the fixed-column
+        // budget above already fits under with room for Reference/
+        // Product to wrap.
         <Table.ScrollContainer minWidth={500}>
           <Table striped withTableBorder style={{ tableLayout: 'fixed', width: '100%' }}>
             <Table.Thead>
               <Table.Tr>
-                <Table.Th style={{ width: '30%' }}>Reference</Table.Th>
-                <Table.Th style={{ width: '25%' }}>Product</Table.Th>
-                <Table.Th style={{ width: '12%' }}>Tier</Table.Th>
-                <Table.Th style={{ width: '11%' }}>Seats</Table.Th>
-                <Table.Th style={{ width: '14%' }}>Duration</Table.Th>
-                <Table.Th style={{ width: '8%' }} />
+                <Table.Th>Reference</Table.Th>
+                <Table.Th>Product</Table.Th>
+                <Table.Th style={{ width: 80 }}>Tier</Table.Th>
+                <Table.Th style={{ width: 90 }}>Seats</Table.Th>
+                <Table.Th style={{ width: 100 }}>Duration</Table.Th>
+                <Table.Th style={{ width: 96 }} />
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
