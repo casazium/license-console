@@ -8158,8 +8158,9 @@ mechanisms, both checked directly rather than assumed:
 Full suite re-run after the version bump: 19 files, 163 tests passing.
 `npx tsc --noEmit`, `npm run lint`, `npm run build` all clean.
 
-Not yet committed - awaiting explicit instruction per this repo's own
-CLAUDE.md §4 Git discipline rule.
+Committed and pushed on explicit operator instruction (`a5a0d76`,
+"Bump version to 1.2.0 for the storefront webhooks console UI") -
+`main` here is now `a5a0d76`.
 
 ## 131. Fixed a real "Disable this webhook" 400/500 bug found live on the deployed test environment (2026-09-23)
 
@@ -8227,5 +8228,6 @@ every throwaway reproduction script were cleaned up afterward,
 confirmed via `git status` showing only the two intended files changed
 (`lib/license-client.live.ts`, the test file).
 
-Not yet committed - awaiting explicit instruction per this repo's own
-CLAUDE.md §4 Git discipline rule.
+Committed and pushed on explicit operator instruction (`7a3a8be`, "Fix
+\"Disable this webhook\" 400/500 on an empty DELETE body") - `main`
+here is now `7a3a8be`.

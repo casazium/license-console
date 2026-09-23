@@ -38,6 +38,8 @@ For a standalone/demo deployment instead (no real backend, seeded mock data — 
 
 `BRANDING_*` vars are all optional either way — see `.env.example` for the full list and what each one does. Two of them (`BRANDING_TITLE_HTML`, `BRANDING_COLOR`) need Coolify's per-variable "Is Literal" checkbox enabled, or Coolify reprocesses the value before injecting it (confirmed — this corrupts both; see `.env.example`'s own note on the quoting angle of that failure mode).
 
+`ENVIRONMENT_LABEL` is also optional, and not a `BRANDING_*` var: it renders a persistent red banner across every page (`components/EnvironmentBanner.tsx`) so an admin can't mistake this deployment for a different one — set it on any non-production resource, e.g. `ENVIRONMENT_LABEL=TEST ENVIRONMENT`. Unset (the default) renders nothing at all; leave it unset on your real production resource.
+
 `DB_FILE` and `HOSTNAME` are already set in the compose file itself — don't set them in Coolify.
 
 ## 3. Configure the domain
