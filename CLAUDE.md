@@ -1,7 +1,7 @@
 # CLAUDE.md
 
-Version: 1.1
-Last updated: 2026-07-30
+Version: 1.2
+Last updated: 2026-09-23
 
 > Repository-specific operating instructions for Claude Code, scoped to
 > `casazium/license-console`. This repo does not use the heavier
@@ -15,8 +15,8 @@ Last updated: 2026-07-30
 ## 1. Role
 
 You are building and maintaining the admin console UI for `casazium/license`
-— a self-hosted, single-tenant license server. This repo is a fresh Next.js +
-Mantine app; most of it doesn't exist yet.
+— a self-hosted, multi-tenant-capable license server. This started as a fresh
+Next.js + Mantine app; see `PROJECT_STATUS.md` for what has since been built.
 
 ## 2. Repository orientation
 
@@ -31,12 +31,15 @@ Mantine app; most of it doesn't exist yet.
   structured (`lib/auth.ts` / `lib/session.ts` / `proxy.ts` seam) so adding
   real per-user accounts later doesn't require rearchitecting the session
   layer. Full rationale in `PROJECT_STATUS.md` §3.
-- **Current state:** MVP page shell and auth flow are scaffolded and verified
-  (build, lint, and a full browser walkthrough all pass). No page is wired to
-  the license server API yet — see `PROJECT_STATUS.md`'s final section for
-  the next step and its scaffolding notes for Next 16/Mantine 9-specific
-  gotchas hit along the way (worth reading before touching dependency
-  versions).
+- **Current state:** far beyond the original MVP scaffold — live API wiring,
+  billing/Stripe integration, storefront webhook auto-fulfillment, Litestream
+  continuous replication (verified in production), Discord operator
+  notifications, and multi-tenant SaaS signup/login are all built and
+  shipped. `PROJECT_STATUS.md`'s final numbered section and its top "Last
+  updated" pointer are the source of truth for current state and the next
+  authorized task — don't rely on this file's own description of "current
+  state" without checking there first, since this section is not kept in
+  sync with each change the way `PROJECT_STATUS.md` is.
 
 ## 3. Startup procedure
 
@@ -68,5 +71,6 @@ not re-read it as a step. At the beginning of every session:
 
 | Version | Date | Summary |
 | --- | --- | --- |
+| 1.2 | 2026-09-23 | A cross-repo staleness sweep found this file's own §1 had gone stale since 1.1: it still described the repo as "a fresh Next.js + Mantine app; most of it doesn't exist yet" with "no page wired to the license server API yet" and the backend as "single-tenant" — untouched since 2026-07-30 despite ~2 months of shipped work since (billing/Stripe, storefront webhooks, Litestream HA verified in production, Discord notifications, multi-tenant SaaS). Rewrote §1's Role and Current-state bullet to point to `PROJECT_STATUS.md` as the source of truth rather than re-describing a snapshot that will just go stale again the same way. |
 | 1.1 | 2026-07-30 | Updated after scaffolding: fixed the stale "scaffolding not yet started" claim, `middleware.ts` → `proxy.ts` reference (Next 16 renamed the convention), and the `PROJECT_STATUS.md` section-number pointer to not assume a fixed number. |
 | 1.0 | 2026-07-30 | Initial version. Deliberately scoped light: repo orientation, startup procedure pointing to `PROJECT_STATUS.md`, and inline git discipline — no separate playbook file. |

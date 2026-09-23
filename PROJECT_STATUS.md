@@ -1,7 +1,16 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-23 (§134:
+Last updated: 2026-09-23 (§135:
+a cross-repo staleness sweep (with `license` and `license-releases`)
+found 4 confirmed findings here and fixed all of them - most notably
+`CLAUDE.md` §1 itself falsely describing this repo as an early
+scaffold with nothing wired up, unchanged since 2026-07-30 despite ~2
+months of shipped work since. Bumped `CLAUDE.md` to v1.2. Also fixed a
+false "not yet rehearsed" restore-drill claim in `DEPLOYMENT.md` and a
+dangling `BACKUP_RETENTION_DAYS` cross-reference in `.env.example`. See
+§135 below.)
+2026-09-23 (§134:
 widened `litestream.yml`'s intervals 5m -> 15m again after a live
 Backblaze "100% of daily Class C cap" alert (`casazium/license`'s own
 §248/§249 record the full incident) - not a misconfiguration here
@@ -8322,3 +8331,45 @@ reasoning as the original widening). Config re-verified to parse
 own account in parallel - the two fixes are complementary: the cap
 raise gives immediate headroom, the wider intervals reduce the real
 transaction volume regardless of where the cap is set.
+
+## 135. Cross-repo staleness sweep - 4 confirmed findings fixed, including two false claims in `CLAUDE.md` itself (2026-09-23)
+
+A background agent swept this repo for the same stale-documentation
+pattern §130-§133 already found and fixed repeatedly (status lines
+describing shipped work as pending/uncommitted). `license`'s own
+PROJECT_STATUS.md §250 records the parallel sweep of that repo and
+`license-releases` (which came back clean). Four confirmed findings
+here, all fixed:
+
+- `DEPLOYMENT.md`'s restore-drill section still said the drill was
+  "not yet rehearsed against this specific deployment's real
+  container/volume names" - false; §68 already recorded it rehearsed
+  for real against both live Coolify resources, `PASSED` against real
+  production row counts, over a month before this doc was last touched
+  (`11c1c69`). Fixed to state it as done, pointing back to §68.
+- `CLAUDE.md` §1 (Role) still described this repo as "a fresh Next.js +
+  Mantine app; most of it doesn't exist yet" with "no page wired to
+  the license server API yet" and the backend as "single-tenant" -
+  untouched since v1.1 (2026-07-30) despite ~2 months of shipped work
+  since (billing/Stripe, storefront webhooks, Litestream HA verified
+  live, Discord notifications, multi-tenant SaaS) and `casazium/license`
+  itself being fully multi-tenant. This is the most load-bearing stale
+  claim found in the sweep - `CLAUDE.md` is auto-loaded every session,
+  so every session was starting from a false premise about the repo's
+  own state. Rewrote §1 to point to `PROJECT_STATUS.md` as the source
+  of truth rather than re-describing a snapshot that will only go
+  stale the same way again; bumped to v1.2 with a Revision History
+  entry recording why.
+- `.env.example`'s Litestream section referenced "`BACKUP_RETENTION_DAYS`
+  above" but that var, while real and read by `scripts/backup-db.mjs`/
+  `backup-and-push.sh`, was never actually given its own entry in this
+  file - a dangling cross-reference. Fixed the comment to point to
+  `DEPLOYMENT.md`'s Backups section instead and note the var's real
+  default (14) inline, rather than adding a var entry Coolify's env UI
+  makes redundant.
+
+Everything else the sweep checked (TASK_LITESTREAM_HA.md,
+TASK_ACCOUNT_NOTIFICATIONS.md, litestream.yml's intervals, the
+LITESTREAM_REPLICA_MODE gotcha section, lib/limits-form.ts against
+license's ALLOWED_LIMIT_KEYS, package.json scripts, README.md) was
+confirmed accurate - not padded into the finding list.
