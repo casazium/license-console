@@ -811,9 +811,17 @@ export async function setStorefrontWebhookSecret(
 // Soft-disable only (DELETE .../:id never hard-deletes server-side) -
 // see StorefrontWebhookStatus's own doc comment.
 export async function disableStorefrontWebhook(webhookId: string, tenantApiKey?: string): Promise<boolean> {
+  // body: '{}' is required, not optional decoration - see deleteAccount's
+  // own comment above for why: liveFetch always sends Content-Type:
+  // application/json, and Fastify's default JSON body parser 400s on an
+  // empty body whenever that header is present, regardless of whether
+  // the route itself needs one. This route has no body schema at all,
+  // but the request doesn't reach it without this - confirmed live
+  // (real repro: a 400 FST_ERR_CTP_EMPTY_JSON_BODY was thrown and
+  // surfaced to the tenant as "Failed to disable webhook").
   const res = await liveFetch(
     `/admin/storefront-webhooks/${encodeURIComponent(webhookId)}`,
-    { method: 'DELETE' },
+    { method: 'DELETE', body: '{}' },
     tenantApiKey
   );
   if (res.status === 404) return false;
@@ -882,9 +890,11 @@ export async function deleteStorefrontMapping(
   mappingId: string,
   tenantApiKey?: string
 ): Promise<boolean> {
+  // body: '{}' required - same empty-JSON-body 400 as
+  // disableStorefrontWebhook's own comment above explains.
   const res = await liveFetch(
     `/admin/storefront-webhooks/${encodeURIComponent(webhookId)}/mappings/${encodeURIComponent(mappingId)}`,
-    { method: 'DELETE' },
+    { method: 'DELETE', body: '{}' },
     tenantApiKey
   );
   if (res.status === 404) return false;

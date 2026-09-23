@@ -1,7 +1,27 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-23 (§130:
+Last updated: 2026-09-23 (§131:
+fixed a real bug the operator hit live on their own deployed
+environment: clicking "Disable this webhook" (on a real, `NEEDS SETUP`-
+status webhook, screenshotted from their own Coolify test deployment)
+failed with "Failed to disable webhook, something went wrong."
+Reproduced locally rather than guessed at - the License API's own log
+showed the real cause: `DELETE /admin/storefront-webhooks/{id}`
+returned `400 FST_ERR_CTP_EMPTY_JSON_BODY` ("Body cannot be empty when
+content-type is set to 'application/json'"), because `liveFetch`
+always sends `Content-Type: application/json` but this call sent no
+body at all. This exact bug, and its exact fix, already existed once
+in this same file for `deleteAccount` (`body: '{}'`, with its own
+explanatory comment) - the two new storefront DELETE functions
+(`disableStorefrontWebhook`, `deleteStorefrontMapping`) were written
+without it, reintroducing a bug this codebase had already paid to fix.
+Fixed both call sites the same way, added two regression tests that
+assert on the outgoing request itself (not just a mocked response,
+which is exactly why the existing test suite never caught this), and
+verified the tests actually fail without the fix before restoring it.
+See §131 below.)
+2026-09-23 (§130:
 merged `storefront-webhooks-console-ui` into `main` (clean
 fast-forward, `main` hadn't moved) on explicit operator instruction,
 after this session flagged the real considerations first (this
@@ -8137,6 +8157,75 @@ mechanisms, both checked directly rather than assumed:
 
 Full suite re-run after the version bump: 19 files, 163 tests passing.
 `npx tsc --noEmit`, `npm run lint`, `npm run build` all clean.
+
+Not yet committed - awaiting explicit instruction per this repo's own
+CLAUDE.md §4 Git discipline rule.
+
+## 131. Fixed a real "Disable this webhook" 400/500 bug found live on the deployed test environment (2026-09-23)
+
+Reported by the operator with a screenshot from their own real
+deployed test environment (a `Stripe`/`NEEDS SETUP` webhook, connected
+`2026-09-23 17:28:41 UTC`): clicking "Disable this webhook" produced
+"Failed to disable webhook, something went wrong." Reproduced directly
+rather than guessed at - a real local License API + console dev
+server, a real signed-up tenant, a real "Connect Stripe" left in the
+same `pending`/"Needs setup" state as the screenshot, then the exact
+same click sequence via Playwright.
+
+**Root cause**, read from the License API's own log, not assumed: the
+DELETE request that fires when disabling reached the API and got
+`400 FST_ERR_CTP_EMPTY_JSON_BODY` - `"Body cannot be empty when
+content-type is set to 'application/json'"`. `lib/license-client.live.ts`'s
+shared `liveFetch()` helper always sends `Content-Type:
+application/json` on every request, and Fastify's default JSON body
+parser 400s on an empty body whenever that header is present,
+regardless of whether the specific route needs a body at all -
+`admin-storefront-webhooks.js`'s own `DELETE /admin/storefront-webhooks/:id`
+route takes no body, and `disableStorefrontWebhook()` sent none, so
+the request never reached the route handler at all. The console's own
+`disableStorefrontWebhookAction` re-throws any non-rate-limited error,
+which Next.js surfaced as a page-level 500 rather than a clean inline
+error - explaining why the toast read as generic as it did.
+
+This exact failure mode, and its exact fix, already existed once in
+this same file: `deleteAccount()`'s own call (line ~619) already has a
+`body: '{}'` with a comment explaining precisely this Fastify behavior,
+written after this codebase hit and fixed the identical bug once
+before. The two new storefront-webhook DELETE functions
+(`disableStorefrontWebhook`, `deleteStorefrontMapping`) were written
+without that fix, reintroducing a bug this repo had already paid to
+diagnose and document - the comment was there to read, and wasn't
+consulted when these two functions were written.
+
+**Fixed** both call sites the same way: `{ method: 'DELETE', body:
+'{}' }`, each with its own comment pointing back at this exact bug
+class. Verified live via the same Playwright reproduction: the DELETE
+now returns `200`, the webhook's badge flips to `DISABLED`, and a new
+"Connect Stripe" button reappears (the provider slot is free again).
+Separately reproduced and verified the identical fix for
+`deleteStorefrontMapping` (add a mapping, remove it, confirm no error
+response and the row disappears) - it shared the exact same bug, same
+root cause, same fix, not yet reported live but confirmed as a real,
+latent bug via the same reproduction method rather than left
+unverified just because no one had hit it yet.
+
+**Added two regression tests** (`tests/lib/storefront-webhook-client.test.ts`)
+asserting on the actual outgoing request body, not just a mocked
+response - the existing test suite's mocked-`fetch` pattern (every
+other test in this file) can't catch a malformed *request*, only a
+mishandled *response*, which is exactly why 16 passing tests never
+caught this. Verified the new tests actually catch the regression, not
+just assumed: reverted the `disableStorefrontWebhook` fix, confirmed
+its new test failed with a real, informative diff, then restored the
+fix and confirmed all tests pass again - the same empirical-verification
+discipline this session's own L1 finding (§127) established for this
+exact class of "does this test actually protect anything" question.
+
+Full suite: 19 files, 165 tests passing (up 2). `npx tsc --noEmit`,
+`npm run lint` both clean. Dev servers, the seeded test databases, and
+every throwaway reproduction script were cleaned up afterward,
+confirmed via `git status` showing only the two intended files changed
+(`lib/license-client.live.ts`, the test file).
 
 Not yet committed - awaiting explicit instruction per this repo's own
 CLAUDE.md §4 Git discipline rule.

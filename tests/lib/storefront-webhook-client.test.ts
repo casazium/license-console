@@ -66,6 +66,28 @@ describe('storefront webhook live client (lib/license-client.live.ts)', () => {
     await expect(disableStorefrontWebhook('wh_missing', 'tenant-key')).resolves.toBe(false);
   });
 
+  it('disableStorefrontWebhook sends a non-empty body on its DELETE request', async () => {
+    // Real bug, not hypothetical: liveFetch always sets Content-Type:
+    // application/json, and Fastify's default JSON body parser 400s on
+    // an empty body whenever that header is present - confirmed live
+    // against a real license API before this test existed (a real
+    // DELETE with no body here surfaced to a tenant as "Failed to
+    // disable webhook, something went wrong"). A mocked fetch returning
+    // a canned response, as every other test in this file does, can't
+    // catch a malformed *request* - this test asserts on the call
+    // itself, not just the mocked response, which is what actually
+    // would have caught this before it shipped.
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ disabled: true }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await disableStorefrontWebhook('wh_1', 'tenant-key');
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ method: 'DELETE', body: expect.any(String) })
+    );
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.body).not.toBe('');
+  });
+
   it('listStorefrontMappings returns [] on a 404 rather than throwing', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
     await expect(listStorefrontMappings('wh_missing', 'tenant-key')).resolves.toEqual([]);
@@ -121,6 +143,16 @@ describe('storefront webhook live client (lib/license-client.live.ts)', () => {
   it('deleteStorefrontMapping returns false on a 404', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
     await expect(deleteStorefrontMapping('wh_1', 'map_missing', 'tenant-key')).resolves.toBe(false);
+  });
+
+  it('deleteStorefrontMapping sends a non-empty body on its DELETE request', async () => {
+    // Same real bug/fix as disableStorefrontWebhook's own test above.
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ deleted: true }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await deleteStorefrontMapping('wh_1', 'map_1', 'tenant-key');
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.method).toBe('DELETE');
+    expect(init.body).not.toBe('');
   });
 
   describe('listStorefrontDeliveries', () => {
