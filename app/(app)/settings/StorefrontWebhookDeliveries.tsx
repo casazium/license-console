@@ -160,43 +160,51 @@ export function StorefrontWebhookDeliveries({ webhookId, active }: { webhookId: 
       )}
 
       {deliveries && deliveries.length > 0 && (
-        <Table striped withTableBorder>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>Checkout session</Table.Th>
-              <Table.Th>Outcome</Table.Th>
-              <Table.Th>License</Table.Th>
-              <Table.Th>Processed</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {deliveries.map((delivery) => {
-              const badge = outcomeBadge(delivery);
-              const stuck = isStuck(delivery);
-              return (
-                <Table.Tr key={delivery.checkout_session_id}>
-                  <Table.Td>
-                    <Code fz="xs">{delivery.checkout_session_id}</Code>
-                  </Table.Td>
-                  <Table.Td>
-                    <Group gap={4} wrap="nowrap">
-                      <Badge color={badge.color} variant="light">
-                        {badge.label}
-                      </Badge>
-                      {stuck && (
-                        <Badge color="orange" variant="outline">
-                          Needs attention
+        // Same layout bug as StorefrontWebhookMappings's own table - real
+        // checkout_session_id/license_key values pushed this table's
+        // natural width past its container, and with no scroll
+        // container the overflow rendered `visible`, spilling the
+        // table's own border past the webhook card's edge. Found live
+        // on a real Coolify deployment, not by any local review.
+        <Table.ScrollContainer minWidth={500}>
+          <Table striped withTableBorder>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Checkout session</Table.Th>
+                <Table.Th>Outcome</Table.Th>
+                <Table.Th>License</Table.Th>
+                <Table.Th>Processed</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {deliveries.map((delivery) => {
+                const badge = outcomeBadge(delivery);
+                const stuck = isStuck(delivery);
+                return (
+                  <Table.Tr key={delivery.checkout_session_id}>
+                    <Table.Td>
+                      <Code fz="xs">{delivery.checkout_session_id}</Code>
+                    </Table.Td>
+                    <Table.Td>
+                      <Group gap={4} wrap="nowrap">
+                        <Badge color={badge.color} variant="light">
+                          {badge.label}
                         </Badge>
-                      )}
-                    </Group>
-                  </Table.Td>
-                  <Table.Td>{delivery.license_key ? <Code fz="xs">{delivery.license_key}</Code> : '—'}</Table.Td>
-                  <Table.Td>{formatDateTime(delivery.processed_at)}</Table.Td>
-                </Table.Tr>
-              );
-            })}
-          </Table.Tbody>
-        </Table>
+                        {stuck && (
+                          <Badge color="orange" variant="outline">
+                            Needs attention
+                          </Badge>
+                        )}
+                      </Group>
+                    </Table.Td>
+                    <Table.Td>{delivery.license_key ? <Code fz="xs">{delivery.license_key}</Code> : '—'}</Table.Td>
+                    <Table.Td>{formatDateTime(delivery.processed_at)}</Table.Td>
+                  </Table.Tr>
+                );
+              })}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
       )}
 
       {hasMore && (

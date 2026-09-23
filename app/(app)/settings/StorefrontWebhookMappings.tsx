@@ -158,39 +158,50 @@ export function StorefrontWebhookMappings({ webhookId, active }: { webhookId: st
       )}
 
       {mappings && mappings.length > 0 && (
-        <Table striped withTableBorder>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>Reference</Table.Th>
-              <Table.Th>Product</Table.Th>
-              <Table.Th>Tier</Table.Th>
-              <Table.Th>Seats</Table.Th>
-              <Table.Th>Duration</Table.Th>
-              <Table.Th />
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {mappings.map((mapping) => (
-              <Table.Tr key={mapping.id}>
-                <Table.Td>
-                  <Text size="sm">{mapping.external_ref}</Text>
-                  <Text size="xs" c="dimmed">
-                    {mapping.ref_kind === 'payment_link' ? 'Payment Link' : 'Metadata'}
-                  </Text>
-                </Table.Td>
-                <Table.Td>{mapping.product_id}</Table.Td>
-                <Table.Td>{mapping.tier}</Table.Td>
-                <Table.Td>{mapping.max_activations ?? 'Unlimited'}</Table.Td>
-                <Table.Td>{mapping.duration_days ? `${mapping.duration_days} days` : 'Perpetual'}</Table.Td>
-                <Table.Td>
-                  <Button size="xs" variant="subtle" color="red" onClick={() => handleDelete(mapping.id)}>
-                    Remove
-                  </Button>
-                </Table.Td>
+        // Layout bug found live (real Coolify test deployment, not caught
+        // by any local review): this table's natural (layout: auto)
+        // width regularly exceeds the Accordion.Panel's own width once
+        // real Payment Link IDs/product names are long enough - with no
+        // scroll container, the overflow rendered as `visible`, so the
+        // table (and its own withTableBorder box) spilled out past the
+        // webhook card's right edge, visually crossing over neighboring
+        // content. Table.ScrollContainer contains that overflow with its
+        // own horizontal scrollbar instead.
+        <Table.ScrollContainer minWidth={500}>
+          <Table striped withTableBorder>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Reference</Table.Th>
+                <Table.Th>Product</Table.Th>
+                <Table.Th>Tier</Table.Th>
+                <Table.Th>Seats</Table.Th>
+                <Table.Th>Duration</Table.Th>
+                <Table.Th />
               </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
+            </Table.Thead>
+            <Table.Tbody>
+              {mappings.map((mapping) => (
+                <Table.Tr key={mapping.id}>
+                  <Table.Td>
+                    <Text size="sm">{mapping.external_ref}</Text>
+                    <Text size="xs" c="dimmed">
+                      {mapping.ref_kind === 'payment_link' ? 'Payment Link' : 'Metadata'}
+                    </Text>
+                  </Table.Td>
+                  <Table.Td>{mapping.product_id}</Table.Td>
+                  <Table.Td>{mapping.tier}</Table.Td>
+                  <Table.Td>{mapping.max_activations ?? 'Unlimited'}</Table.Td>
+                  <Table.Td>{mapping.duration_days ? `${mapping.duration_days} days` : 'Perpetual'}</Table.Td>
+                  <Table.Td>
+                    <Button size="xs" variant="subtle" color="red" onClick={() => handleDelete(mapping.id)}>
+                      Remove
+                    </Button>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
       )}
 
       {mappings && mappings.length === 0 && (
