@@ -1,7 +1,29 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-23 (§129:
+Last updated: 2026-09-23 (§130:
+merged `storefront-webhooks-console-ui` into `main` (clean
+fast-forward, `main` hadn't moved) on explicit operator instruction,
+after this session flagged the real considerations first (this
+console's own dependency on `casazium/license`'s matching backend
+branch, and that repo's CI auto-publishing `ghcr.io/casazium/
+license:latest` on every push to `main`). Full verification re-run on
+`main` itself before pushing (`tsc --noEmit`, `npm run lint`, `npx
+vitest run` - 163 tests, `npm run build`), not just trusted from the
+feature branch. Then bumped `package.json`/`package-lock.json` 1.1.0 ->
+1.2.0 (same pattern as the prior 1.0.0 -> 1.1.0 bump, commit
+`930db82`) after the operator noticed the footer's version stamp
+(`VersionStamp.tsx`, "v1.1.0 · API v1.3.1") hadn't moved despite a real
+new feature landing - confirmed `next.config.mjs` reads `package.json`
+into `APP_VERSION` at build time, so no other file needed a matching
+edit, and confirmed via a real rebuild that the footer now reads
+`license-console@1.2.0`. The `API v...` half of that same stamp needs
+no manual update at all in either repo - `VersionStamp.tsx` fetches it
+live from the License API's own health endpoint, which reads
+`serviceVersion` from `casazium/license`'s own `package.json` (now
+1.4.0, per that repo's own PROJECT_STATUS.md §241) - it will read
+correctly the moment that API is actually redeployed. See §130 below.)
+2026-09-23 (§129:
 added a persistent Mantine `description` hint under
 `StorefrontWebhookMappings.tsx`'s own "Duration in days (optional)"
 field, after the operator noticed live that storefront-issued licenses
@@ -8060,6 +8082,61 @@ new to assert) all clean. Dev servers, the seeded test databases, and
 the throwaway Playwright script used for verification were cleaned up
 afterward, confirmed via `git status` showing only the one intended
 file changed.
+
+Not yet committed - awaiting explicit instruction per this repo's own
+CLAUDE.md §4 Git discipline rule.
+
+## 130. Merged to `main`; bumped to 1.2.0 (2026-09-23)
+
+The operator asked whether there was any reason not to merge this
+branch and `casazium/license`'s matching `feature/storefront-webhook-
+fulfillment` into their respective `main`s. Answered directly before
+merging: mechanically both are clean (verified - neither `main` had
+moved since its branch was cut, so both are fast-forwards, zero
+conflicts, full suites green), but real considerations existed first -
+this console's own Settings UI depends on `casazium/license`'s
+`/admin/storefront-webhooks` endpoints, which only existed on that
+repo's own feature branch until merged too (not broken if only one
+side merges - the H1 fix from §127 degrades to a "couldn't load"
+notice rather than crashing - but the feature is non-functional until
+both land), and that repo's CI auto-publishes `ghcr.io/casazium/
+license:latest` on every push to its own `main`, which `DEPLOYMENT.md`
+there documents as what a self-hosted customer's own deployment pulls.
+
+Operator said go ahead. Merged `casazium/license` first (backend before
+frontend), then this repo: `git checkout main && git merge --ff-only
+storefront-webhooks-console-ui`. Re-ran full verification on `main`
+itself before pushing, not just trusted the result from the feature
+branch - `npx tsc --noEmit`, `npm run lint`, `npx vitest run` (163
+tests), `npm run build` (all clean) - then pushed. `main` here is now
+`25bbee2`, identical to what was on the feature branch.
+
+**Version bump**, prompted by the operator noticing the footer's own
+version stamp hadn't moved: "you also updating the banner at the top?"
+The stamp is `VersionStamp.tsx`, rendered as `v{version} · API
+v{apiVersion}` wherever it appears in the app shell. Two different
+mechanisms, both checked directly rather than assumed:
+- `{version}` is this repo's own `package.json` version, baked into
+  `APP_VERSION` by `next.config.mjs` at *build* time - this genuinely
+  needed a manual bump, since nothing recomputes it automatically.
+  Bumped `package.json`/`package-lock.json` 1.1.0 -> **1.2.0** (a real
+  new feature, not a patch - matching the exact precedent of the prior
+  1.0.0 -> 1.1.0 bump, commit `930db82`, "Bump version to 1.1.0 for the
+  product_uuid UI/export work"). Confirmed via a real `npm run build`
+  that the build output now reads `license-console@1.2.0` throughout,
+  not just asserted from the edited file.
+- `{apiVersion}` is fetched *live* at runtime from the connected
+  License API's own health endpoint, which reads `serviceVersion` from
+  `casazium/license`'s own `package.json` (already bumped to 1.4.0
+  there, per that repo's PROJECT_STATUS.md §241) - this needed **no**
+  code change in either repo. It will read "API v1.4.0" correctly the
+  moment the License API itself is actually redeployed with its new
+  `main`; until then, a live console still correctly shows whatever
+  version that specific backend is actually running, which is the
+  whole point of fetching it live rather than hardcoding it.
+
+Full suite re-run after the version bump: 19 files, 163 tests passing.
+`npx tsc --noEmit`, `npm run lint`, `npm run build` all clean.
 
 Not yet committed - awaiting explicit instruction per this repo's own
 CLAUDE.md §4 Git discipline rule.
