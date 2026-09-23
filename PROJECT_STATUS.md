@@ -1,7 +1,12 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-23 (§133:
+Last updated: 2026-09-23 (§134:
+widened `litestream.yml`'s intervals 5m -> 15m again after a live
+Backblaze "100% of daily Class C cap" alert (`casazium/license`'s own
+§248/§249 record the full incident) - not a misconfiguration here
+either, matching `license`'s own new value. See §134 below.)
+2026-09-23 (§133:
 closed `TASK_LITESTREAM_HA.md`'s last open item - a real write-
 replication-restore cycle, confirmed via both `restore-drill-
 litestream.sh` and a manual restore the operator ran to actually
@@ -8296,3 +8301,24 @@ person who tries a manual restore doesn't have to rediscover this.
 Both `TASK_LITESTREAM_HA.md` checkboxes for this item are now checked;
 no open items remain in that document's "what done would look like"
 list.
+
+## 134. Widened `litestream.yml`'s compaction/retention intervals again after a live 100% Class C cap alert (2026-09-23)
+
+`casazium/license`'s own §248/§249 record the full incident: a
+Backblaze "75% of daily Class C cap" alert escalated to 100% -
+consistent with this console's own Litestream replication (confirmed
+live via §133's restore drill) adding a second, comparable,
+activity-independent source of housekeeping traffic to the same
+shared B2 account/bucket `license`'s own replica already uses. Not a
+misconfiguration here either - this repo's `litestream.yml` already
+carried the same widened 5m intervals `license` was fixed to use, from
+the day this feature was built.
+
+Widened `l0-retention-check-interval` and level 1 5m -> 15m, matching
+`license`'s own new value exactly (level 2 stays 5m, level 3 stays 1h,
+kept in step with the sibling service sharing the same B2 budget, same
+reasoning as the original widening). Config re-verified to parse
+(`yaml.safe_load`). Operator raising the actual B2 daily cap on their
+own account in parallel - the two fixes are complementary: the cap
+raise gives immediate headroom, the wider intervals reduce the real
+transaction volume regardless of where the cap is set.
