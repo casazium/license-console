@@ -291,6 +291,7 @@ export function StorefrontWebhookMappings({ webhookId, active }: { webhookId: st
             />
             <NumberInput
               label="Duration in days (optional)"
+              description="Leave blank for a perpetual license (no expiration) - this can't be changed later without recreating the mapping"
               placeholder="Perpetual"
               min={1}
               value={form.duration_days}

@@ -1,7 +1,22 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-23 (§128: three
+Last updated: 2026-09-23 (§129:
+added a persistent Mantine `description` hint under
+`StorefrontWebhookMappings.tsx`'s own "Duration in days (optional)"
+field, after the operator noticed live that storefront-issued licenses
+had no expiration and asked whether that was configurable. It already
+was (`casazium/license`'s own `computeExpiresAt` - omitted/null means
+perpetual, on purpose) - the gap was discoverability, not capability:
+the field's placeholder text ("Perpetual") only shows while empty and
+unfocused, easy to never really notice. New description text: "Leave
+blank for a perpetual license (no expiration) - this can't be changed
+later without recreating the mapping." Same-day companion change to
+`casazium/license`'s own `API.md`/`openapi.yaml` documentation (that
+repo's PROJECT_STATUS.md §240). Verified live via Playwright
+(real signup, real webhook connect, real "Add mapping" form) that the
+new text renders cleanly with no layout regression. See §129 below.)
+2026-09-23 (§128: three
 real layout bugs in the storefront-webhook Settings tables, all found
 live on a deployed Coolify test environment with real seeded data, none
 caught by typecheck/lint/tests - (1) the mappings/deliveries tables'
@@ -7998,6 +8013,53 @@ run lint`, `npm run build` all clean. Both dev servers, the seeded test
 databases, and every throwaway script used for reproduction were
 cleaned up afterward, confirmed via `git status` showing no residue
 beyond the two intended component files.
+
+Not yet committed - awaiting explicit instruction per this repo's own
+CLAUDE.md §4 Git discipline rule.
+
+## 129. `StorefrontWebhookMappings.tsx`: persistent hint that `duration_days` defaults to perpetual (2026-09-23)
+
+The operator, using the same test webhook this session had been
+seeding data into, noticed live that every storefront-issued license
+so far had no expiration and asked directly: "is it possible to put
+expiration on them when you set up stripe?" Investigated on
+`casazium/license` before answering (that repo's own PROJECT_STATUS.md
+§240 has the full write-up): the capability already exists and needed
+no backend change - `storefront-webhook.js`'s `computeExpiresAt`
+returns `null` (perpetual) when a mapping's `duration_days` is unset,
+by design. The three test mappings created earlier this session simply
+never had it set (all showed "Perpetual" in this component's own
+mappings table) - not a defect, just a field nobody had reason to fill
+in during smoke testing.
+
+The real gap was discoverability in this component's own form, not
+capability: the "Duration in days (optional)" `NumberInput`'s
+placeholder text ("Perpetual") only renders while the field is empty
+*and* unfocused, and disappears the moment a tenant clicks into any
+other field in the same row - easy to never really register as
+information, only as a formatting hint. Added a persistent Mantine
+`description` prop instead, which stays visible regardless of focus
+state:
+
+> Leave blank for a perpetual license (no expiration) - this can't be
+> changed later without recreating the mapping
+
+The second half ("can't be changed later") is deliberate, not filler -
+`admin-storefront-webhooks.js` only exposes create and delete for a
+mapping, no update, so this is also the answer to the natural follow-up
+question ("can I just edit it after the fact") before a tenant asks it.
+
+Verified live via Playwright against a real signed-up tenant, a real
+connected Stripe-shaped webhook, and the real "Add mapping" form (not
+assumed from reading the JSX) - the new two-line description renders
+cleanly under the field, doesn't overlap or get clipped by the
+Group's own layout, and the form's overall height/spacing is otherwise
+unaffected. `npx tsc --noEmit`, `npm run lint`, `npx vitest run` (163
+tests, no new test surface - this is a copy-only change with nothing
+new to assert) all clean. Dev servers, the seeded test databases, and
+the throwaway Playwright script used for verification were cleaned up
+afterward, confirmed via `git status` showing only the one intended
+file changed.
 
 Not yet committed - awaiting explicit instruction per this repo's own
 CLAUDE.md §4 Git discipline rule.
