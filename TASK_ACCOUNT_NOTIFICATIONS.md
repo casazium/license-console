@@ -1,7 +1,11 @@
 # Task scope: operator notifications for account/session events
 
-Status: Built, pending a real Discord webhook smoke test. Authorized and
-implemented 2026-09-15. One real deviation from this doc, found during
+Status: Built and confirmed live. The operator reported receiving real
+Discord messages for all four events (`account.created`,
+`account.deleted`, login, logout) on 2026-09-23, closing the "pending
+a real Discord webhook smoke test" gap this status line previously
+carried. Authorized and implemented 2026-09-15. One real deviation
+from this doc, found during
 implementation: every `lib/notify/*` path below actually lives at
 `lib/notifications/*` instead - `lib/notify.ts` already existed in this
 repo (an unrelated, pre-existing Mantine-toast helper used across several

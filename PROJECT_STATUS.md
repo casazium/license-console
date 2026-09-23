@@ -1,7 +1,13 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-23 (§131:
+Last updated: 2026-09-23 (§132:
+the operator confirmed receiving real Discord messages for all four
+account/session events (create, delete, login, logout), closing the
+"pending a real Discord webhook smoke test" gap `TASK_ACCOUNT_
+NOTIFICATIONS.md`'s status line had carried since implementation. See
+§132 below.)
+2026-09-23 (§131:
 fixed a real bug the operator hit live on their own deployed
 environment: clicking "Disable this webhook" (on a real, `NEEDS SETUP`-
 status webhook, screenshotted from their own Coolify test deployment)
@@ -8231,3 +8237,17 @@ confirmed via `git status` showing only the two intended files changed
 Committed and pushed on explicit operator instruction (`7a3a8be`, "Fix
 \"Disable this webhook\" 400/500 on an empty DELETE body") - `main`
 here is now `7a3a8be`.
+
+## 132. `TASK_ACCOUNT_NOTIFICATIONS.md`'s "pending a real Discord webhook smoke test" confirmed closed (2026-09-23)
+
+The operator reported receiving real Discord messages from a live
+deployment for all four events this feature covers: `account.created`
+(signup), `account.deleted`, login, and logout. `TASK_ACCOUNT_
+NOTIFICATIONS.md`'s status line had carried "Built, pending a real
+Discord webhook smoke test" since it was implemented (§106, 2026-09-15)
+- confirmed the exact same class of staleness this session's own
+cross-repo sweep found elsewhere (a doc describing verification as not
+yet done when it actually is), just caught by the operator directly
+rather than by a sweep this time. Updated the status line to record
+the confirmation and which events were specifically observed, rather
+than rounding up from a general "it's working" report.
