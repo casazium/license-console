@@ -110,6 +110,15 @@ litestream: WARNING - replica destination unreachable or misconfigured (bucket=.
 docker exec <container> sh scripts/restore-drill-litestream.sh
 ```
 
+**Running `litestream restore` by hand instead of through the drill script?** `LITESTREAM_REPLICA_MODE` (used by `litestream.yml`'s own replica `path:` template) is not a real container environment variable — `scripts/start.sh` derives and exports it once for the main process at boot, and `restore-drill-litestream.sh` independently re-derives it for itself, but neither of those exports is visible to a fresh `docker exec` session. Omitting it doesn't fail loudly: `litestream` still parses the config and matches the db entry, then silently resolves the replica path with an empty mode segment and reports the generic `no matching backup files available` — which looks like "the replica is empty" rather than "you forgot a variable." Set it explicitly:
+
+```bash
+docker exec -e LITESTREAM_REPLICA_MODE=saas <container> \
+  litestream restore -config /app/litestream.yml -o /path/to/output.db /app/data/console.db
+```
+
+(`saas` for the SaaS-tier resource, `standalone` otherwise — same derivation `scripts/start.sh` uses, keyed off `MULTI_TENANT`.) Confirmed live 2026-09-23: the exact same command without `-e LITESTREAM_REPLICA_MODE=saas` failed with `no matching backup files available` against a replica that had real, current backups the whole time.
+
 **Restoring from Litestream — ordering matters relative to the daily-snapshot procedure above**, identically to `casazium/license`: stop Litestream before any other recovery path touches `/app/data`, or it will resync the replica back down to match an older restored snapshot, undoing the restore.
 
 **Known limitations** (identical to `casazium/license`'s own list — see that repo's `DEPLOYMENT.md` for the full reasoning behind each): no client-side encryption (pinned v0.5.17 dropped it — rely on the storage provider's own server-side encryption at rest); Litestream writes its own bookkeeping (`_litestream_seq`/`_litestream_lock` tables, a hidden `.console.db-litestream/` directory) into the live database and volume; the boot-time check proves read/list access, not write access; `-restore-if-db-not-exists` is deliberately left off in Phase 1.

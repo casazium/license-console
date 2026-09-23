@@ -1,7 +1,14 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-23 (§132:
+Last updated: 2026-09-23 (§133:
+closed `TASK_LITESTREAM_HA.md`'s last open item - a real write-
+replication-restore cycle, confirmed via both `restore-drill-
+litestream.sh` and a manual restore the operator ran to actually
+inspect the result. The manual restore surfaced a real
+`LITESTREAM_REPLICA_MODE` gotcha, now documented in `DEPLOYMENT.md`.
+See §133 below.)
+2026-09-23 (§132:
 the operator confirmed receiving real Discord messages for all four
 account/session events (create, delete, login, logout), closing the
 "pending a real Discord webhook smoke test" gap `TASK_ACCOUNT_
@@ -8251,3 +8258,41 @@ yet done when it actually is), just caught by the operator directly
 rather than by a sweep this time. Updated the status line to record
 the confirmation and which events were specifically observed, rather
 than rounding up from a general "it's working" report.
+
+## 133. `TASK_LITESTREAM_HA.md`'s last open item closed: a real write-replication-restore cycle, confirmed twice (2026-09-23)
+
+Two independent confirmations, not one. First, the operator ran
+`scripts/restore-drill-litestream.sh` directly against the live SaaS-tier
+resource: `[1/3]` integrity check ok, `[2/3]` row counts matching real
+production data (`accounts: 2`, `notification_log: 2`), `[3/3]` schema
+re-apply + `MULTI_TENANT` guard ok, `Restore drill PASSED.` A Backblaze
+B2 bucket listing (`licenseLitestream/licenseServer/console/saas/litestream`)
+independently corroborated this before the drill even ran: five real WAL-
+segment generations (`0000`-`0003`, `0009`, 6.2-12.0 KB each) spanning
+2026-09-22 20:00 through 2026-09-23 00:00 - genuine write traffic over
+several hours, not a single empty snapshot.
+
+Second, out of curiosity the operator then restored a copy by hand
+(bypassing the drill script's own scratch-and-delete cleanup) to
+actually look at the result rather than just trust the printed row
+counts. This surfaced one real, previously-undocumented gotcha, now
+recorded in `DEPLOYMENT.md`: `litestream.yml`'s replica path template
+uses `${LITESTREAM_REPLICA_MODE}`, which `scripts/start.sh` derives and
+exports only for the main boot process - `restore-drill-litestream.sh`
+independently re-derives it for itself, but a bare `docker exec` shell
+gets neither. Running `litestream restore` by hand without exporting it
+first doesn't fail loudly: the config still parses and matches the db
+entry, but the replica path silently resolves with an empty mode
+segment, producing the misleading `no matching backup files available`
+- reproduced live before being understood (first attempt without the
+export failed with exactly this message against a replica confirmed
+moments earlier to have real, current backups). Fixed by passing
+`-e LITESTREAM_REPLICA_MODE=saas` to `docker exec` directly; the
+corrected command then restored a real 69.6 KB database with the full
+7-table schema and `accounts` count matching the drill's own report
+exactly. Documented in `DEPLOYMENT.md`'s Litestream section so the next
+person who tries a manual restore doesn't have to rediscover this.
+
+Both `TASK_LITESTREAM_HA.md` checkboxes for this item are now checked;
+no open items remain in that document's "what done would look like"
+list.
