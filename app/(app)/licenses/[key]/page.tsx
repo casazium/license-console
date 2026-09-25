@@ -58,6 +58,7 @@ export default async function LicenseDetailPage({
       <Stack>
         <Title order={2}>License not found</Title>
         <Text c="dimmed">No license with key {key} exists in the mock store.</Text>
+        <Anchor href="/licenses">Back to Licenses</Anchor>
       </Stack>
     );
   }
@@ -67,7 +68,10 @@ export default async function LicenseDetailPage({
   return (
     <Stack>
       <Group justify="space-between">
-        <Title order={2}>{license.key}</Title>
+        <Group gap="xs">
+          <Title order={2}>{license.key}</Title>
+          <CopyValueButton value={license.key} />
+        </Group>
         <Badge color={statusBadge.color}>{statusBadge.label}</Badge>
       </Group>
 
@@ -190,6 +194,10 @@ Content-Type: application/json
           for your account&apos;s own API key, used for admin operations.
         </Text>
       )}
+
+      <Anchor href="/licenses" size="sm">
+        Back to Licenses
+      </Anchor>
 
       <MockDataNotice />
     </Stack>
