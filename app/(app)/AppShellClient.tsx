@@ -12,6 +12,7 @@ import { BrandLogo } from '@/components/BrandLogo';
 import { BrandCopyright } from '@/components/BrandCopyright';
 import { VersionStamp } from '@/components/VersionStamp';
 import { EmailVerificationBanner } from '@/components/EmailVerificationBanner';
+import { VersionCompatibilityBanner } from '@/components/VersionCompatibilityBanner';
 import { EnvironmentBanner, ENVIRONMENT_BANNER_HEIGHT } from '@/components/EnvironmentBanner';
 import { brandTextButtonStyle } from '@/components/brandButtonStyle';
 
@@ -27,6 +28,7 @@ export function AppShellClient({
   branding,
   appVersion,
   apiVersion,
+  serverIncompatible,
   showBilling,
   showSettingsNav,
   showEmailVerificationBanner,
@@ -36,6 +38,11 @@ export function AppShellClient({
   branding: Branding;
   appVersion: AppVersion;
   apiVersion: BackendVersion;
+  // Only ever true on a CONFIRMED version mismatch (see
+  // app/(app)/layout.tsx) - an unreachable backend or unparseable
+  // version shows no banner, since there's nothing confirmed to warn
+  // about.
+  serverIncompatible: boolean;
   // SaaS-B4: only true under MULTI_TENANT (see app/(app)/layout.tsx) -
   // self-hosted has no billing concept, so no nav item and no route to
   // reach one.
@@ -126,6 +133,9 @@ export function AppShellClient({
       </AppShell.Navbar>
       <AppShell.Main>
         {showEmailVerificationBanner && <EmailVerificationBanner />}
+        {serverIncompatible && apiVersion && (
+          <VersionCompatibilityBanner serverVersion={apiVersion.version} />
+        )}
         {children}
       </AppShell.Main>
       <AppShell.Footer>

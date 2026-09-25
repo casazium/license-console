@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { getBranding } from '@/lib/branding';
 import { environmentLabel } from '@/lib/config';
 import { getBackendVersion } from '@/lib/license-client';
-import { getAppVersion } from '@/lib/version';
+import { getAppVersion, isServerVersionCompatible } from '@/lib/version';
 import { requireSession } from '@/lib/session';
 import { AppShellClient } from './AppShellClient';
 
@@ -22,6 +22,12 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const branding = getBranding(session.tenantId);
   const appVersion = getAppVersion();
   const apiVersion = await getBackendVersion();
+  // Non-blocking version-compatibility check (SELF_HOSTED_DISTRIBUTION_
+  // DESIGN.md Phase 1, item 4) - only ever true on a CONFIRMED mismatch;
+  // an unreachable backend or an unparseable version string (both
+  // apiVersion === null / isServerVersionCompatible() === null) shows no
+  // warning, since there's nothing confirmed to warn about.
+  const serverIncompatible = apiVersion ? isServerVersionCompatible(apiVersion.version) === false : false;
   // SaaS-B4: billing is a SaaS-only concept - self-hosted has no
   // subscription/quota at all (quota.js's own MULTI_TENANT-only gate on
   // the server side). session.tenantId is only ever set under
@@ -46,6 +52,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       branding={branding}
       appVersion={appVersion}
       apiVersion={apiVersion}
+      serverIncompatible={serverIncompatible}
       showBilling={showBilling}
       showSettingsNav={showSettingsNav}
       showEmailVerificationBanner={showEmailVerificationBanner}
