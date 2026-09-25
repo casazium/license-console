@@ -10,6 +10,29 @@ surface this console depends on (`casazium/license`) notes whether it
 needs a corresponding change there, and vice versa — see
 `SELF_HOSTED_DISTRIBUTION_DESIGN.md` §4 for why this discipline exists.
 
+## [1.3.2] - 2026-09-25
+
+### Fixed
+
+- **License detail page: copy button for the license key, and
+  back-to-list links.** The license key had no copy affordance even
+  though `product_uuid` right below it already had one via the same
+  `CopyValueButton` component - the key is the value actually pasted
+  into support tickets, `curl` commands, and customer app config, more
+  often than `product_uuid` is. Also added "Back to Licenses" links
+  (not-found fallback and bottom of page), matching the identical
+  pattern already on the sibling release detail page. Found via manual
+  UI testing.
+
+### Docs
+
+- **`README.selfhosted.md`** now documents a Docker-networking gotcha:
+  running the License Server directly on the host while this console
+  runs in its own container fails silently if `LICENSE_API_URL` points
+  at `127.0.0.1` (that resolves to the container, not the host) -
+  documents the `host.docker.internal` fix and the Linux Docker Engine
+  caveat.
+
 ## [1.3.1] - 2026-09-25
 
 ### Fixed
