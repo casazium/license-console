@@ -1,7 +1,15 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-25 (§142:
+Last updated: 2026-09-25 (§143:
+extended publish-image.yml to build both linux/amd64 and linux/arm64
+(docker/setup-qemu-action + a two-platform buildx target), after the
+operator hit "no matching manifest for linux/arm64/v8" pulling :latest
+on an Apple Silicon Mac while testing docker-compose.selfhosted.yml.
+No Dockerfile change needed - it already branched correctly on
+TARGETARCH. Existing v1.2.0/v1.3.0 manifests stay amd64-only; only the
+next tag cut gets a real multi-arch manifest. See §143 below.)
+2026-09-25 (§142:
 merged the version-compatibility check (Phase 1 item 4, PR #42),
 bumped to v1.3.0 and tagged it (PR #43), and confirmed publish-
 image.yml's first real run succeeded - digest
@@ -8736,3 +8744,41 @@ against the GitHub Actions API rather than assumed:
 This closes out Phase 1 item 4 and clears §140's stated verification
 gap with a real, successful run rather than a sandbox proxy. Merges
 verified as real ancestors of `origin/main`.
+
+## 143. publish-image.yml builds multi-arch (amd64+arm64) images (2026-09-25, PR #44, `3097825`→`c31bdf5`)
+
+Not a Phase 1 item - a follow-up gap the operator hit immediately
+after §142: `docker compose -f docker-compose.selfhosted.yml up -d` on
+an Apple Silicon Mac failed with `no matching manifest for
+linux/arm64/v8 in the manifest list entries: no match for platform in
+manifest: not found`, because §140's workflow only ever built
+`linux/amd64`.
+
+Added `docker/setup-qemu-action@v3` and extended
+`docker/build-push-action`'s `platforms:` to `linux/amd64,linux/arm64`.
+The `Dockerfile` needed no change - it already branches correctly on
+`TARGETARCH` for its litestream binary fetch (pinned-version +
+sha256sum-verified, same pattern as `casazium/license`'s own
+Dockerfile), so both legs resolve the right binary already. Raised
+`timeout-minutes` 20→45: the `arm64` leg builds under QEMU emulation on
+`ubuntu-latest` (amd64-native), and `better-sqlite3`'s native compile
+step is meaningfully slower under emulation.
+
+**Does not retroactively fix the existing tags** - `v1.2.0` and
+`v1.3.0`'s manifests on `ghcr.io/casazium/license-console` stay
+`amd64`-only, since the workflow already ran for them before this
+change. An Apple Silicon self-hoster testing against `:1.3.0`/`:latest`
+today still needs the documented `DOCKER_DEFAULT_PLATFORM=linux/amd64`
+emulation workaround. Only the next tag cut will produce a real
+multi-arch manifest list.
+
+**Verification limitation, same shape as §140's:** this sandbox cannot
+run a multi-arch `docker buildx build` to confirm the manifest list
+directly - verified instead by parsing the workflow YAML
+(`python3 -c "import yaml; yaml.safe_load(...)"`) and a full manual
+read of the diff and the `Dockerfile`'s existing `TARGETARCH` handling.
+**The real first verification is the next tag's actual run** producing
+a manifest list with both `linux/amd64` and `linux/arm64` entries -
+not yet cut as of this entry.
+
+Merge verified as a real ancestor of `origin/main`.
