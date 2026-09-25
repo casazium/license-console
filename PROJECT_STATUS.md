@@ -1,7 +1,13 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-25 (§138:
+Last updated: 2026-09-25 (§139:
+first tagged release, v1.2.0 - the first concrete Phase 1 engineering
+step (§136-§138 were documentation). Added CHANGELOG.md; tag pushed by
+the operator after the same tag-push permission block seen repeatedly
+on casazium/license, verified directly against origin rather than
+trusted. See §139 below.)
+2026-09-25 (§138:
 §136's own correction of the license.casazium.com inference (PR #36)
 turned out to be wrong - real self-hosted precedent does exist. This
 repo's own §68 (a live restore drill against two genuinely distinct
@@ -8536,3 +8542,35 @@ detailed restore-drill log. The lesson isn't "verify harder" in the
 abstract; it's "when the claim is about this repo's own deployment
 history, this repo's own detailed operational records outrank another
 repo's summary of the same event."
+
+## 139. First tagged release: v1.2.0 (2026-09-25, PR #39, `1772e30`, merged `215db91`; tag pushed by the operator)
+
+Phase 1 item 3 from `SELF_HOSTED_DISTRIBUTION_DESIGN.md`, and the first
+concrete engineering step (§138 was documentation only). This repo had
+never had a tagged release or a `CHANGELOG.md` - nothing for a future
+version-compatibility check to pin against, and no discrete release
+identity at all (confirmed in §110/§136's own research: continuously
+deployed off `main`, `package.json`'s version number the only signal).
+
+Added `CHANGELOG.md` (Keep a Changelog format, mirroring
+`casazium/license`'s own header sentence pattern), with a single entry
+marking `1.2.0` - the version `main` already carried, untagged - as
+the first tagged release. No functional change. States the new
+cross-repo changelog-coordination convention design-doc item 5 calls
+for: future entries note when a change needs a corresponding update in
+`casazium/license`, and vice versa.
+
+**Tag push hit the same permission block this session has run into
+repeatedly on `casazium/license`'s tags** (HTTP 403 on `git push
+origin <tag>`, ordinary commits/PRs unaffected) - handed the exact
+`git tag -a`/`git push` commands to the operator, who pushed it.
+Verified directly rather than trusting the report: `git ls-remote
+--tags origin v1.2.0` confirms the tag exists on `origin`, and `git
+log` on that ref confirms it points to `215db91` (the merged
+`CHANGELOG.md` commit) - the tag object's own SHA differs slightly
+from the one created locally (different tagger metadata), which
+doesn't matter; the target commit is exactly right.
+
+Merge verified as a real ancestor of `origin/main`
+(`git merge-base --is-ancestor`). `npm run typecheck` passed clean
+before committing; no other code changed.
