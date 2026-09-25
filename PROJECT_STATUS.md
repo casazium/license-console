@@ -1,7 +1,16 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-25 (§137:
+Last updated: 2026-09-25 (§138:
+§136's own correction of the license.casazium.com inference (PR #36)
+turned out to be wrong - real self-hosted precedent does exist. This
+repo's own §68 (a live restore drill against two genuinely distinct
+Coolify resources, a month before the retirement PR #36 relied on)
+settles it, and casazium/casazium's own BETA_LAUNCH_STATUS.md v1.29
+explicitly warned in writing against the exact inference its v1.30
+entry then made anyway. Restored to SELF_HOSTED_DISTRIBUTION_DESIGN.md
+§2/§5/§6; flagged separately in casazium/casazium. See §138 below.)
+2026-09-25 (§137:
 recorded the operator's decisions on §136's three open questions -
 build the Phase 1 self-host engineering but keep the product private
 for now (not a pricing call), with EULA scope and support boundary
@@ -8485,3 +8494,45 @@ Merge verified as a real ancestor of `origin/main`
 (`git merge-base --is-ancestor`), not taken on the GitHub API's
 `merged: true` alone - same discipline as §136's two PRs. No code
 changed - documentation only.
+
+## 138. §136's correction was itself wrong - real self-hosted precedent does exist (2026-09-25, PR #38, `03e1869`, merged `6d6d42b`)
+
+Found while reading `next.config.mjs` for unrelated Phase 1 work: its
+own header comment (added 2026-09-06, PR #30) describes `license
+.casazium.com` and `license-cloud.casazium.com` as "two live instances
+of this same app (standalone and hosted)... different tenancy models
+serving different customers, not duplicates of one another" - directly
+contradicting §136's PR #36, which had accepted `casazium/casazium`'s
+claim that one deployment answered both DNS names.
+
+Checked this repo's own record rather than trust either side blind:
+**§68 (2026-08-19) settles it.** A live restore drill was run directly
+from each of two genuinely distinct Coolify resources' own terminals,
+against their own real B2 backups - `license.casazium.com`
+(`accounts: 0`, correctly self-hosted per the `MULTI_TENANT` fail-loud
+guard) and `license-cloud.casazium.com` (`accounts: 2`, SaaS) - a month
+before the 2026-09-23 retirement PR #36 relied on. `casazium/casazium`'s
+own `BETA_LAUNCH_STATUS.md` v1.29 (2026-09-06) independently proved the
+same separation with ten interleaved HTTP requests showing zero
+crossover, then explicitly warned in writing that matching byte sizes
+alone "stops meaning anything once both resources deploy the same
+commit" - exactly the inference its own v1.30 entry (2026-09-23) then
+drew anyway, six lines later in the same revision table.
+
+**Real precedent exists, restored to `SELF_HOSTED_DISTRIBUTION_DESIGN.md`
+§2/§5/§6:** Casazium ran a genuine self-hosted-mode Console deployment,
+live, for roughly two months, before the SaaS deployment existed at
+all - strengthening rather than weakening the case for Phase 1. Also
+fixed a leftover duplicate "Support boundary" bullet in §5 from §137's
+own edit. Flagged separately in `casazium/casazium`'s own documents
+(next task), not left standing there uncorrected. Merge verified as a
+real ancestor of `origin/main`, same discipline as §136/§137.
+
+**Pattern worth naming:** this is the second time in one afternoon a
+"correction" to this exact claim was made without checking this
+repo's *own* primary-source operational record first - §136 trusted a
+different repo's summary-level status entry over this repo's own
+detailed restore-drill log. The lesson isn't "verify harder" in the
+abstract; it's "when the claim is about this repo's own deployment
+history, this repo's own detailed operational records outrank another
+repo's summary of the same event."
