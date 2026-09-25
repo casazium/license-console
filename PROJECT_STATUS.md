@@ -1,7 +1,14 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-25 (§139:
+Last updated: 2026-09-25 (§140:
+added a tag-triggered publish-image.yml workflow, pushing to the
+private ghcr.io/casazium/license-console on every v*.*.* tag. A full
+local docker build couldn't be verified in this sandbox (a TLS-
+interception artifact of its own proxy, confirmed unrelated to the
+Dockerfile) - the real verification is this workflow's first actual
+run, on whatever tag gets cut next. See §140 below.)
+2026-09-25 (§139:
 first tagged release, v1.2.0 - the first concrete Phase 1 engineering
 step (§136-§138 were documentation). Added CHANGELOG.md; tag pushed by
 the operator after the same tag-push permission block seen repeatedly
@@ -8574,3 +8581,46 @@ doesn't matter; the target commit is exactly right.
 Merge verified as a real ancestor of `origin/main`
 (`git merge-base --is-ancestor`). `npm run typecheck` passed clean
 before committing; no other code changed.
+
+## 140. Tag-triggered private-image publish workflow added (2026-09-25, PR #40, `3abfbf1`, merged `3c1c3bd`)
+
+Phase 1 item 1 from `SELF_HOSTED_DISTRIBUTION_DESIGN.md`. New
+`.github/workflows/publish-image.yml`: on every `v*.*.*` tag push,
+builds and pushes `ghcr.io/casazium/license-console:<version>` and
+`:latest` - private by default (linked to this private repo via
+`GITHUB_TOKEN`, no visibility change made), satisfying the "private/
+access-controlled registry" decision without provisioning anything
+beyond what that token already grants.
+
+**Deliberately tag-triggered, not on every push to main** - the exact
+opposite of `casazium/license`'s own `publish-image-amd64`/`-arm64`
+jobs, which build continuously because that image *is* the SaaS
+deployment's own source. This is a new, separate artifact with no such
+dependency, so gating it to tags from day one keeps the image and
+version number in lockstep by construction - avoiding the SaaS-vs-SEA
+release-lag incident `casazium/license` already hit for real (that
+repo's `PROJECT_STATUS.md` §210, a continuous artifact silently
+outpacing a tag-gated one).
+
+Runs on `ubuntu-latest`, not the self-hosted `laster-console` runner
+(`test.yml`'s own job) - that runner is Apple Silicon only, and this
+image's real deployment target is `linux/amd64` (Coolify/Contabo,
+matching `casazium/license`'s own target). A rare tag-triggered job on
+a hosted runner doesn't reproduce the Actions-minutes pressure that
+moved `test.yml` to self-hosted in the first place.
+
+**Verification limitation, stated plainly rather than glossed over:**
+could not run a complete `docker build` in this sandbox - `npm ci`
+inside a fresh container hit a TLS-interception artifact of this
+sandbox's own outbound proxy (a certificate-verify-failed error,
+confirmed independent of the package/Dockerfile - the sandbox's proxy
+intercepts TLS and a fresh container doesn't trust its CA). What was
+verified: `npm run build`/`postbuild` succeeded locally against the
+real dependency tree (the same steps the Dockerfile's builder stage
+runs), the Dockerfile was read in full and needs no build-args beyond
+buildx's own `TARGETARCH`, and the workflow YAML parses. **The real
+first full verification is this workflow's first actual run**, on
+whatever tag gets cut next for Phase 1 - operator's own instruction
+was to let that be the test rather than cut a throwaway tag now.
+
+Merge verified as a real ancestor of `origin/main`.
