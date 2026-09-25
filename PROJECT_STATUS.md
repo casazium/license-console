@@ -1,7 +1,15 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-25 (§145:
+Last updated: 2026-09-25 (§146:
+license detail page: added a copy button for the license key
+(PR #47) - CopyValueButton was already used on this page for
+product_uuid but not the key itself, the value actually pasted into
+support tickets/curl/customer config. Also added "Back to Licenses"
+links (not-found fallback + bottom of page), mirroring the identical
+pattern already on the sibling releases/[id]/page.tsx. Found via the
+operator's own manual UI testing. See §146 below.)
+2026-09-25 (§145:
 documented a real Docker-networking gotcha in README.selfhosted.md's
 step 4B (PR #46): a self-hoster running the License Server natively on
 the host, with this console in its own container, gets a silent
@@ -8903,3 +8911,30 @@ instead of `127.0.0.1` - resolves automatically on Docker Desktop
 `console` service first).
 
 Docs-only change. Merge verified as a real ancestor of `origin/main`.
+
+## 146. License detail page: copy button for the key + back-to-list links (2026-09-25, PR #47, `a453953`→`119607a`)
+
+Two real UX gaps surfaced by the operator's own manual testing on the
+license detail page (`app/(app)/licenses/[key]/page.tsx`):
+
+- **No copy affordance for the license key itself.** `CopyValueButton`
+  (`components/CopyValueButton.tsx`) was already used on this exact
+  page for `product_uuid`, but not for the key shown in the page
+  title right above it - the value actually pasted into a support
+  ticket, a `curl` command, or a customer's own app config, far more
+  often than `product_uuid` is. Added
+  `<CopyValueButton value={license.key} />` next to the title.
+- **No way back to the license list** short of the browser's own back
+  button. The sibling `releases/[id]/page.tsx` already has "Back to
+  Releases" links on both its not-found fallback and at the bottom of
+  its main render - a real, established pattern this page simply
+  never got. Added the identical `<Anchor href="/licenses">Back to
+  Licenses</Anchor>` in both spots (left the rate-limited early-return
+  branch alone, matching `releases/[id]/page.tsx`'s own - that branch
+  has no back link there either).
+
+Verified: `npm run typecheck`, `npm run lint`, `npm test` (21 files /
+173 tests), and a full `npm run build` (one pre-existing, unrelated
+Turbopack warning about `instrumentation.ts`'s `process.exit()` under
+Edge Runtime - not touched by this change). Merge verified as a real
+ancestor of `origin/main`.
