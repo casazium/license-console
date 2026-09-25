@@ -135,15 +135,19 @@ assumption. This is real, net-new work - not large, but not zero.
 Following `NODE_SEA_DESIGN.md`'s own precedent of bounding a first phase
 tightly rather than solving everything at once:
 
-**In scope for Phase 1:**
-1. Publish the existing Docker image to a public registry (it is
-   presumably built privately today for Casazium's own Coolify
-   resource; confirm and correct if that's not accurate before
-   proceeding).
-2. Write a plain, non-Coolify `docker-compose.yml` + `.env.example` for
-   third-party self-hosters, following the exact pattern
-   `casazium/license`'s own self-hosted quickstart zip already
-   establishes - likely bundled into that same zip as a second service.
+**In scope for Phase 1 - the engineering only. Per the 2026-09-25
+decision in §5, the product stays private for now: nothing here is
+publicly published, registered, or announced until a further decision
+to distribute it externally.**
+1. Build and publish the image to a private/access-controlled
+   registry - the same build as today's, just made consumable outside
+   Casazium's own Coolify resource for internal or pilot use. Moving to
+   a public registry is a separate, later decision (§5).
+2. Write a plain, non-Coolify `docker-compose.yml` + `.env.example`,
+   following the exact pattern `casazium/license`'s own self-hosted
+   quickstart zip already establishes - kept out of that public zip for
+   now, handed out directly if/when there's a pilot customer rather
+   than bundled into a public download.
 3. Give License Console actual tagged releases (it has none today) so a
    compatibility claim has something to pin against.
 4. Replace the cosmetic version footer with a real, minimal
@@ -158,9 +162,10 @@ tightly rather than solving everything at once:
    `casazium/license`'s own `CHANGELOG.md` to note whether it needs a
    Console update - the one piece of process discipline this
    investigation found completely absent.
-6. Documentation on `casazium/casazium`'s docs site introducing the
+6. ~~Documentation on `casazium/casazium`'s docs site introducing the
    console as an optional add-on to a self-hosted License Server
-   install.
+   install.~~ Deferred with the rest of external distribution (§5) -
+   nothing public-facing until that decision is revisited.
 
 **Explicitly out of scope for Phase 1 (real, but separate work):**
 - **SEA distribution for the console.** The Server's SEA build works
@@ -179,16 +184,31 @@ tightly rather than solving everything at once:
   over refusal, and a self-hosting customer's own uptime shouldn't
   depend on Casazium's release cadence guesses being exactly right.
 
-## 5. Open decisions - not this doc's call
+## 5. Decisions and remaining open items
 
-- **Pricing/positioning.** Free with any self-hosted install, or a
-  Tier-B/paid-support perk? Affects whether this should even be
-  publicized the same way as the free `casazium-license-selfhosted.zip`
-  download.
-- **EULA scope.** Does a distributed Console fall under "the Software"
-  §8 of the EULA covers, or does it need its own terms? Flagged, not
-  resolved, in `casazium/casazium`'s own `PROJECT_STATUS.md` before this
-  doc existed.
+- **Pricing/positioning - decided 2026-09-25: build it, keep it
+  private for now.** The operator's call: proceed with the Phase 1
+  engineering in §4, but the product is not publicly published,
+  registered, or announced yet - not a pricing tier decision (free vs.
+  paid) so much as a distribution-readiness one. Whether/when it
+  becomes a public, priced, or free offering is a separate decision to
+  make once there's something real to point at (a private/pilot
+  deployment working end to end), not before. §4's item 1 (registry)
+  and item 6 (public docs) reflect this directly.
+- **EULA scope - still open, explicitly deferred until before any
+  external distribution** (operator's instruction: "too early to
+  decide"). Moot while the product stays private - nothing is being
+  distributed under any terms yet - but must be resolved before item 1
+  or item 6 in §4 could ever move from private to public. Still
+  flagged, unresolved, in `casazium/casazium`'s own `PROJECT_STATUS.md`.
+- **Support boundary - still open, same deferral** (operator's
+  instruction: "too early to decide"). Also moot while private: there's
+  no third party yet whose version drift needs a support policy. The
+  compatibility mechanism in §4.3-4.5 should still be built now
+  regardless - it protects Casazium's own private/pilot use just as
+  much as a future external customer's - but the *policy* for what's
+  supported when it's violated waits until there's someone outside
+  Casazium actually running it.
 - **What `license.casazium.com` actually was - checked, not just
   inferred, and the inference was wrong.** An earlier draft of this
   section speculated it might have been a self-hosted-mode instance
@@ -213,7 +233,10 @@ tightly rather than solving everything at once:
 
 ## 6. Recommendation
 
-Proceed with Phase 1 as scoped in §4. The architecture risk that would
+Proceed with Phase 1 as scoped in §4, kept private per §5's 2026-09-25
+decision - build the artifacts and the compatibility mechanism now,
+without publishing or announcing anything externally yet. The
+architecture risk that would
 have made this expensive doesn't exist - self-hosted mode is already
 built, already the app's original design point, and already cleanly
 separated from every SaaS-only concern. The real cost is the
