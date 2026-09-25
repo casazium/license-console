@@ -57,6 +57,18 @@ a real, confusing `403 Unauthorized` before (`PROJECT_STATUS.md` §60)
 even though the two values "look" the same — double-check for
 whitespace if you hit that.
 
+**Running the License Server directly on this same machine, not in a
+container?** Don't set `LICENSE_API_URL` to `http://127.0.0.1:<port>`
+— this console runs inside its own Docker container
+(`docker-compose.selfhosted.yml` has no `network_mode: host`), so
+`127.0.0.1` from inside it means the container itself, not your host
+machine, and the console will fail to reach the API at all. On Docker
+Desktop (Mac/Windows), use `http://host.docker.internal:<port>/v1`
+instead — it resolves to the host automatically, no extra compose
+config needed. (On Linux Docker Engine, `host.docker.internal` needs
+`extra_hosts: ["host.docker.internal:host-gateway"]` added to the
+`console` service in `docker-compose.selfhosted.yml` first.)
+
 ## 5. Start it
 
 ```bash
