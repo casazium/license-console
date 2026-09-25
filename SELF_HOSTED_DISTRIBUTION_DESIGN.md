@@ -189,14 +189,23 @@ tightly rather than solving everything at once:
   §8 of the EULA covers, or does it need its own terms? Flagged, not
   resolved, in `casazium/casazium`'s own `PROJECT_STATUS.md` before this
   doc existed.
-- **What `license.casazium.com` actually was.** It was retired
-  (DNS/Coolify entry removed) in a prior session, at the time described
-  only as "the standalone console." Based on this research it's
-  plausible that was exactly this self-hosted mode, run by Casazium for
-  its own/demo use rather than distributed to a third party - but that
-  is an inference from this investigation, not confirmed against that
-  session's own record. Worth checking before treating it as precedent
-  either for or against distributing this externally.
+- **What `license.casazium.com` actually was - checked, not just
+  inferred, and the inference was wrong.** An earlier draft of this
+  section speculated it might have been a self-hosted-mode instance
+  Casazium ran for its own/demo use - real precedent either way. It
+  wasn't. `casazium/casazium`'s `PROJECT_STATUS.md` (2026-09-23 entry,
+  retirement of that host) states plainly that `license.casazium.com`
+  and `license-cloud.casazium.com` served byte-identical pages because
+  **one single Coolify deployment answered to both DNS names** - not
+  because two separate instances happened to look alike. Retiring
+  `license.casazium.com` removed a redundant DNS/Coolify alias pointing
+  at the same SaaS deployment; there was never a second, self-hosted-mode
+  instance behind it. That document even flags this exact
+  "these two hosts must be separate instances" inference as a *repeated*
+  mistake (made once before, 2026-09-06, corrected the same way). There
+  is no existing precedent, in this project's history, for a
+  self-hosted-mode Console deployment - this doc's §2 stands on the code
+  itself, not on any prior deployment of it.
 - **Support boundary.** Once this ships to parties Casazium doesn't
   operate, what's actually supported when their License Server and
   Console versions drift beyond the documented range - best-effort, or
