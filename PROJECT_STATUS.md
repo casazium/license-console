@@ -1,7 +1,16 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-25 (§144:
+Last updated: 2026-09-25 (§145:
+documented a real Docker-networking gotcha in README.selfhosted.md's
+step 4B (PR #46): a self-hoster running the License Server natively on
+the host, with this console in its own container, gets a silent
+connection failure if LICENSE_API_URL points at 127.0.0.1 - that's the
+container's own loopback, not the host. Added the host.docker.internal
+fix (automatic on Docker Desktop) and the Linux extra_hosts caveat.
+Found while reviewing a real local .env pair for this exact
+console+API setup. See §145 below.)
+2026-09-25 (§144:
 cut v1.3.1 (PR #45, a version-only bump, no app behavior change) as the
 first tag built by §143's multi-arch publish-image.yml, and verified
 the result directly - not just a green checkmark. The build log shows
@@ -8856,3 +8865,41 @@ alone:
 `:latest` (or `:1.3.1`) now pulls the native `linux/arm64` image
 automatically - the `DOCKER_DEFAULT_PLATFORM=linux/amd64` workaround
 is only needed against the older `v1.2.0`/`v1.3.0` tags now.
+
+## 145. Documented a Docker-networking gotcha in README.selfhosted.md (2026-09-25, PR #46, `7c537b0`→`2378d79`)
+
+Found while reviewing a real local `.env` pair the operator shared for
+this exact console+API pairing (console `.env.selfhosted.example`-based
+config, `casazium/license`'s own API `.env`), used to test §144's newly
+verified `v1.3.1` image on an Apple Silicon Mac.
+
+**The bug the note documents:** the API `.env`'s `DB_FILE`/
+`TIER_A_LICENSE_FILE` paths (`/Users/rjc/...`) showed the License
+Server was running natively on the host, not in a container. The
+console's own `LICENSE_API_URL` was set to `http://127.0.0.1:3001/v1`
+- but the console runs inside its own container via
+`docker-compose.selfhosted.yml`, which has no `network_mode: host`, so
+`127.0.0.1` from inside that container resolves to the container
+itself, never the host. This would have failed to connect with no
+useful error pointing at the actual cause.
+
+Confirmed everything else in the pair was correct before writing this
+up, so as not to misattribute a working config: `ADMIN_API_KEY`/
+`LICENSE_ADMIN_API_KEY` matched exactly (no whitespace mismatch, the
+known §60 gotcha); `ENCRYPTION_KEY`/`LICENSE_SIGNING_SECRET` were valid
+64-hex-char values passing `casazium/license`'s own
+`validateEncryptionKey`/`validateSecretStrength`; `LICENSE_RSA_PRIVATE_KEY`
+was a structurally valid PEM, loaded correctly since the API uses the
+real `dotenv` package (not Docker Compose's `env_file:`, which does
+not support multi-line quoted values - a real difference confirmed by
+reading `casazium/license`'s own `load-dotenv.js`); and console `1.3.1`
+against API `1.5.3` sits exactly at `MIN_COMPATIBLE_SERVER_VERSION`,
+correctly compatible with no warning banner.
+
+**The fix documented:** `http://host.docker.internal:<port>/v1`
+instead of `127.0.0.1` - resolves automatically on Docker Desktop
+(Mac/Windows), with a noted Linux Docker Engine caveat (needs
+`extra_hosts: ["host.docker.internal:host-gateway"]` added to the
+`console` service first).
+
+Docs-only change. Merge verified as a real ancestor of `origin/main`.
