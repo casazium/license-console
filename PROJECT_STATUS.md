@@ -1,7 +1,17 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-23 (§135:
+Last updated: 2026-09-25 (§136:
+wrote `SELF_HOSTED_DISTRIBUTION_DESIGN.md`, scoping whether/how to
+distribute this console to third-party self-hosted License Server
+customers. Self-hosted (single-admin) mode turns out to already be
+this app's original design point, cleanly gated by the existing
+`MULTI_TENANT` flag - not a redesign. The one real gap: no
+version-compatibility mechanism exists between this console and
+License Server today. Same-day self-correction of a wrong inference
+about `license.casazium.com` in the first draft (a repeated mistake,
+caught and fixed). See §136 below.)
+2026-09-23 (§135:
 a cross-repo staleness sweep (with `license` and `license-releases`)
 found 4 confirmed findings here and fixed all of them - most notably
 `CLAUDE.md` §1 itself falsely describing this repo as an early
@@ -8373,3 +8383,64 @@ TASK_ACCOUNT_NOTIFICATIONS.md, litestream.yml's intervals, the
 LITESTREAM_REPLICA_MODE gotcha section, lib/limits-form.ts against
 license's ALLOWED_LIMIT_KEYS, package.json scripts, README.md) was
 confirmed accurate - not padded into the finding list.
+
+## 136. Design doc for distributing this console to third-party self-hosters (2026-09-25, PRs #35/#36)
+
+A `casazium/casazium` session asked whether this console could be
+distributed for self-hosting the way `casazium/license` already ships
+via Docker/SEA, since self-hosted License Server customers today
+administer entirely through the raw admin API with no UI. Rather than
+assume, two research passes were run against this repo and
+`casazium/license` before writing anything down.
+
+**Finding: this repo doesn't need redesigning - self-hosted mode is
+its original design point, not a hypothetical.** `MULTI_TENANT`
+already gates every SaaS-only concern cleanly: unset, auth is the
+single `ADMIN_UI_USERNAME`/`ADMIN_UI_PASSWORD` login with no signup/
+accounts DB; `LICENSE_API_URL`/`LICENSE_ADMIN_API_KEY` are always
+operator-supplied, never hardcoded to a Casazium-run backend; billing
+has no Stripe SDK in this repo at all and is gated off entirely under
+self-hosted mode. A production-grade Dockerfile already exists. What's
+actually missing is packaging for a third party rather than only
+Casazium - publishing the image publicly, a plain (non-Coolify)
+`docker-compose.yml`, and real tagged releases (this repo has never
+had one).
+
+**Finding: there is no version-compatibility mechanism between this
+console and License Server today, and that's the one real gap.** The
+admin API's `/v1` prefix is a permanent label, not a negotiated
+contract version. `getBackendVersion()`'s footer display
+(`lib/license-client.live.ts`, `components/VersionStamp.tsx`) is
+purely cosmetic - no minimum-version check, failures swallowed
+silently. Direct precedent for what goes wrong: `casazium/license`'s
+own SaaS (continuous-deploy) vs. SEA (tag-gated) artifacts already
+drifted 36+ commits apart internally before anyone noticed (that
+repo's §210). A self-hosted console (continuous, no tags) paired with
+a self-hosted server (tag-gated) reproduces the identical shape, just
+across two separate repos with no shared lag-detection script.
+
+**Written up as `SELF_HOSTED_DISTRIBUTION_DESIGN.md`** (PR #35,
+`4e7b51c`, merged `62d3c89`): status Draft, no implementation started,
+scopes a bounded Phase 1 (public image, plain compose file, tagged
+releases, a non-blocking version-mismatch warning replacing the
+cosmetic footer) and lists what it explicitly doesn't decide - pricing/
+positioning, EULA scope (already flagged, unresolved, in
+`casazium/casazium`'s own `PROJECT_STATUS.md`), and the support
+boundary once versions can drift independently.
+
+**Self-correction, same day (PR #36, `b075b27`, merged `79536cc`):**
+the first draft speculated that the retired `license.casazium.com`
+host might have been a prior self-hosted-mode deployment - real
+precedent either way. Checked against `casazium/casazium`'s own
+`PROJECT_STATUS.md` rather than left as a guess: it wasn't. That
+document states plainly that `license.casazium.com` and
+`license-cloud.casazium.com` served identical pages because one single
+deployment answered to both DNS names, not because two separate
+instances existed - and flags this exact inference as a *repeated*
+mistake, made once before and corrected the same way. This was a
+second occurrence of it; fixed before it could sit uncorrected in a
+merged doc. Both merges verified as real ancestors of `origin/main`
+(`git merge-base --is-ancestor`), not taken on the GitHub API's
+`merged: true` alone.
+
+No code changed in this repo by either PR - documentation only.
