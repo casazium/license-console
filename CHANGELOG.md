@@ -10,6 +10,17 @@ surface this console depends on (`casazium/license`) notes whether it
 needs a corresponding change there, and vice versa — see
 `SELF_HOSTED_DISTRIBUTION_DESIGN.md` §4 for why this discipline exists.
 
+## [1.3.1] - 2026-09-25
+
+### Fixed
+
+- **Multi-arch image.** `publish-image.yml` now builds and pushes both
+  `linux/amd64` and `linux/arm64` (previously `amd64` only), so
+  `docker-compose.selfhosted.yml` pulls a native image on Apple Silicon
+  Macs instead of failing with "no matching manifest for
+  linux/arm64/v8". No application behavior changed - this is the first
+  tag built by that updated workflow.
+
 ## [1.3.0] - 2026-09-25
 
 ### Added
