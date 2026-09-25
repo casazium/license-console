@@ -1,7 +1,16 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-25 (§147:
+Last updated: 2026-09-25 (§148:
+v1.3.2 tag pushed and its multi-arch build verified for real, same
+depth as §144: 19 separate [linux/arm64 runner N/21] steps, correct
+TARGETARCH litestream-arm64 fetch with a passing checksum, independent
+buildx.build.provenance blocks per platform, and a final
+application/vnd.oci.image.index.v1+json manifest pushed as both
+:1.3.2 and :latest. §145/§146's fixes (Docker-networking doc, license
+detail page copy button + back-links) are now actually shipped in the
+image, not just merged to main. See §148 below.)
+2026-09-25 (§147:
 bumped to 1.3.2 (PR #48) to ship §145/§146's fixes - main had drifted
 7 commits past the v1.3.1 tag with a real, unreleased UI change
 (§146's copy button/back-links) sitting on it, since
@@ -8971,3 +8980,39 @@ side.
 `npm run lint`, `npm test` (21 files / 173 tests). Merge verified as a
 real ancestor of `origin/main`. Tag not yet pushed - same permission
 block as every prior release in this repo.
+
+## 148. v1.3.2 tag pushed and its multi-arch build verified for real (2026-09-25)
+
+Closes out §147. Tag pushed by the operator (same permission block as
+every prior release), verified directly against origin before
+checking the workflow:
+
+- `v1.3.2` -> `4e8dcb04daa54c4970448a376a4af03e9ace495f`
+
+Dereferences to exactly the commit expected (§147's own status
+update, `main`'s HEAD at push time).
+
+**Verified the manifest itself, same depth as §144** - pulled the
+actual job log content (workflow run `36188385406`, job
+`108247283040`, `Build and push image` ran 20:53:31-21:00:50, ~7.3
+min, consistent with QEMU emulation) rather than trusting `conclusion:
+success` alone:
+
+- **19 separate `[linux/arm64 runner N/21]` build steps** ran - a
+  real, independent second build pass, not a duplicate of `amd64`.
+- The Dockerfile's `TARGETARCH` branch resolved correctly under
+  `arm64` again: `litestream-0.5.17-linux-arm64.tar.gz: OK` (checksum
+  verified).
+- Independent `buildx.build.provenance/linux/amd64` and
+  `buildx.build.provenance/linux/arm64` blocks both present.
+- Final `containerimage.descriptor.mediaType`:
+  `application/vnd.oci.image.index.v1+json` - a real OCI image index -
+  pushed as `ghcr.io/casazium/license-console:1.3.2` and `:latest`
+  (`containerimage.digest:
+  sha256:2503b25ace24bdfd4623ac984c518dc9abc11c42497039f65bd8000b734e4669`).
+
+§145 (`README.selfhosted.md`'s Docker-networking gotcha) and §146
+(license detail page's copy button + back-links) are now actually
+shipped in the image self-hosters and the operator's own Mac pull -
+not just sitting on `main`. This is the exact gap the operator's "are
+all releasable artifacts updated?" question caught in the first place.
