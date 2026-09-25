@@ -13,15 +13,24 @@ name: Publish Image
 # tag-gated one.
 #
 # Runs on ubuntu-latest (GitHub-hosted), not the self-hosted
-# laster-console runner used by test.yml: that runner is Apple Silicon
-# (ARM64) only, and this image's real deployment target is linux/amd64
-# (Coolify/Contabo VPS - same target as casazium/license's own build,
-# see that repo's build-self-license-module.sh). Cross-building amd64
-# from an ARM64 Mac needs QEMU emulation; a native amd64 GitHub-hosted
-# runner is simpler, and since this only fires on a rare tag push
-# rather than every push to main, it doesn't reproduce the
-# Actions-minutes pressure that moved test.yml to self-hosted in the
-# first place.
+# laster-console runner used by test.yml - a rare tag-triggered job
+# doesn't reproduce the Actions-minutes pressure that moved test.yml
+# to self-hosted in the first place.
+#
+# Builds both linux/amd64 (the real deployment target - Coolify/Contabo
+# VPS, same as casazium/license's own build, see that repo's
+# build-self-license-module.sh) and linux/arm64 (Apple Silicon Macs
+# running this image locally via docker-compose.selfhosted.yml for
+# self-hosted evaluation/testing - confirmed a real need when the
+# operator hit "no matching manifest for linux/arm64/v8" pulling
+# :latest on an M-series Mac). ubuntu-latest is amd64-native, so the
+# arm64 leg builds under QEMU emulation (setup-qemu-action) - slower,
+# especially for better-sqlite3's native compile step, hence the
+# higher timeout below - but this only runs on a rare tag push, so the
+# extra minutes don't reproduce the Actions-minutes pressure that
+# moved test.yml to self-hosted. The Dockerfile already branches on
+# TARGETARCH correctly for both (see its litestream-fetch step), so no
+# Dockerfile change was needed here.
 #
 # Pushes to ghcr.io/casazium/license-console, which is private by
 # default - linked to this private repo via GITHUB_TOKEN, no visibility
@@ -38,7 +47,7 @@ on:
 jobs:
   publish-image:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     permissions:
       contents: read
       packages: write
@@ -56,6 +65,9 @@ jobs:
       - name: Set image tag from git tag
         run: echo "IMAGE_TAG=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -63,7 +75,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: |
             ghcr.io/casazium/license-console:${{ env.IMAGE_TAG }}
