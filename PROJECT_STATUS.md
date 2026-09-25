@@ -1,7 +1,14 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-25 (§136:
+Last updated: 2026-09-25 (§137:
+recorded the operator's decisions on §136's three open questions -
+build the Phase 1 self-host engineering but keep the product private
+for now (not a pricing call), with EULA scope and support boundary
+both explicitly deferred until before any external distribution. The
+compatibility mechanism itself still proceeds now regardless. See §137
+below.)
+2026-09-25 (§136:
 wrote `SELF_HOSTED_DISTRIBUTION_DESIGN.md`, scoping whether/how to
 distribute this console to third-party self-hosted License Server
 customers. Self-hosted (single-admin) mode turns out to already be
@@ -8444,3 +8451,37 @@ merged doc. Both merges verified as real ancestors of `origin/main`
 `merged: true` alone.
 
 No code changed in this repo by either PR - documentation only.
+
+## 137. Operator decisions recorded on the self-host design doc's open questions (2026-09-25, PR #37, `3d124a7`, merged `b2e6a21`)
+
+§136's design doc left three items explicitly flagged as "not this
+doc's call." Asked directly rather than assumed:
+
+- **Pricing/positioning - decided: build Phase 1, keep the product
+  private for now.** Not a free-vs-paid tier call - the operator
+  reframed it as a distribution-readiness one: proceed with the
+  engineering, but nothing gets publicly published, registered, or
+  announced until a further decision to distribute externally. Updated
+  `SELF_HOSTED_DISTRIBUTION_DESIGN.md` §4 accordingly - the Docker image
+  goes to a private/access-controlled registry (not public), the plain
+  `docker-compose.yml` is handed out directly to a pilot rather than
+  bundled into `casazium/license`'s public self-hosted zip, and the
+  public docs-site item is deferred with the rest of external
+  distribution.
+- **EULA scope and support boundary - both deferred** by explicit
+  operator instruction ("too early to decide"), until before any
+  external distribution. Both are moot while the product stays private
+  - there's no third party yet to license terms or a support policy
+  against - but stay flagged as blocking items for whenever that
+  changes, not silently dropped.
+- **The compatibility mechanism itself still proceeds now, unchanged**
+  (tagged releases, a real version-mismatch warning replacing the
+  cosmetic footer, changelog discipline) - it protects Casazium's own
+  private/pilot use of a second, independently-versioned artifact just
+  as much as it would a future external customer's, so there's no
+  reason to gate building it on the private-vs-public decision.
+
+Merge verified as a real ancestor of `origin/main`
+(`git merge-base --is-ancestor`), not taken on the GitHub API's
+`merged: true` alone - same discipline as §136's two PRs. No code
+changed - documentation only.
