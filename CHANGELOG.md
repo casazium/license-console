@@ -10,6 +10,25 @@ surface this console depends on (`casazium/license`) notes whether it
 needs a corresponding change there, and vice versa — see
 `SELF_HOSTED_DISTRIBUTION_DESIGN.md` §4 for why this discipline exists.
 
+## [1.3.0] - 2026-09-25
+
+### Added
+
+- **Version-compatibility check.** A new, non-blocking warning banner
+  in the authenticated app shell when the connected License Server
+  reports a version older than this release's documented minimum.
+  Does not affect standalone/demo mode or an unreachable backend -
+  only ever shows on a confirmed mismatch.
+
+### Compatibility
+
+- **Minimum compatible License Server version for this release:
+  `1.5.3`.** Hand-verified, not automatically derived (this app can't
+  read `casazium/license`'s own repository). If a change on either
+  side of this pairing ever needs the other to be updated, note it
+  here and in the corresponding entry of `casazium/license`'s own
+  `CHANGELOG.md`.
+
 ## [1.2.0] - 2026-09-25
 
 ### Added
