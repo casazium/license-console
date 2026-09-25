@@ -1,0 +1,30 @@
+# License Console - self-hosted quickstart.
+#
+# Pairs with a self-hosted License Server (see casazium/license's own
+# self-hosted quickstart, casazium-license-selfhosted.zip) to give it an
+# admin UI instead of the raw admin API. Kept private for now
+# (SELF_HOSTED_DISTRIBUTION_DESIGN.md §5) - not bundled into that public
+# zip, handed out directly. See README.md in this same handout for full
+# setup instructions, including how to authenticate to the private
+# ghcr.io/casazium/license-console image below (it isn't public - a
+# plain `docker compose pull` will fail with "unauthorized" until you've
+# `docker login ghcr.io` with a token granted read access to this
+# package).
+#
+# Binds to 127.0.0.1, not all interfaces - same reasoning as
+# casazium/license's own local docker-compose.yml: this file has no
+# reverse proxy in front of it, so publishing 3000 on all interfaces
+# would serve the admin console over plain HTTP to anyone who can reach
+# this host. Put a real reverse proxy (with TLS) in front of it for
+# anything beyond a local trial, and set PUBLIC_BASE_URL in .env to that
+# proxy's real URL, not to this loopback address.
+services:
+  console:
+    image: ghcr.io/casazium/license-console:latest
+    ports:
+      - '127.0.0.1:3000:3000'
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

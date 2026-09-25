@@ -23,6 +23,7 @@ yarn-error.log*
 # ever created one here out of habit from that repo's own naming.
 .env*
 !.env.example
+!.env.selfhosted.example
 
 # vercel
 .vercel
