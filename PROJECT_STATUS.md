@@ -1,7 +1,12 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-25 (§140:
+Last updated: 2026-09-25 (§141:
+added the self-hosted compose handout (docker-compose.selfhosted.yml +
+.env.selfhosted.example + README.selfhosted.md), mirroring
+casazium/license's own quickstart zip pattern - kept private, not
+bundled into that public zip. See §141 below.)
+2026-09-25 (§140:
 added a tag-triggered publish-image.yml workflow, pushing to the
 private ghcr.io/casazium/license-console on every v*.*.* tag. A full
 local docker build couldn't be verified in this sandbox (a TLS-
@@ -8624,3 +8629,36 @@ whatever tag gets cut next for Phase 1 - operator's own instruction
 was to let that be the test rather than cut a throwaway tag now.
 
 Merge verified as a real ancestor of `origin/main`.
+
+## 141. Self-hosted compose handout added (2026-09-25, PR #41, `18990c3`, merged `d3c813a`)
+
+Phase 1 item 2 from `SELF_HOSTED_DISTRIBUTION_DESIGN.md`. Three new
+files, mirroring `casazium/license`'s own self-hosted quickstart zip
+pattern exactly (plain compose file + trimmed `.env.*.example` +
+README, same three-file shape):
+
+- `docker-compose.selfhosted.yml` - pulls the private image §140
+  publishes, binds to `127.0.0.1` (no reverse proxy assumed), same
+  reasoning as `casazium/license`'s own local `docker-compose.yml`.
+- `.env.selfhosted.example` - a **curated subset** of the existing full
+  `.env.example`, self-hosted only: no `MULTI_TENANT` or anything it
+  gates (accounts, billing, per-tenant branding). A pilot customer
+  gets ~60 lines of what actually applies to them, not the full
+  ~300-line dev reference covering every mode.
+- `README.selfhosted.md` - prerequisites, private-registry login (the
+  one real difference from `casazium/license`'s own quickstart, whose
+  image is public), configure, pick standalone-or-connected mode,
+  start, verify.
+
+Kept as a private handout per §5's decision - not bundled into
+`casazium/casazium`'s public self-hosted zip.
+
+`.gitignore`'s blanket `.env*` pattern needed a negation added for the
+new example file (`!.env.selfhosted.example`), same as the existing
+`!.env.example` already has - caught immediately by `git status` still
+showing it untracked after `git add`.
+
+**Verified:** `docker compose -f docker-compose.selfhosted.yml config`
+resolves the file correctly against a real `.env` populated from the
+example (temporarily copied in for the check, removed after). Merge
+verified as a real ancestor of `origin/main`.
