@@ -1,0 +1,70 @@
+name: Publish Image
+
+# Tag-triggered only (v*.*.*), not on every push to main - unlike
+# casazium/license's own publish-image-amd64/arm64 jobs, which build on
+# every main push because that continuous image *is* the SaaS
+# deployment's own source. This console has no such continuous-deploy
+# dependency for this new, separate image (SELF_HOSTED_DISTRIBUTION_
+# DESIGN.md's Phase 1, item 1): making it tag-triggered from day one
+# means the image and the version number are always in lockstep by
+# construction, rather than reproducing the exact SaaS-vs-SEA
+# release-lag pattern casazium/license already hit for real
+# (PROJECT_STATUS.md §210) - a continuous artifact silently outpacing a
+# tag-gated one.
+#
+# Runs on ubuntu-latest (GitHub-hosted), not the self-hosted
+# laster-console runner used by test.yml: that runner is Apple Silicon
+# (ARM64) only, and this image's real deployment target is linux/amd64
+# (Coolify/Contabo VPS - same target as casazium/license's own build,
+# see that repo's build-self-license-module.sh). Cross-building amd64
+# from an ARM64 Mac needs QEMU emulation; a native amd64 GitHub-hosted
+# runner is simpler, and since this only fires on a rare tag push
+# rather than every push to main, it doesn't reproduce the
+# Actions-minutes pressure that moved test.yml to self-hosted in the
+# first place.
+#
+# Pushes to ghcr.io/casazium/license-console, which is private by
+# default - linked to this private repo via GITHUB_TOKEN, no visibility
+# change made here - satisfying Phase 1's "private/access-controlled
+# registry" without provisioning anything beyond what this token
+# already grants. A future pilot customer pulling this image will need
+# a GitHub PAT with read access granted on the package itself; not
+# needed until there's an actual pilot to grant it to.
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  publish-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set image tag from git tag
+        run: echo "IMAGE_TAG=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ghcr.io/casazium/license-console:${{ env.IMAGE_TAG }}
+            ghcr.io/casazium/license-console:latest
