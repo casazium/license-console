@@ -1,7 +1,14 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-25 (§146:
+Last updated: 2026-09-25 (§147:
+bumped to 1.3.2 (PR #48) to ship §145/§146's fixes - main had drifted
+7 commits past the v1.3.1 tag with a real, unreleased UI change
+(§146's copy button/back-links) sitting on it, since
+publish-image.yml only builds on a tag push. Caught when the operator
+asked directly whether all releasable artifacts were up to date.
+CHANGELOG.md gained a [1.3.2] entry. See §147 below.)
+2026-09-25 (§146:
 license detail page: added a copy button for the license key
 (PR #47) - CopyValueButton was already used on this page for
 product_uuid but not the key itself, the value actually pasted into
@@ -8938,3 +8945,29 @@ Verified: `npm run typecheck`, `npm run lint`, `npm test` (21 files /
 Turbopack warning about `instrumentation.ts`'s `process.exit()` under
 Edge Runtime - not touched by this change). Merge verified as a real
 ancestor of `origin/main`.
+
+## 147. Bumped to 1.3.2 to actually ship §145/§146 (2026-09-25, PR #48, `7ae2fda`→`d1b6fe5`)
+
+Caught only because the operator asked directly whether all
+releasable artifacts were up to date, rather than assuming a merge to
+`main` is a release. It wasn't: `publish-image.yml` only builds on a
+tag push (§143), so `main` had quietly drifted 7 commits past the
+`v1.3.1` tag (`34d0482`) with a real, shipped-nowhere UI change on it -
+§146's copy button and back-links. §145's `README.selfhosted.md`
+gotcha rode along too (docs, not app code, but no reason to split the
+release).
+
+Cross-checked `casazium/license` at the same time: **not** stale.
+Its SDK (`0.2.2`) and SEA binaries (`v1.5.4`) both point at the exact
+commit everything since has built on top of - §271's status update,
+PR #9's `DEPLOYMENT.md` fix, and §272 are all docs/status-only, no
+code either artifact would need to pick up. license-console's own gap
+is specific to this repo's tag-triggered release model plus a real
+code change landing between tags, not a pattern repeated on the other
+side.
+
+`package.json`/`package-lock.json` -> `1.3.2`, `CHANGELOG.md` gained a
+`[1.3.2]` entry covering both PRs. Verified: `npm run typecheck`,
+`npm run lint`, `npm test` (21 files / 173 tests). Merge verified as a
+real ancestor of `origin/main`. Tag not yet pushed - same permission
+block as every prior release in this repo.
