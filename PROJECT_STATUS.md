@@ -1,7 +1,16 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-25 (§141:
+Last updated: 2026-09-25 (§142:
+merged the version-compatibility check (Phase 1 item 4, PR #42),
+bumped to v1.3.0 and tagged it (PR #43), and confirmed publish-
+image.yml's first real run succeeded - digest
+sha256:17773f37cc043d57478f32157324e21666a44b30e1a4cb70170520d7947c812c
+pushed as both :1.3.0 and :latest, linux/amd64, private registry -
+clearing §140's stated verification gap for real. All five Phase 1
+items from SELF_HOSTED_DISTRIBUTION_DESIGN.md are now either merged or
+already an ongoing discipline. See §142 below.)
+2026-09-25 (§141:
 added the self-hosted compose handout (docker-compose.selfhosted.yml +
 .env.selfhosted.example + README.selfhosted.md), mirroring
 casazium/license's own quickstart zip pattern - kept private, not
@@ -8662,3 +8671,68 @@ showing it untracked after `git add`.
 resolves the file correctly against a real `.env` populated from the
 example (temporarily copied in for the check, removed after). Merge
 verified as a real ancestor of `origin/main`.
+
+## 142. Version-compatibility check merged, v1.3.0 tagged, publish-image.yml's first real run succeeded (2026-09-25, PR #42 `c92d05f`→`a0d083c`, PR #43 `3485965`→`a8f6698`)
+
+Phase 1 item 4 from `SELF_HOSTED_DISTRIBUTION_DESIGN.md`, then the
+release that put §140's workflow to its first real test.
+
+**PR #42** added `MIN_COMPATIBLE_SERVER_VERSION` (`'1.5.3'`, hand-
+verified, same "recorded in the constant itself" approach
+`check-release-cap-consistency.sh` already uses for a cross-repo value
+this app can't read) and `isServerVersionCompatible()` to `lib/
+version.ts` - simple major.minor.patch comparison, returns `null`
+(not `false`) on anything unparseable so a warning only ever fires on
+a *confirmed* mismatch. New `VersionCompatibilityBanner` component
+(plain, no `'use client'` - purely presentational, same pattern as
+`EnvironmentBanner`), wired into `app/(app)/layout.tsx` and
+`AppShellClient.tsx`, rendered only in the authenticated app shell,
+non-blocking - matches `casazium/license`'s own `check-sea-release-
+lag.sh` philosophy of warning rather than refusing to run. Unit tests
+added for both the comparison function and the banner. Verified live,
+not just via unit tests: ran a real `next dev` server against a
+throwaway fake License Server (plain Node `http` server), logged in
+over real HTTP with cookies, and confirmed the banner actually
+renders/disappears based on the fake server's reported version. Hit
+and fixed two unrelated environment snags during that manual pass - a
+stale `.env.local` forcing `MULTI_TENANT=true` regardless of shell
+overrides, and a stale orphaned `next dev` process from an earlier
+attempt silently holding the port (`EADDRINUSE` masked by curl still
+reaching the old process) - both cleaned up afterward; `.env.local`
+restored from backup, all scratch artifacts removed, `git status`
+clean, full `typecheck`/`lint`/`test` still green.
+
+**PR #43** bumped `package.json`/`package-lock.json` to `1.3.0` and
+added the `CHANGELOG.md` entry (Added: the version-compatibility
+check; Compatibility: minimum compatible License Server `1.5.3`,
+noting this file's own cross-repo-changelog discipline from §4 item 5).
+
+**Tags**, both hit the same tag-push permission block seen repeatedly
+on `casazium/license` (this session's credential can push ordinary
+commits/PRs but gets HTTP 403 on `git push origin <tag>`); the
+operator pushed both after I supplied the exact `git tag -a`/`git push`
+commands. Verified directly against origin rather than trusted:
+
+- `v1.2.0` → `292c2503aef9b253dfaffef185983ef22d03d6a3`
+- `v1.3.0` → `2346b994aa61c7f75c69a56fe813bc2e430fbf0c`
+
+**publish-image.yml's first real run** (triggered by the `v1.3.0`
+push) is the actual verification §140 could only defer to, since this
+sandbox can't complete a `docker build` of its own. Checked directly
+against the GitHub Actions API rather than assumed:
+
+- Workflow run `36144703192`, job `108102820582`: `completed` /
+  `success`, every step green.
+- "Build and push image" ran 2026-09-25T14:01:34Z–14:02:56Z (82s).
+- Build summary confirms `containerimage.digest:
+  sha256:17773f37cc043d57478f32157324e21666a44b30e1a4cb70170520d7947c812c`,
+  `image.name: ghcr.io/casazium/license-console:1.3.0,ghcr.io/
+  casazium/license-console:latest`, platform `linux/amd64` - both the
+  version tag and `latest` pushed in one run, exactly as designed.
+- Repo/package visibility confirmed private, satisfying Phase 1's
+  "private/access-controlled registry" decision with no extra
+  provisioning.
+
+This closes out Phase 1 item 4 and clears §140's stated verification
+gap with a real, successful run rather than a sandbox proxy. Merges
+verified as real ancestors of `origin/main`.
