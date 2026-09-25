@@ -1,7 +1,22 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-25 (§143:
+Last updated: 2026-09-25 (§144:
+cut v1.3.1 (PR #45, a version-only bump, no app behavior change) as the
+first tag built by §143's multi-arch publish-image.yml, and verified
+the result directly - not just a green checkmark. The build log shows
+21 separate [linux/arm64 runner N/21] steps (a real second build pass,
+not a duplicate of amd64), the Dockerfile's TARGETARCH branch correctly
+resolving litestream-0.5.17-linux-arm64.tar.gz with a passing checksum,
+independent buildx.build.provenance blocks for linux/amd64 and
+linux/arm64 each pulling their own node:22-alpine base image, and a
+final containerimage.descriptor of
+application/vnd.oci.image.index.v1+json (a real multi-platform manifest
+index) pushed as both :1.3.1 and :latest. Closes the gap §143 left
+open - an Apple Silicon Mac can now pull ghcr.io/casazium/license-
+console:latest natively, no DOCKER_DEFAULT_PLATFORM workaround needed.
+See §144 below.)
+2026-09-25 (§143:
 extended publish-image.yml to build both linux/amd64 and linux/arm64
 (docker/setup-qemu-action + a two-platform buildx target), after the
 operator hit "no matching manifest for linux/arm64/v8" pulling :latest
@@ -8782,3 +8797,62 @@ a manifest list with both `linux/amd64` and `linux/arm64` entries -
 not yet cut as of this entry.
 
 Merge verified as a real ancestor of `origin/main`.
+
+## 144. v1.3.1 tagged and verified as a real multi-arch build (2026-09-25, PR #45 `9757bbc`→`34d0482`, tag `v1.3.1`)
+
+The next-tag verification §143 deferred. PR #45 bumped
+`package.json`/`package-lock.json`/`CHANGELOG.md` to `1.3.1` with no
+application behavior change - its only purpose was to be the first tag
+built by §143's updated `publish-image.yml`. Merge verified as a real
+ancestor of `origin/main` before the tag was cut.
+
+**Tag**, hit the same tag-push permission block seen on every prior
+tag in this repo (this session's credential can push ordinary
+commits/PRs but gets HTTP 403 on `git push origin <tag>`); the
+operator pushed it after being given the exact `git tag -a`/`git push`
+commands. Verified directly against origin:
+
+- `v1.3.1` → `34d04826e5e2c1f1715df5bd1802b77e59ec21b5` (dereferenced
+  via `git ls-remote --tags -d` and `git rev-list -n 1`, matching PR
+  #45's actual merge commit exactly).
+
+**Workflow run** (`36157319412`, job `108144929396`) completed
+`success` in ~10 minutes (`Build and push image` ran 15:54:57-16:03:57
+- vs 82 seconds for the `amd64`-only `v1.3.0` build), consistent with
+QEMU emulation overhead for the `arm64` leg. Ran on GitHub-hosted
+`ubuntu-latest`, not the self-hosted `laster-console` Mac runner
+(confirmed from the job's own `runner_name`/`runner_group_name`
+fields) - `laster-console` is Apple Silicon only and couldn't natively
+build the `amd64` leg, and this workflow's rarity (tag-triggered only)
+doesn't reproduce the Actions-minutes pressure that moved the
+continuous `test.yml` job to self-hosted.
+
+**Verified the manifest itself, not just the checkmark** - pulled the
+actual job log content rather than trusting `conclusion: success`
+alone:
+
+- **21 separate `[linux/arm64 runner N/21]` build steps** ran (steps
+  #40-58) - a real, independent second build pass, not a duplicate or
+  skip of the `amd64` one.
+- The Dockerfile's existing `TARGETARCH` branch (§ Repository
+  Orientation/Dockerfile comment on the litestream fetch) resolved
+  correctly under `arm64`: `case "arm64" in ... arm64)
+  LITESTREAM_ARCH=arm64` and `litestream-0.5.17-linux-arm64.tar.gz: OK`
+  (checksum verified) - confirming no Dockerfile change really was
+  needed, as §143 assumed but couldn't verify in the sandbox.
+- Independent `buildx.build.provenance/linux/amd64` and
+  `buildx.build.provenance/linux/arm64` blocks, each with its own
+  `pkg:docker/node@22-alpine?platform=linux%2F<arch>` material entry -
+  two genuinely separate base-image pulls, not one build tagged twice.
+- Final `containerimage.descriptor.mediaType`:
+  `application/vnd.oci.image.index.v1+json` - a real OCI image index
+  (multi-platform manifest list), not a single-platform image -
+  pushed as `ghcr.io/casazium/license-console:1.3.1` and `:latest`
+  (`containerimage.digest: sha256:5dcdd98f29e7bfbe8958865948f105f9e24
+  fa6b84f80c735cf4da24446528fe6`).
+
+**Closes the gap §143 left open.** An Apple Silicon Mac running
+`docker compose -f docker-compose.selfhosted.yml up -d` against
+`:latest` (or `:1.3.1`) now pulls the native `linux/arm64` image
+automatically - the `DOCKER_DEFAULT_PLATFORM=linux/amd64` workaround
+is only needed against the older `v1.2.0`/`v1.3.0` tags now.
