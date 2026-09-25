@@ -74,7 +74,19 @@ added on top later, not the other way around:**
   resource fully independent from `casazium/license`'s own compose file.
 
 **Conclusion:** the engineering lift for "can this run self-hosted" is
-already paid for. What's missing is packaging for a party other than
+already paid for - and not just in theory. Casazium ran a real
+self-hosted-mode deployment of this exact codebase, `license.casazium.com`
+(`MULTI_TENANT` unset), live for roughly two months (at least
+2026-07 through its 2026-09-23 retirement) as its own first, original
+Console instance, before `license-cloud.casazium.com`'s SaaS deployment
+existed at all. `PROJECT_STATUS.md` §68 (2026-08-19) verified it as a
+genuinely separate, real deployment, not a demo: a live restore drill
+run directly from its own Coolify terminal, against its own real B2
+backup, `accounts: 0` (correctly self-hosted, no signup concept, per the
+code's own `MULTI_TENANT` fail-loud guard) - not a placeholder value,
+compared side by side in the same session against
+`license-cloud.casazium.com`'s own drill (`accounts: 2`, SaaS). What's
+missing for third-party distribution is packaging for a party other than
 Casazium itself to run it - see §4.
 
 ## 3. Finding: there is no version-compatibility mechanism between Console and Server, and this is a real gap
@@ -209,27 +221,33 @@ to distribute it externally.**
   much as a future external customer's - but the *policy* for what's
   supported when it's violated waits until there's someone outside
   Casazium actually running it.
-- **What `license.casazium.com` actually was - checked, not just
-  inferred, and the inference was wrong.** An earlier draft of this
-  section speculated it might have been a self-hosted-mode instance
-  Casazium ran for its own/demo use - real precedent either way. It
-  wasn't. `casazium/casazium`'s `PROJECT_STATUS.md` (2026-09-23 entry,
-  retirement of that host) states plainly that `license.casazium.com`
-  and `license-cloud.casazium.com` served byte-identical pages because
-  **one single Coolify deployment answered to both DNS names** - not
-  because two separate instances happened to look alike. Retiring
-  `license.casazium.com` removed a redundant DNS/Coolify alias pointing
-  at the same SaaS deployment; there was never a second, self-hosted-mode
-  instance behind it. That document even flags this exact
-  "these two hosts must be separate instances" inference as a *repeated*
-  mistake (made once before, 2026-09-06, corrected the same way). There
-  is no existing precedent, in this project's history, for a
-  self-hosted-mode Console deployment - this doc's §2 stands on the code
-  itself, not on any prior deployment of it.
-- **Support boundary.** Once this ships to parties Casazium doesn't
-  operate, what's actually supported when their License Server and
-  Console versions drift beyond the documented range - best-effort, or
-  unsupported until they update?
+- **What `license.casazium.com` actually was - resolved for real, after
+  two wrong answers in a row.** The first draft of this section
+  speculated it might have been a self-hosted-mode Casazium instance -
+  real precedent either way. A same-day revision (this doc's now-superseded
+  PR #36) "corrected" that to "it wasn't - one deployment answered both
+  DNS names," citing a 2026-09-23 entry in `casazium/casazium`'s own
+  `PROJECT_STATUS.md`. **That correction was itself wrong.** This repo's
+  own `PROJECT_STATUS.md` §68 (2026-08-19, over a month before that
+  retirement) records a real, live restore drill run directly against
+  each of two genuinely distinct Coolify resources' own real B2 backups -
+  `license.casazium.com` (`accounts: 0`, self-hosted) and
+  `license-cloud.casazium.com` (`accounts: 2`, SaaS) - and
+  `casazium/casazium`'s own `BETA_LAUNCH_STATUS.md` v1.29 (2026-09-06)
+  independently proved the same thing with ten interleaved HTTP requests
+  showing zero crossover between the hosts, then explicitly cautioned in
+  writing that matching byte sizes alone "stops meaning anything once
+  both resources deploy the same commit." The 2026-09-23 entry the PR #36
+  correction relied on drew exactly the conclusion that caveat warned
+  against - from the two hosts converging on identical byte counts, six
+  lines below in the same revision table. **Real precedent does exist:**
+  Casazium ran a genuine self-hosted-mode Console deployment, live, for
+  roughly two months, before `license-cloud.casazium.com` (SaaS) even
+  existed - see §2. The host is retired and can't be re-probed now to
+  settle it beyond documentary evidence, but that evidence is concrete
+  and internally consistent, unlike the claim it's being weighed against.
+  Flagged back to `casazium/casazium` separately, not left standing there
+  uncorrected.
 
 ## 6. Recommendation
 
@@ -238,8 +256,9 @@ decision - build the artifacts and the compatibility mechanism now,
 without publishing or announcing anything externally yet. The
 architecture risk that would
 have made this expensive doesn't exist - self-hosted mode is already
-built, already the app's original design point, and already cleanly
-separated from every SaaS-only concern. The real cost is the
+built, already the app's original design point, already cleanly
+separated from every SaaS-only concern, and was already operated live
+by Casazium itself for roughly two months (§2, §5). The real cost is the
 compatibility mechanism in §4.3-4.5, which is modest (tagged releases +
 a visible, non-blocking version-mismatch warning + a changelog
 discipline) precisely because License Server already solved the
