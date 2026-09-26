@@ -10,6 +10,16 @@ surface this console depends on (`casazium/license`) notes whether it
 needs a corresponding change there, and vice versa — see
 `SELF_HOSTED_DISTRIBUTION_DESIGN.md` §4 for why this discipline exists.
 
+## [1.3.3] - 2026-09-26
+
+### Fixed
+
+- **Issue-license success screen: copy button for the license key.**
+  Same gap as 1.3.2's license detail page fix, found on a different
+  screen: `product_uuid` on the "License issued" success panel already
+  had a copy button, but the key itself - the value actually needed
+  first after issuing a license - didn't.
+
 ## [1.3.2] - 2026-09-25
 
 ### Fixed
