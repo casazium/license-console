@@ -1,7 +1,13 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-25 (§148:
+Last updated: 2026-09-26 (§149:
+issue-license success screen: added a copy button for the license key
+(PR #49) - same class of gap as §146, just on a different screen.
+productUuid right below it already had a CopyValueButton; the key
+itself, the value someone actually needs first, didn't. Found by the
+operator during manual testing of the same flow. See §149 below.)
+2026-09-25 (§148:
 v1.3.2 tag pushed and its multi-arch build verified for real, same
 depth as §144: 19 separate [linux/arm64 runner N/21] steps, correct
 TARGETARCH litestream-arm64 fetch with a passing checksum, independent
@@ -9016,3 +9022,25 @@ success` alone:
 shipped in the image self-hosters and the operator's own Mac pull -
 not just sitting on `main`. This is the exact gap the operator's "are
 all releasable artifacts updated?" question caught in the first place.
+
+## 149. Issue-license success screen: copy button for the key (2026-09-26, PR #49, `202e842`→`714968c`)
+
+Same class of gap §146 fixed on the license detail page, found by the
+operator on a different screen: `IssueLicenseForm`'s "License issued"
+success panel shows `productUuid` with a `CopyValueButton` two lines
+down, but the key itself - right above it, the value actually needed
+first after issuing a license - had no copy affordance at all. The
+success toast (bottom right) is plain text, matching every other
+notification in this codebase, so it was never the intended place to
+copy from; the persistent panel below it is, and it was the one
+missing the button.
+
+Wrapped the `Key: ...` line in a `Group` and added
+`<CopyValueButton value={issuedLicense.key} />`, mirroring the exact
+pattern already used for `productUuid` two lines below and for the
+key on the license detail page (§146).
+
+Verified: `npm run typecheck`, `npm run lint`, `npm test` (21 files /
+173 tests). Merge verified as a real ancestor of `origin/main`. Not
+yet in a published image - same tag-triggered release model as
+§147/§148; needs a version bump and tag to actually ship.
