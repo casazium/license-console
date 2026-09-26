@@ -173,9 +173,12 @@ export function IssueLicenseForm({
           License issued
         </Title>
         <Stack maw={480}>
-          <Text size="sm">
-            Key: <Text component="span" fw={600}>{issuedLicense.key}</Text>
-          </Text>
+          <Group gap="xs">
+            <Text size="sm">
+              Key: <Text component="span" fw={600}>{issuedLicense.key}</Text>
+            </Text>
+            <CopyValueButton value={issuedLicense.key} />
+          </Group>
           {issuedLicense.productUuid && (
             <div>
               <Text size="sm" fw={600} mb={4}>
