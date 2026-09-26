@@ -1,7 +1,11 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-26 (§149:
+Last updated: 2026-09-26 (§150:
+bumped to 1.3.3 (PR #50) to ship §149's issue-license copy-key fix -
+package.json/package-lock.json -> 1.3.3, CHANGELOG.md gained a [1.3.3]
+entry. Tag not yet pushed. See §150 below.)
+2026-09-26 (§149:
 issue-license success screen: added a copy button for the license key
 (PR #49) - same class of gap as §146, just on a different screen.
 productUuid right below it already had a CopyValueButton; the key
@@ -9044,3 +9048,11 @@ Verified: `npm run typecheck`, `npm run lint`, `npm test` (21 files /
 173 tests). Merge verified as a real ancestor of `origin/main`. Not
 yet in a published image - same tag-triggered release model as
 §147/§148; needs a version bump and tag to actually ship.
+
+## 150. Bumped to 1.3.3 to ship §149 (2026-09-26, PR #50, `36ba6fc`→`dfbbffb`)
+
+`package.json`/`package-lock.json` -> `1.3.3`, `CHANGELOG.md` gained a
+`[1.3.3]` entry describing §149's copy-key fix. Verified: `npm run
+typecheck`, `npm run lint`, `npm test` (21 files / 173 tests). Merge
+verified as a real ancestor of `origin/main`. Tag not yet pushed - same
+permission block as every prior release in this repo.
