@@ -1,7 +1,15 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-26 (§150:
+Last updated: 2026-09-26 (§151:
+v1.3.3 tag pushed and its multi-arch build verified for real, same
+depth as §144/§148: 19 separate [linux/arm64 runner N/21] steps,
+correct TARGETARCH litestream-arm64 fetch with a passing checksum,
+independent buildx.build.provenance blocks per platform, and a final
+application/vnd.oci.image.index.v1+json manifest pushed as both
+:1.3.3 and :latest. §149's issue-license copy-key fix is now actually
+shipped in the image. See §151 below.)
+2026-09-26 (§150:
 bumped to 1.3.3 (PR #50) to ship §149's issue-license copy-key fix -
 package.json/package-lock.json -> 1.3.3, CHANGELOG.md gained a [1.3.3]
 entry. Tag not yet pushed. See §150 below.)
@@ -9056,3 +9064,35 @@ yet in a published image - same tag-triggered release model as
 typecheck`, `npm run lint`, `npm test` (21 files / 173 tests). Merge
 verified as a real ancestor of `origin/main`. Tag not yet pushed - same
 permission block as every prior release in this repo.
+
+## 151. v1.3.3 tag pushed and its multi-arch build verified for real (2026-09-26)
+
+Closes out §150. Tag pushed by the operator, verified directly against
+origin before checking the workflow:
+
+- `v1.3.3` -> `20632b81d4a1ab8551a05a30cf4b00512a54da8c`
+
+Dereferences to exactly the commit expected (§150's own status
+update, `main`'s HEAD at push time).
+
+**Verified the manifest itself, same depth as §144/§148** - pulled the
+actual job log content (workflow run `36271913832`, job
+`108487363125`, `Build and push image` ran 21:09:02-21:18:13, ~9.2
+min, consistent with QEMU emulation) rather than trusting `conclusion:
+success` alone:
+
+- **19 separate `[linux/arm64 runner N/21]` build steps** ran - a
+  real, independent second build pass, not a duplicate of `amd64`.
+- The Dockerfile's `TARGETARCH` branch resolved correctly under
+  `arm64` again: `litestream-0.5.17-linux-arm64.tar.gz: OK` (checksum
+  verified).
+- Independent `buildx.build.provenance/linux/amd64` and
+  `buildx.build.provenance/linux/arm64` blocks both present.
+- Final `containerimage.descriptor.mediaType`:
+  `application/vnd.oci.image.index.v1+json` - a real OCI image index -
+  pushed as `ghcr.io/casazium/license-console:1.3.3` and `:latest`
+  (`containerimage.digest:
+  sha256:3052808b0c1c603232fd31b33c408355820cf105dfde551d99541bcd42f9105d`).
+
+§149's issue-license success-screen copy-key fix is now actually
+shipped in the image, not just merged to `main`.
