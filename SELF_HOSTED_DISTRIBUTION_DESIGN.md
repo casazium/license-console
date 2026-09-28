@@ -207,20 +207,48 @@ to distribute it externally.**
   make once there's something real to point at (a private/pilot
   deployment working end to end), not before. §4's item 1 (registry)
   and item 6 (public docs) reflect this directly.
-- **EULA scope - still open, explicitly deferred until before any
-  external distribution** (operator's instruction: "too early to
-  decide"). Moot while the product stays private - nothing is being
-  distributed under any terms yet - but must be resolved before item 1
-  or item 6 in §4 could ever move from private to public. Still
-  flagged, unresolved, in `casazium/casazium`'s own `PROJECT_STATUS.md`.
-- **Support boundary - still open, same deferral** (operator's
-  instruction: "too early to decide"). Also moot while private: there's
-  no third party yet whose version drift needs a support policy. The
-  compatibility mechanism in §4.3-4.5 should still be built now
-  regardless - it protects Casazium's own private/pilot use just as
-  much as a future external customer's - but the *policy* for what's
-  supported when it's violated waits until there's someone outside
-  Casazium actually running it.
+- **EULA scope - resolved 2026-09-28.** Tier B (self-hosted
+  subscription, `casazium/license`) going live was the trigger this
+  deferral was waiting for. `casazium/license`'s `LICENSE` (commit
+  `9079588`) now extends "the Software" to cover License Console
+  wherever Casazium has separately made it available to a Licensee -
+  giving Console, for the first time, a license grant, anti-
+  redistribution/reverse-engineering/resale restrictions, a
+  confidentiality obligation, and a discontinuation guarantee, none of
+  which applied to it before. Two clarifying sentences (added to
+  Sections 4 and 8) keep the broadened definition from implying Console
+  calls Casazium's own Master Server, which it never does - it only
+  talks to the License Server instance it's configured to administer.
+  `casazium/license`'s `PROJECT_STATUS.md` §278 has the full change;
+  `casazium/casazium`'s docs mirror is back in sync per
+  `scripts/check-eula-drift.sh`.
+- **Support boundary - resolved 2026-09-28.** Approved and folded in
+  from `SELF_HOSTED_CONSOLE_SUPPORT_POLICY.md` (this repo), which
+  built directly on the compatibility mechanism in §4.3-4.5 rather than
+  inventing a new one:
+  - Casazium supports the current Console release and the one
+    immediately prior (bug reports investigated, security fixes
+    backported); older releases get no forced upgrade, but drop out of
+    that support commitment except for backported security fixes.
+  - Below `MIN_COMPATIBLE_SERVER_VERSION`: the fix is "upgrade the
+    License Server," not a Console patch. Outside the two-release
+    support window: the fix is "update Console first," then
+    investigate.
+  - Forward compatibility (newer License Server than Console expects)
+    is assumed, not guaranteed - caught by the existing `CHANGELOG.md`
+    discipline (§4 item 5) flagging any non-backward-compatible
+    admin-API change, not by a new mechanism.
+  - No uptime/response-time SLA, matching the EULA's existing Warranty
+    Disclaimer and Limitation of Liability. Discontinuation is handled
+    by the EULA amendment above, not by this policy.
+  - The Tier B bundle (`casazium/license/tier-b-bundle/`) is a special
+    case worth calling out here: it pins `LICENSE_TAG`/`CONSOLE_TAG`
+    together in one `.env` as a pre-verified pair, so a version
+    mismatch there means someone edited a tag independently of the
+    bundle's documented upgrade path, not the ordinary independently-
+    versioned condition the rest of this policy assumes.
+  Full policy text and reasoning:
+  `SELF_HOSTED_CONSOLE_SUPPORT_POLICY.md` (this repo, Status: Approved).
 - **What `license.casazium.com` actually was - resolved for real, after
   two wrong answers in a row.** The first draft of this section
   speculated it might have been a self-hosted-mode Casazium instance -

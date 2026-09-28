@@ -1,7 +1,16 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-28 (§154:
+Last updated: 2026-09-28 (§155:
+approved `SELF_HOSTED_CONSOLE_SUPPORT_POLICY.md` and folded it into
+`SELF_HOSTED_DISTRIBUTION_DESIGN.md` §5, replacing the "Support
+boundary - still open" bullet with a summary and pointer. Also updated
+§5's EULA-scope bullet from "still open" to "resolved 2026-09-28,"
+since `casazium/license`'s `LICENSE` (commit `9079588`) was approved
+and applied the same session, extending "the Software" to cover
+License Console. Both companion drafts from §154 are now Approved. See
+§155 below.)
+2026-09-28 (§154:
 drafted `SELF_HOSTED_CONSOLE_SUPPORT_POLICY.md`, resolving this repo's
 own `SELF_HOSTED_DISTRIBUTION_DESIGN.md` §5 "Support boundary - still
 open" item, prompted by `casazium/license` Tier B going from a
@@ -9246,3 +9255,34 @@ on operator review, same as the EULA amendment draft in
 `casazium/license`. Once approved, its substance folds into §5,
 replacing the open bullet with a pointer here, and this file's own
 `Status` line changes from Draft to Approved.
+
+## 155. Approved the support-boundary policy and folded it into `SELF_HOSTED_DISTRIBUTION_DESIGN.md` §5 (2026-09-28)
+
+Operator instruction: "approve the support policy too, fold it into
+the design doc." `SELF_HOSTED_CONSOLE_SUPPORT_POLICY.md`'s `Status`
+line changed from Draft to Approved.
+
+`SELF_HOSTED_DISTRIBUTION_DESIGN.md` §5's "Support boundary - still
+open, same deferral" bullet is replaced with a summary of the approved
+policy and a pointer to the full file: two-release support window
+(current plus one back, security fixes backported further); below
+`MIN_COMPATIBLE_SERVER_VERSION` the fix is "upgrade the server," not a
+Console patch; outside the support window the fix is "update Console
+first"; forward compatibility assumed but not guaranteed, caught by
+existing `CHANGELOG.md` discipline rather than a new mechanism; no
+uptime/response-time SLA; and the item #8 the operator's own earlier
+review surfaced - the Tier B bundle's pinned `LICENSE_TAG`/
+`CONSOLE_TAG` pair means a version mismatch there is a manually-edited
+tag, not the ordinary independently-versioned condition the rest of
+the policy assumes.
+
+Also updated §5's adjacent "EULA scope - still open" bullet to
+"resolved 2026-09-28," since it was the direct companion to this same
+deferral and went stale the moment `casazium/license`'s `LICENSE`
+(commit `9079588`) was approved and applied in this same session,
+extending "the Software" to cover License Console. Leaving one bullet
+updated and the other stale in the same numbered list would have
+misrepresented the design doc's own state.
+
+No code changes. Both files in this repo (`SELF_HOSTED_CONSOLE_SUPPORT_
+POLICY.md`, `SELF_HOSTED_DISTRIBUTION_DESIGN.md`) are ready to commit.

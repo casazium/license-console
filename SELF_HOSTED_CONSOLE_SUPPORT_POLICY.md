@@ -1,12 +1,12 @@
-# Self-hosted Console: support boundary policy (draft)
+# Self-hosted Console: support boundary policy
 
-Status: Draft — for operator review. Resolves the "Support boundary -
-still open, same deferral" item in `SELF_HOSTED_DISTRIBUTION_DESIGN.md`
-§5, which was explicitly left unresolved ("too early to decide") while
-the Console stayed private. It's being revisited now because
-`casazium/license` Tier B (self-hosted subscription) is a real, priced
-product this policy needs to cover before the Console can ship
-alongside it.
+Status: Approved — folded into `SELF_HOSTED_DISTRIBUTION_DESIGN.md` §5
+2026-09-28, replacing the "Support boundary - still open, same
+deferral" bullet. Resolves the item that was explicitly left
+unresolved ("too early to decide") while the Console stayed private.
+It was revisited because `casazium/license` Tier B (self-hosted
+subscription) is a real, priced product this policy needed to cover
+before the Console could ship alongside it.
 
 ## What already exists to build this on
 
@@ -128,10 +128,9 @@ that's ruled out.
   or something else). A separate, still-open decision; this policy
   applies however that's resolved.
 
-## Next step
+## Status
 
-Once approved, this stops being a standalone draft: fold its
-substance into `SELF_HOSTED_DISTRIBUTION_DESIGN.md` §5 (replacing the
-"still open" support-boundary bullet with a pointer here), and this
-file's own `Status` line changes from Draft to Approved, dated and
-attributed per this repo's `PROJECT_STATUS.md` convention.
+Approved by the operator 2026-09-28 and folded into
+`SELF_HOSTED_DISTRIBUTION_DESIGN.md` §5, replacing the "still open"
+support-boundary bullet with a summary and a pointer back to this file.
+See `PROJECT_STATUS.md` for the dated record.
