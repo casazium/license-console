@@ -98,6 +98,24 @@ Console, already handles what happens if Casazium ever stops offering
 either product. This policy only governs the ordinary, ongoing support
 relationship.
 
+**8. Bundle customers: a version mismatch is self-inflicted, not the
+default.** Items #1-#5 above were written for Console's standalone
+`docker-compose.selfhosted.yml`, where Console and License Server are
+deployed and versioned independently by design — a mismatch there is
+the normal condition the policy exists to handle. The Tier B bundle
+(`casazium/license/tier-b-bundle/`) is different: `LICENSE_TAG` and
+`CONSOLE_TAG` are pinned together in one shared `.env` as a
+pre-verified pair (see that bundle's `.env.example`, which records the
+`MIN_COMPATIBLE_SERVER_VERSION` check the pairing was verified
+against), and its README's only documented upgrade path is bumping
+both to a newer verified pair at once. So if a bundle customer hits the
+compatibility warning, the first diagnostic question is not "which
+compatibility window are you in" (#1) but "did you edit `LICENSE_TAG`
+or `CONSOLE_TAG` independently of the README's upgrade instructions" —
+that's the far more likely cause, and the fix is to restore the pinned
+pair rather than to walk through #3/#4. Items #1-#6 still apply once
+that's ruled out.
+
 ## What this deliberately doesn't cover
 
 - **Multi-user/multi-admin self-hosted mode.** Explicitly out of scope
