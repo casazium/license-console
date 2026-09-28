@@ -8,19 +8,23 @@ import { notifyRateLimited } from '@/lib/notify';
 import { createCheckoutSessionAction } from './actions';
 
 // Mirrors casazium/license's own src/lib/quota.js PLAN_LIMITS exactly -
-// the only two plans that exist anywhere in the system. Price is real
+// the only three plans that exist anywhere in the system. Price is real
 // (competitor-research-informed pricing decision); the free limit was
 // raised 5 -> 50 on the same basis (2026-09-28, quota.js's own comment
-// has the full rationale).
+// has the full rationale). Business added the same day (PROJECT_STATUS.md
+// §273's follow-up) - a step between Pro's 1,000-license ceiling and a
+// self-hosted/"contact us" conversation.
 const PLANS = [
   { id: 'free', label: 'Free', limitDescription: 'Up to 50 active licenses', priceLabel: '$0' },
   { id: 'pro', label: 'Pro', limitDescription: 'Up to 1,000 active licenses', priceLabel: '$39/mo or $374/yr' },
+  { id: 'business', label: 'Business', limitDescription: 'Up to 10,000 active licenses', priceLabel: '$79/mo or $758/yr' },
 ];
 
-// Only Pro has more than one Stripe Price (monthly/annual) - Free has no
-// Price at all (it's the absence of a paid subscription, not a $0
-// Price), so this control only matters when selecting Pro.
-// billing-checkout.js's own schema defaults to 'monthly' when omitted.
+// Every paid plan (everything except Free) has more than one Stripe Price
+// (monthly/annual) - Free has no Price at all (it's the absence of a paid
+// subscription, not a $0 Price), so this control only matters when
+// selecting a paid plan. billing-checkout.js's own schema defaults to
+// 'monthly' when omitted.
 const INTERVAL_OPTIONS = [
   { label: 'Monthly', value: 'monthly' },
   { label: 'Annual (save ~20%)', value: 'annual' },
@@ -39,7 +43,7 @@ export function PlanSelector({
   async function handleSelectPlan(plan: string) {
     setPendingPlan(plan);
     try {
-      const result = await createCheckoutSessionAction(plan, plan === 'pro' ? billingInterval : undefined);
+      const result = await createCheckoutSessionAction(plan, plan !== 'free' ? billingInterval : undefined);
       if (!result.ok) {
         notifyRateLimited();
         setPendingPlan(null);
@@ -73,7 +77,7 @@ export function PlanSelector({
         value={billingInterval}
         onChange={setBillingInterval}
         size="sm"
-        aria-label="Billing interval for the Pro plan"
+        aria-label="Billing interval for the selected paid plan"
       />
       {PLANS.map((plan) => {
         // A plan only counts as "current" (and its button disabled) while
