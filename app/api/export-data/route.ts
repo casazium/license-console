@@ -2,31 +2,25 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireSession } from '@/lib/session';
 import { getTenantApiKey, getTenantName, markIfTenantRejected } from '@/lib/tenant-context';
 import { getAccountEmail } from '@/lib/auth';
-import { listLicenses, listActivations, getBillingStatus } from '@/lib/license-client';
+import { listActivations, getBillingStatus } from '@/lib/license-client';
 import { isRateLimited } from '@/lib/errors';
 import { checkExportCooldown } from '@/lib/export-rate-limit';
 import { publicBaseUrl } from '@/lib/config';
-
-// Same ceiling as license-client.live.ts's own BROAD_FETCH_LIMIT - the
-// backend's own GET /list-licenses max `limit`. NOT actually bounded by
-// either plan's quota in practice (independent Opus security review,
-// 2026-08-22): casazium/license's quota check only counts active,
-// unexpired licenses, so a tenant can hold far more than their plan's
-// quota in already-expired rows, all still exported here. MAX_LICENSES
-// is a real ceiling on this route's own worst case, not a "this never
-// happens" comment - see mapWithConcurrency and the cooldown below for
-// the two mitigations that make hitting it safe rather than a DoS.
-const MAX_LICENSES = 1000;
+import { fetchAllLicenses, MAX_EXPORT_LICENSES } from '@/lib/export-licenses';
 
 // Independent Opus security review, 2026-08-22: the original version of
 // this route fanned out one GET /list-activations/:key call per license
-// via a single Promise.all - up to MAX_LICENSES (1000) concurrent
+// via a single Promise.all - up to MAX_EXPORT_LICENSES concurrent
 // outbound fetches from one inbound request, from a single-replica Next
 // process shared by every tenant (docker-compose-coolify.yml: no
 // replica count set). Bounding concurrency here caps how much of that a
 // single request can do at once; the per-account cooldown in
 // lib/export-rate-limit.ts caps how often a tenant can trigger it at
-// all - see that file's own header for the full reasoning.
+// all - see that file's own header for the full reasoning. Unchanged by
+// the pagination fix below: a bigger MAX_EXPORT_LICENSES means more
+// batches of 10, not wider fan-out per batch, so a large Business export
+// simply takes longer rather than hitting the same concurrency risk this
+// review found at a bigger scale.
 const ACTIVATIONS_CONCURRENCY = 10;
 
 async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
@@ -76,7 +70,9 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T)
  * Per-account cooldown (checkExportCooldown) and bounded activation-fetch
  * concurrency (mapWithConcurrency, above) added after an independent
  * Opus security review, 2026-08-22 - see both those symbols' own
- * comments and PROJECT_STATUS.md for the full finding.
+ * comments and PROJECT_STATUS.md for the full finding. License fetching
+ * itself is paginated (lib/export-licenses.ts's fetchAllLicenses) rather
+ * than a single capped call - see that file's own comments for why.
  *
  * Fresh sweep, 2026-08-22: that cooldown's own error responses were a
  * real regression, caught before it shipped anywhere else - the trigger
@@ -118,7 +114,7 @@ export async function GET(request: NextRequest) {
   let listResult, billing;
   try {
     [listResult, billing] = await Promise.all([
-      listLicenses({ limit: MAX_LICENSES, offset: 0 }, tenantApiKey),
+      fetchAllLicenses(tenantApiKey),
       getBillingStatus(tenantApiKey),
     ]);
   } catch (err) {
@@ -133,10 +129,13 @@ export async function GET(request: NextRequest) {
   // No silent truncation - if this ever fires for a real tenant, the
   // export still succeeds with what fit rather than erroring, but says
   // so loudly server-side rather than quietly shipping an incomplete
-  // "full" export.
+  // "full" export. Should be rare now that fetchAllLicenses paginates
+  // instead of making one capped-at-1000 call - this only fires for a
+  // tenant whose total rows (including historical expired/revoked ones)
+  // exceed MAX_EXPORT_LICENSES entirely.
   if (total > licenses.length) {
     console.warn(
-      `Data export for tenant ${identity.tenantId} truncated: ${total} licenses, only ${licenses.length} exported (MAX_LICENSES=${MAX_LICENSES}).`
+      `Data export for tenant ${identity.tenantId} truncated: ${total} licenses, only ${licenses.length} exported (MAX_EXPORT_LICENSES=${MAX_EXPORT_LICENSES}).`
     );
   }
 

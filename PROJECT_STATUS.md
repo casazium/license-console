@@ -1,7 +1,29 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-26 (§151:
+Last updated: 2026-09-28 (§153:
+fixed GET /api/export-data silently truncating a tenant's "export my
+data" download above 1,000 licenses - a real bug exposed by §152's
+Business tier (10,000-license ceiling), not a pre-existing one that
+happened to never fire while Pro's 1,000-license ceiling matched the
+route's own MAX_LICENSES=1000 single-call cap exactly. Extracted the
+fetch into lib/export-licenses.ts's fetchAllLicenses, which now loops
+GET /list-licenses across pages instead of trusting one capped call,
+with a new, much higher MAX_EXPORT_LICENSES=25000 ceiling (deliberately
+not tied to any one plan's quota - lib/export-rate-limit.ts's own header
+already documented why quota isn't a real ceiling on this route's actual
+worst case). New tests/lib/export-licenses.test.ts covers single-page,
+multi-page, exactly-10,000 (the real Business scenario), the new
+ceiling, and the defensive empty-page break. Full suite: 178/178
+passing. See §153 below.)
+2026-09-28 (§152:
+added the Hosted — Business plan to PlanSelector.tsx, mirroring
+casazium/license's new PLAN_LIMITS.business (10,000 licenses, $79/mo or
+$758/yr) per that file's own header comment. Two conditionals hardcoded
+to 'pro' as the only paid plan were generalized. See casazium/license's
+PROJECT_STATUS.md §274 for the full market-analysis-driven rationale.
+See §152 below.)
+2026-09-26 (§151:
 v1.3.3 tag pushed and its multi-arch build verified for real, same
 depth as §144/§148: 19 separate [linux/arm64 runner N/21] steps,
 correct TARGETARCH litestream-arm64 fetch with a passing checksum,
@@ -9096,3 +9118,77 @@ success` alone:
 
 §149's issue-license success-screen copy-key fix is now actually
 shipped in the image, not just merged to `main`.
+
+## 152. Added the Hosted — Business plan to PlanSelector (2026-09-28)
+
+`casazium/license` added a new paid tier (PLAN_LIMITS.business - 10,000
+licenses, $79/mo or $758/yr, PROJECT_STATUS.md §274 there), the second
+item from a strategic recommendation built on a market analysis of
+Keygen/Cryptlex/LicenseSpring - both reports committed to
+`casazium/casazium`'s own `reports/` directory. `PlanSelector.tsx` gained
+the matching `PLANS` entry per this file's own header comment ("Mirrors
+casazium/license's own src/lib/quota.js PLAN_LIMITS exactly").
+
+Two conditionals in `handleSelectPlan` and the billing-interval control's
+own aria-label were hardcoded to treat `'pro'` as the only paid plan -
+generalized to `plan !== 'free'`, since Business now needs the same
+monthly/annual interval selection Pro already had. Typecheck, lint, and
+this repo's own 173-test suite all clean - no test asserted the old
+two-plan copy directly.
+
+## 153. Fixed GET /api/export-data silently truncating above 1,000 licenses (2026-09-28)
+
+A direct consequence of §152's Business tier, not a pre-existing latent
+bug: `app/api/export-data/route.ts`'s "export my data" flow
+(Settings page) fetched licenses with a single `GET /list-licenses` call
+capped at `MAX_LICENSES = 1000`. That number was never really a
+deliberate ceiling on license count - it was the backend's own per-page
+`limit` maximum, reused as if it were a total. It happened to always be
+enough while Pro (1,000 active licenses) was the highest tier a tenant
+could hold, so this was invisible in practice. A Business tenant with
+more than 1,000 active licenses would get a normal 200 response and a
+valid-looking JSON download - just silently missing everything past the
+first 1,000. The only trace was a server-side `console.warn` the tenant
+themselves never sees.
+
+**Fix:** extracted the fetch logic into a new `lib/export-licenses.ts`
+(matching this repo's existing pattern of pulling route-adjacent logic
+into a testable `lib/` module, e.g. `lib/export-rate-limit.ts` for the
+same route's cooldown). `fetchAllLicenses` now loops `GET /list-licenses`
+across pages of 1,000 (the backend's real per-page ceiling,
+`list-licenses.js`'s own schema) accumulating results, instead of
+assuming one call is enough. Sequential, not concurrent - this backs a
+one-time, cooldown-gated snapshot export, not a latency-sensitive path,
+and avoids `list-licenses.js`'s own documented LIMIT/OFFSET caveat (rows
+can duplicate or skip across pages if the underlying data changes
+between calls) getting worse under concurrent requests for the same
+tenant.
+
+Raised the old `MAX_LICENSES=1000` to a new `MAX_EXPORT_LICENSES=25000`
+as the loop's stopping point - deliberately *not* set to exactly 10,000
+(Business's own ceiling), since `lib/export-rate-limit.ts`'s own header
+comment already documented why plan quotas aren't a real ceiling on this
+route's worst case: `casazium/license`'s quota check only counts active,
+unexpired licenses, so a tenant can accumulate far more total rows once
+expired/revoked licenses pile up over time, and every one of those rows
+is still exported here. 25,000 leaves real headroom for that case while
+still being a genuine, enforced ceiling, not an unbounded loop.
+
+Updated `lib/export-rate-limit.ts`'s own header comment too - it cited
+the specific "MAX_LICENSES=1000... 1000-row ceiling" numbers as part of
+its own reasoning for why the cooldown mechanism matters, which was now
+stale in the same way the route itself was.
+
+**Tests:** new `tests/lib/export-licenses.test.ts` (5 tests, mocking
+`@/lib/license-client`'s `listLicenses`), covering: a single-page tenant
+fetches in one call; a multi-page tenant (2,500 licenses - past the old
+1,000 cap, under Business's 10,000 ceiling) loops correctly with no
+duplicated/skipped rows across page boundaries; a tenant at exactly
+Business's 10,000-license ceiling fetches all of them (10 calls, not
+truncated at 1,000 - the actual regression this fix closes); the new
+`MAX_EXPORT_LICENSES` ceiling is a real, reachable stopping point for a
+tenant whose total exceeds even that; and a defensive break if a page
+ever comes back empty before the reported total is reached. Full suite:
+178/178 passing (173 existing + 5 new). Typecheck, lint, and `npm run
+build` all verified clean - `/api/export-data` still compiles as a
+dynamic route.

@@ -3,19 +3,23 @@
  * security review of that route, 2026-08-22 - see PROJECT_STATUS.md).
  *
  * The review found the route's N+1 activations fan-out has no real
- * ceiling: MAX_LICENSES=1000 assumes plan quotas keep license counts
- * low, but casazium/license's quota check only counts active,
- * unexpired licenses (quota.js's countActiveLicenses) - a tenant can
- * issue many already-expired licenses that cost nothing against quota
- * but are still exported, driving the fan-out toward its real 1000-row
- * ceiling. Bounding per-request concurrency (route.ts's own
- * mapWithConcurrency) stops a single request from opening up to 1000
- * sockets at once; this cooldown is the second half - it stops a tenant
- * from *repeatedly* triggering that fan-out and burning through
- * casazium/license's own ADMIN_RATE_LIMIT_MAX (300 requests / 15 min
- * per tenant, shared with every other admin action that tenant takes),
- * which the review showed a single ~100-license tenant could exhaust in
- * three clicks.
+ * ceiling: plan quotas don't keep license counts low the way they might
+ * look like they do, since casazium/license's quota check only counts
+ * active, unexpired licenses (quota.js's countActiveLicenses) - a tenant
+ * can issue many already-expired licenses that cost nothing against
+ * quota but are still exported, driving the fan-out toward the route's
+ * own real ceiling (lib/export-licenses.ts's MAX_EXPORT_LICENSES,
+ * originally 1000, raised to 25000 once the Business tier's 10,000-
+ * license plan made 1000 too low even for active licenses alone -
+ * PROJECT_STATUS.md's Business-tier entry). Bounding per-request
+ * concurrency (route.ts's own mapWithConcurrency) stops a single request
+ * from opening up that many sockets at once; this cooldown is the second
+ * half - it stops a tenant from *repeatedly* triggering that fan-out and
+ * burning through casazium/license's own ADMIN_RATE_LIMIT_MAX (300
+ * requests / 15 min per tenant, shared with every other admin action
+ * that tenant takes), which the review showed a single ~100-license
+ * tenant could exhaust in three clicks - fewer clicks still, now that
+ * the real ceiling is bigger.
  *
  * Same bounded in-memory Map shape as login-rate-limit.ts (this is a
  * single-replica deployment - see that file's own header for why an
