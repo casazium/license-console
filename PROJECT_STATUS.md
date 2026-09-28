@@ -1,7 +1,22 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-28 (§155:
+Last updated: 2026-09-28 (§156:
+recorded the registry-visibility gap the operator flagged in
+`casazium/license`'s Tier B bundle work: Console's GHCR package is
+still private (§4 item 1's original pilot-only decision), which means
+a real Stripe-purchased Tier B customer can't `docker compose pull` it
+without Casazium first handing them a personal access token.
+Cross-referenced `SELF_HOSTED_DISTRIBUTION_DESIGN.md` §5's new
+"Registry visibility" entry, which recommends making the package
+public to match `casazium/license`'s own already-public image - safe
+because the image is inert without a valid `ADMIN_API_KEY`, and the
+EULA's restrictions bind Licensee conduct regardless of registry
+visibility. Not yet applied: this needs an actual GitHub Settings
+change (Package Settings -> Change visibility) that only the org admin
+can make, not something either repo's files or CI can do. See §156
+below.)
+2026-09-28 (§155:
 approved `SELF_HOSTED_CONSOLE_SUPPORT_POLICY.md` and folded it into
 `SELF_HOSTED_DISTRIBUTION_DESIGN.md` §5, replacing the "Support
 boundary - still open" bullet with a summary and pointer. Also updated
@@ -9286,3 +9301,37 @@ misrepresented the design doc's own state.
 
 No code changes. Both files in this repo (`SELF_HOSTED_CONSOLE_SUPPORT_
 POLICY.md`, `SELF_HOSTED_DISTRIBUTION_DESIGN.md`) are ready to commit.
+
+## 156. Flagged the private-registry gap in Tier B bundle distribution (2026-09-28)
+
+The operator, reviewing `casazium/license`'s new Tier B bundle, asked
+"but the console has to be public for customers, no?" - correctly
+catching that the bundle's `README.md` required a customer to obtain a
+personal GitHub access token to pull the console image, because
+`casazium/license-console`'s GHCR package is still private under §4
+item 1's original 2026-09-25 decision ("private/access-controlled
+registry... for internal or pilot use"). That was the right call while
+Console was handed only to people Casazium already knew; it doesn't
+scale to a product sold through an actual Stripe checkout, where
+Casazium would otherwise have to mint and hand out a PAT per purchase.
+
+Verified directly against the GHCR API rather than assuming: anonymous
+pull of `ghcr.io/casazium/license:1.6.0`'s manifest returns `HTTP 200`
+(public, as expected); the same request against `ghcr.io/casazium/
+license-console:1.3.1` returns `403` (still private).
+
+**Recommendation, recorded in `SELF_HOSTED_DISTRIBUTION_DESIGN.md` §5:**
+make `ghcr.io/casazium/license-console` public, matching `license`'s
+own image. Safe because the image alone can't do anything without a
+valid `ADMIN_API_KEY` naming a real License Server to administer -
+publishing it doesn't hand out anything functional on its own - and the
+EULA's anti-redistribution/reverse-engineering/resale restrictions bind
+Licensee conduct regardless of how the image was obtained. Source code
+visibility is unaffected; this is only the built container image.
+
+**Not yet applied.** GHCR package visibility is a GitHub Settings
+action for whoever administers the `casazium` org - outside what either
+repository's files or CI can change. `casazium/license/tier-b-bundle/
+README.md` has already been rewritten for the target (public) state; a
+real customer's `docker compose pull` on the console image will fail
+`unauthorized` until the visibility is actually flipped.

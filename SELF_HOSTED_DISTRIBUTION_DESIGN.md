@@ -3,7 +3,7 @@
 Status: Draft - not reviewed, not approved, no implementation started.
 Written from research only (two independent Explore passes over this
 repo and `casazium/license`); no code changed.
-Last updated: 2026-09-25
+Last updated: 2026-09-28
 
 > Design record for whether and how to distribute License Console as a
 > third-party self-hosted artifact, alongside `casazium/license`'s
@@ -154,7 +154,9 @@ to distribute it externally.**
 1. Build and publish the image to a private/access-controlled
    registry - the same build as today's, just made consumable outside
    Casazium's own Coolify resource for internal or pilot use. Moving to
-   a public registry is a separate, later decision (§5).
+   a public registry is a separate, later decision (§5). **Update
+   2026-09-28: that later decision has arrived - see §5's "Registry
+   visibility" item.**
 2. Write a plain, non-Coolify `docker-compose.yml` + `.env.example`,
    following the exact pattern `casazium/license`'s own self-hosted
    quickstart zip already establishes - kept out of that public zip for
@@ -206,7 +208,33 @@ to distribute it externally.**
   becomes a public, priced, or free offering is a separate decision to
   make once there's something real to point at (a private/pilot
   deployment working end to end), not before. §4's item 1 (registry)
-  and item 6 (public docs) reflect this directly.
+  and item 6 (public docs) reflect this directly. **Registry visibility
+  specifically has since moved - see below.**
+- **Registry visibility - recommendation made 2026-09-28, GitHub
+  package-visibility change itself still pending.** The operator asked
+  directly whether Console has to be public for Tier B customers, since
+  `casazium/license`'s new `tier-b-bundle/` (that repo, §277-278)
+  assumes a customer can `docker compose pull` both images without
+  Casazium first having to mint and hand them a personal access token
+  per purchase - the private-registry approach in item 1 above was
+  reasonable for a pilot handed to people Casazium already knew, not
+  for an actual Stripe-purchased product.
+  **Recommendation: make `ghcr.io/casazium/license-console` public**,
+  matching `ghcr.io/casazium/license`, which already is - the image
+  alone is inert without a valid `ADMIN_API_KEY` for a real License
+  Server to administer, so publishing the image doesn't hand out
+  anything that works on its own, and the EULA's anti-redistribution/
+  reverse-engineering/resale restrictions (above) bind Licensee conduct
+  regardless of how the image was obtained. Source code visibility is
+  unaffected either way. Full reasoning:
+  `casazium/license/TIER_B_BUNDLE_DESIGN.md`'s "Registry visibility"
+  section. **Not yet applied** - changing GHCR package visibility is a
+  GitHub Settings action for whoever administers the `casazium` org,
+  not something either repository's files or CI can do. The bundle's
+  own `README.md` has already been written for the target (public)
+  state; until the visibility is actually flipped, a customer's
+  `docker compose pull` on the console image will fail with
+  `unauthorized`.
 - **EULA scope - resolved 2026-09-28.** Tier B (self-hosted
   subscription, `casazium/license`) going live was the trigger this
   deferral was waiting for. `casazium/license`'s `LICENSE` (commit
