@@ -10,6 +10,28 @@ surface this console depends on (`casazium/license`) notes whether it
 needs a corresponding change there, and vice versa — see
 `SELF_HOSTED_DISTRIBUTION_DESIGN.md` §4 for why this discipline exists.
 
+## [1.3.5] - 2026-09-28
+
+### Fixed
+
+- **Portal links now use the License Server's public address.**
+  `buildPortalLink()` derived the customer-facing portal link from
+  `LICENSE_API_URL`, which is only right when that URL is publicly
+  reachable. In `casazium/license`'s self-hosted bundle it's the compose
+  network's internal `http://license:3001/v1`, so every portal link the
+  console showed after issuing a license pointed at a host customers
+  can't resolve. A new optional `LICENSE_PUBLIC_URL` (the server's public
+  origin) now takes precedence when set; unset, behavior is unchanged.
+  Admin API surface: no change needed in `casazium/license`. The bundle
+  sets `LICENSE_PUBLIC_URL` itself and pins `CONSOLE_TAG` to this
+  release.
+
+## [1.3.4] - 2026-09-28
+
+No changes from 1.3.3. The `v1.3.4` tag was pushed before the fix now
+in 1.3.5 had been committed, so its published image contains the same
+code as 1.3.3. Use 1.3.5.
+
 ## [1.3.3] - 2026-09-26
 
 ### Fixed
