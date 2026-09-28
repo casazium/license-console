@@ -1,7 +1,16 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-28 (§156:
+Last updated: 2026-09-28 (§157:
+closed §156: the GHCR registry-visibility gap. Operator changed
+`ghcr.io/casazium/license-console`'s package visibility to public via
+GitHub Settings and confirmed it with a real, unauthenticated `docker
+pull ghcr.io/casazium/license-console:1.3.1` from their own machine -
+succeeded. Updated `SELF_HOSTED_DISTRIBUTION_DESIGN.md` §5's Registry
+visibility item from "recommendation made, pending" to "resolved."
+Full verification record in `casazium/license`'s `PROJECT_STATUS.md`
+§279-280. See §157 below.)
+2026-09-28 (§156:
 recorded the registry-visibility gap the operator flagged in
 `casazium/license`'s Tier B bundle work: Console's GHCR package is
 still private (§4 item 1's original pilot-only decision), which means
@@ -9335,3 +9344,27 @@ repository's files or CI can change. `casazium/license/tier-b-bundle/
 README.md` has already been rewritten for the target (public) state; a
 real customer's `docker compose pull` on the console image will fail
 `unauthorized` until the visibility is actually flipped.
+
+## 157. Confirmed `ghcr.io/casazium/license-console` is now public, closing §156 (2026-09-28)
+
+The operator changed the package's visibility via GitHub Settings and
+reported it done. Confirmed with a real client rather than taking the
+settings page alone as proof: the operator ran `docker pull
+ghcr.io/casazium/license-console:1.3.1` from their own machine, no
+`docker login` first - succeeded.
+
+Note for the record: `casazium/license`'s own session, checking the
+same thing from its sandbox via the GHCR token endpoint directly, got
+an inconsistent `UNAUTHORIZED` both before and after the operator's
+confirmed-successful pull, while the same check against the known-
+public `casazium/license` image worked every time. Logged there
+(`casazium/license/PROJECT_STATUS.md` §280) as most likely an artifact
+of that sandbox's own network path to `ghcr.io`, not a real access
+problem - the operator's actual `docker pull` is the trustworthy
+signal, and it already confirmed success by the time of that second
+sandbox check.
+
+Updated `SELF_HOSTED_DISTRIBUTION_DESIGN.md` §5's Registry visibility
+item to "resolved." Combined with §278's EULA-scope resolution and
+§155's support-boundary approval, all three items this Tier B thread
+surfaced in that design doc's §5 are now closed.

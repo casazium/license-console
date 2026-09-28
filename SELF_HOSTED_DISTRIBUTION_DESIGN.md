@@ -210,31 +210,29 @@ to distribute it externally.**
   deployment working end to end), not before. §4's item 1 (registry)
   and item 6 (public docs) reflect this directly. **Registry visibility
   specifically has since moved - see below.**
-- **Registry visibility - recommendation made 2026-09-28, GitHub
-  package-visibility change itself still pending.** The operator asked
+- **Registry visibility - resolved 2026-09-28.** The operator asked
   directly whether Console has to be public for Tier B customers, since
   `casazium/license`'s new `tier-b-bundle/` (that repo, §277-278)
   assumes a customer can `docker compose pull` both images without
   Casazium first having to mint and hand them a personal access token
   per purchase - the private-registry approach in item 1 above was
   reasonable for a pilot handed to people Casazium already knew, not
-  for an actual Stripe-purchased product.
-  **Recommendation: make `ghcr.io/casazium/license-console` public**,
-  matching `ghcr.io/casazium/license`, which already is - the image
-  alone is inert without a valid `ADMIN_API_KEY` for a real License
-  Server to administer, so publishing the image doesn't hand out
-  anything that works on its own, and the EULA's anti-redistribution/
-  reverse-engineering/resale restrictions (above) bind Licensee conduct
+  for an actual Stripe-purchased product. Recommendation: make
+  `ghcr.io/casazium/license-console` public, matching `ghcr.io/
+  casazium/license`, which already is - the image alone is inert
+  without a valid `ADMIN_API_KEY` for a real License Server to
+  administer, so publishing the image doesn't hand out anything that
+  works on its own, and the EULA's anti-redistribution/reverse-
+  engineering/resale restrictions (above) bind Licensee conduct
   regardless of how the image was obtained. Source code visibility is
-  unaffected either way. Full reasoning:
-  `casazium/license/TIER_B_BUNDLE_DESIGN.md`'s "Registry visibility"
-  section. **Not yet applied** - changing GHCR package visibility is a
-  GitHub Settings action for whoever administers the `casazium` org,
-  not something either repository's files or CI can do. The bundle's
-  own `README.md` has already been written for the target (public)
-  state; until the visibility is actually flipped, a customer's
-  `docker compose pull` on the console image will fail with
-  `unauthorized`.
+  unaffected either way.
+  **Applied and verified.** The operator changed the package's
+  visibility via GitHub Settings and confirmed it with a real,
+  unauthenticated `docker pull ghcr.io/casazium/license-console:1.3.1`
+  from their own machine - succeeded. Full reasoning and the
+  verification record: `casazium/license/TIER_B_BUNDLE_DESIGN.md`'s
+  "Registry visibility" section and that repo's `PROJECT_STATUS.md`
+  §279-280.
 - **EULA scope - resolved 2026-09-28.** Tier B (self-hosted
   subscription, `casazium/license`) going live was the trigger this
   deferral was waiting for. `casazium/license`'s `LICENSE` (commit
