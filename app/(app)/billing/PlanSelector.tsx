@@ -9,10 +9,11 @@ import { createCheckoutSessionAction } from './actions';
 
 // Mirrors casazium/license's own src/lib/quota.js PLAN_LIMITS exactly -
 // the only two plans that exist anywhere in the system. Price is real
-// (competitor-research-informed pricing decision), the license limits
-// are unchanged from the stub-era placeholder.
+// (competitor-research-informed pricing decision); the free limit was
+// raised 5 -> 50 on the same basis (2026-09-28, quota.js's own comment
+// has the full rationale).
 const PLANS = [
-  { id: 'free', label: 'Free', limitDescription: 'Up to 5 active licenses', priceLabel: '$0' },
+  { id: 'free', label: 'Free', limitDescription: 'Up to 50 active licenses', priceLabel: '$0' },
   { id: 'pro', label: 'Pro', limitDescription: 'Up to 1,000 active licenses', priceLabel: '$39/mo or $374/yr' },
 ];
 
