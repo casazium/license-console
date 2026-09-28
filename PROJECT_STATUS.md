@@ -1,7 +1,19 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-28 (§157:
+Last updated: 2026-09-28 (§158:
+released 1.3.5: portal links now use a new optional
+`LICENSE_PUBLIC_URL` instead of `LICENSE_API_URL`, which in
+`casazium/license`'s self-hosted bundle is the internal
+`http://license:3001/v1` - every portal link the console showed there
+pointed at an unresolvable host. 1.3.4 was tagged and published before
+the fix was committed (its image matches 1.3.3); caught by checking the
+published image before bumping the bundle, recorded in CHANGELOG as a
+no-change release rather than moving a published tag. Also corrected
+`DEPLOYMENT.md`'s claim that self-hosted mode never creates
+`console.db` - it does, every boot - which the bundle's new persistent
+`console-data` volume relies on. PR #51, tag `v1.3.5`. See §158 below.)
+2026-09-28 (§157:
 closed §156: the GHCR registry-visibility gap. Operator changed
 `ghcr.io/casazium/license-console`'s package visibility to public via
 GitHub Settings and confirmed it with a real, unauthenticated `docker
@@ -9368,3 +9380,61 @@ Updated `SELF_HOSTED_DISTRIBUTION_DESIGN.md` §5's Registry visibility
 item to "resolved." Combined with §278's EULA-scope resolution and
 §155's support-boundary approval, all three items this Tier B thread
 surfaced in that design doc's §5 are now closed.
+
+## 158. Released 1.3.5: portal links from `LICENSE_PUBLIC_URL`; 1.3.4 shipped without its fix (2026-09-28, PR #51, tag `v1.3.5`)
+
+Found while running `casazium/license`'s self-hosted bundle end to end
+(that repo's `PROJECT_STATUS.md` §282 has the full bundle story). With
+the bundle's own env problems fixed, a license issued from this console
+still showed a portal link of `http://license:3001/portal/<token>`:
+`buildPortalLink()` (`lib/license-client.ts`) derived the link from
+`LICENSE_API_URL`, and the bundle sets that to the compose network's
+internal service name, since that's how the two containers reach each
+other. Correct for talking to the server, wrong for a link handed to a
+customer.
+
+**Fix:** a new optional `LICENSE_PUBLIC_URL` (the server's public
+origin) takes precedence in `buildPortalLink()` when set; unset,
+behavior is unchanged, so existing deployments whose `LICENSE_API_URL`
+is already public need nothing. Standalone mode still returns `null`
+even if `LICENSE_PUBLIC_URL` is set. Documented in `.env.example` and
+`.env.selfhosted.example`. New `tests/lib/build-portal-link.test.ts`
+(6 cases); full suite 184/184, `tsc` and `eslint` clean. No admin API
+change in `casazium/license`. Built into a local image first and run in
+the bundle: the link came out as `http://127.0.0.1:3001/portal/<token>`
+and, with that server's `PORTAL_ENABLED=true`, opened the real portal.
+
+**Also corrected `DEPLOYMENT.md`** (step 4 and the Litestream section):
+it said a self-hosted deployment "never actually creates the DB file."
+`instrumentation.ts` calls `getDb()` eagerly, so `data/console.db` exists
+from first boot - observed directly in the bundle. It stays empty of
+accounts in self-hosted mode, but `lib/db.ts`'s boot-time guard (refuse
+to start self-hosted against a DB holding SaaS accounts) only works if
+the file persists. The operator asked for the bundle's console DB to be
+persistent; the bundle now has a `console-data` volume.
+
+**1.3.4 contains no changes.** The operator tagged `v1.3.4` and the
+publish workflow ran before the fix, version bump and changelog had
+been committed (all still uncommitted in the local checkout), so the
+tag landed on `2738262` - the same code as 1.3.3, `package.json` still
+reading 1.3.3. Caught before bumping the bundle to it, by checking the
+published image directly (no `LICENSE_PUBLIC_URL` anywhere in its
+`.next/server` output), not by trusting the tag. Operator chose to
+release 1.3.5 rather than delete and re-push `v1.3.4`, since a published
+version whose contents change later is a trap for anyone who pulled it.
+CHANGELOG records `[1.3.4]` as a no-change release pointing at 1.3.5.
+
+**Release:** fix and bump on `release/v1.3.5` (`d4f4ef3`, `9ed028f`),
+PR #51 merged by the operator (`f17b476`), `main` confirmed to contain
+the fix and version 1.3.5 *before* tagging this time, then `v1.3.5`
+tagged and pushed. Publish Image run `36471828692` succeeded; pulled
+`ghcr.io/casazium/license-console:1.3.5` and confirmed it reports 1.3.5
+and contains the change. `casazium/license`'s bundle now pins
+`CONSOLE_TAG=1.3.5` (`dba9824`; `MIN_COMPATIBLE_SERVER_VERSION` 1.5.3 <=
+bundled 1.6.0, unchanged) and was verified end to end against the
+published images.
+
+**Lesson for the release procedure:** check `git status` is clean and
+`main` carries the version bump before pushing a tag - the tag is the
+publish trigger, so anything uncommitted at that moment silently isn't
+in the image.
