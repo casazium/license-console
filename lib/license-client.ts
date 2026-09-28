@@ -108,10 +108,18 @@ export function getBackendMode(): BackendMode {
  * apiBaseUrl (Settings page) leaves it for API-call display purposes.
  * Returns null in mock/standalone mode (no real backend to link to) so
  * callers can show a fallback rather than a broken link.
+ *
+ * LICENSE_PUBLIC_URL, when set, wins over LICENSE_API_URL: the two differ
+ * whenever this console reaches the license server over a private
+ * address customers can't open - casazium/license's self-hosted bundle
+ * sets LICENSE_API_URL=http://license:3001/v1 (the compose network's
+ * internal service name), which made every portal link it handed out
+ * point at an unresolvable host. Unset, LICENSE_API_URL is assumed to be
+ * publicly reachable itself, unchanged from before.
  */
 export function buildPortalLink(token: string): string | null {
-  const url = process.env.LICENSE_API_URL?.trim();
-  if (!url) return null;
+  if (!process.env.LICENSE_API_URL?.trim()) return null;
+  const url = process.env.LICENSE_PUBLIC_URL?.trim() || process.env.LICENSE_API_URL.trim();
   const origin = url.replace(/\/+$/, '').replace(/\/v1$/, '');
   return `${origin}/portal/${encodeURIComponent(token)}`;
 }
