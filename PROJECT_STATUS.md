@@ -1,7 +1,20 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-28 (§153:
+Last updated: 2026-09-28 (§154:
+drafted `SELF_HOSTED_CONSOLE_SUPPORT_POLICY.md`, resolving this repo's
+own `SELF_HOSTED_DISTRIBUTION_DESIGN.md` §5 "Support boundary - still
+open" item, prompted by `casazium/license` Tier B going from a
+hypothetical line item to a real priced product - the trigger that
+deferral named. Built directly on the existing `MIN_COMPATIBLE_SERVER_
+VERSION`/non-blocking-warning mechanism rather than inventing a new
+one: support covers the current Console release plus one back, older
+releases get "update first" as the standard response, security fixes
+get backported further. Companion to `casazium/license`'s new
+`tier-b-bundle/` (that repo's PROJECT_STATUS.md §277) and
+`EULA_CONSOLE_AMENDMENT_DRAFT.md` there. Draft only - not yet applied
+to `SELF_HOSTED_DISTRIBUTION_DESIGN.md` or committed. See §154 below.)
+2026-09-28 (§153:
 fixed GET /api/export-data silently truncating a tenant's "export my
 data" download above 1,000 licenses - a real bug exposed by §152's
 Business tier (10,000-license ceiling), not a pre-existing one that
@@ -9192,3 +9205,44 @@ ever comes back empty before the reported total is reached. Full suite:
 178/178 passing (173 existing + 5 new). Typecheck, lint, and `npm run
 build` all verified clean - `/api/export-data` still compiles as a
 dynamic route.
+
+## 154. Drafted the self-hosted Console support-boundary policy (2026-09-28)
+
+The operator asked directly whether a self-hosted Tier B subscription
+(`casazium/license`) should come with this console, since today it's
+private and unbundled. Working through it surfaced that the real
+answer was already half-written: `SELF_HOSTED_DISTRIBUTION_DESIGN.md`
+§5 recorded two items as "still open, explicitly deferred until before
+any external distribution" back on 2026-09-25 - EULA scope and support
+boundary, both "too early to decide" at the time, because there was no
+priced Tier B product yet for the deferral to attach to. There is now.
+
+**Support boundary is a support-policy question, not a EULA question**
+(the EULA amendment is `casazium/license`'s own
+`EULA_CONSOLE_AMENDMENT_DRAFT.md`, drafted the same conversation) - what
+Casazium actually commits to when a customer's Console and Server
+versions drift, on top of the compatibility mechanism Phase 1 already
+built (`lib/version.ts`'s `MIN_COMPATIBLE_SERVER_VERSION`, a visible
+non-blocking warning on mismatch, never a hard failure).
+
+**The policy, in `SELF_HOSTED_CONSOLE_SUPPORT_POLICY.md`:** support
+covers the current Console release plus one back (deliberately narrow
+for a one-person operation, but normally months given this repo's own
+release cadence); no forced upgrades, ever (matches the existing "no
+hard version-enforcement gate" decision); below
+`MIN_COMPATIBLE_SERVER_VERSION` the fix is "upgrade the server," not a
+Console patch; outside the two-release support window the fix is
+"update the console first," except for genuinely serious security
+issues, which get backported further; forward compatibility with a
+newer License Server is assumed but not guaranteed, and the existing
+`CHANGELOG.md` cross-repo-breaking-change discipline (Phase 1 item 5)
+is what's supposed to catch the exception; no uptime/response-time SLA,
+matching the EULA's own Warranty Disclaimer and Limitation of
+Liability for License Server itself.
+
+**Draft only.** Not yet applied to `SELF_HOSTED_DISTRIBUTION_DESIGN.md`
+§5 (which still shows the item as open) and not yet committed - waiting
+on operator review, same as the EULA amendment draft in
+`casazium/license`. Once approved, its substance folds into §5,
+replacing the open bullet with a pointer here, and this file's own
+`Status` line changes from Draft to Approved.
