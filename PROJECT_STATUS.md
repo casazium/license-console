@@ -1,7 +1,13 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-09-28 (§158:
+Last updated: 2026-10-05 (§159:
+released 1.3.6: `LICENSE_ADMIN_API_KEY_FILE` reads the admin key from a
+file (Docker-secrets convention), loaded in `instrumentation.ts` before
+any request; a direct value wins, a missing/empty file stops boot. Lets
+casazium/license's bundle share one generated key without overriding this
+image's start command. PR #52, tag `v1.3.6`. See §159 below.)
+2026-09-28 (§158:
 released 1.3.5: portal links now use a new optional
 `LICENSE_PUBLIC_URL` instead of `LICENSE_API_URL`, which in
 `casazium/license`'s self-hosted bundle is the internal
@@ -9438,3 +9444,30 @@ published images.
 `main` carries the version bump before pushing a tag - the tag is the
 publish trigger, so anything uncommitted at that moment silently isn't
 in the image.
+
+## 159. Released 1.3.6: admin key from `LICENSE_ADMIN_API_KEY_FILE` (2026-10-05, PR #52, tag `v1.3.6`)
+
+casazium/license's self-hosted bundle generates one admin key into a
+shared volume. This console could only take `LICENSE_ADMIN_API_KEY` from
+the environment, so the bundle replaced this image's start command with
+a shell wrapper that exported it and ran `sh scripts/start.sh` - an
+internal detail it had to recheck on every version bump.
+
+**Change:** new `lib/secret-files.ts` (`applySecretFiles()`), called once
+from `instrumentation.ts`'s `register()` before the existing `getDb()`
+call, inside the same fatal-startup `try`. Same rules as casazium/license
+1.6.2's `<NAME>_FILE` support: a direct value wins (and an empty one
+doesn't block the file); a missing or empty file throws, so the server
+exits at boot instead of 403ing on every request; only trailing line
+endings are stripped. Every reader of the key reads `process.env` at
+request time, and `proxy.ts` (Edge) never reads it, so loading it in the
+Node.js runtime only is enough. Documented in both env templates.
+8 new tests (192 total); `tsc`, `eslint` and Prettier clean.
+
+**Release:** `main` confirmed clean with the change and 1.3.6 bump before
+tagging (`v1.3.6`, annotated). The published image was checked
+behaviorally - grepping the build for the variable name finds nothing,
+since it's assembled at runtime - and exits at boot on a missing key
+file. casazium/license's bundle (§286 there) now pins 1.3.6 and sets
+`LICENSE_ADMIN_API_KEY_FILE`; verified end to end on the published images.
+
