@@ -10,6 +10,20 @@ surface this console depends on (`casazium/license`) notes whether it
 needs a corresponding change there, and vice versa — see
 `SELF_HOSTED_DISTRIBUTION_DESIGN.md` §4 for why this discipline exists.
 
+## [1.3.6] - 2026-10-05
+
+### Added
+
+- **`LICENSE_ADMIN_API_KEY_FILE`**: read the License Server admin key from
+  a file instead of the environment (the Docker-secrets convention), loaded
+  once at startup in `instrumentation.ts` via the new `lib/secret-files.ts`.
+  A value set directly still wins; a missing or empty file stops the
+  console at boot instead of leaving it to 403 on every request. Same rules
+  as casazium/license 1.6.2's `<NAME>_FILE` support, so the self-hosted
+  bundle can point both services at one generated key file instead of
+  overriding this image's start command with a shell wrapper. Admin API
+  surface: no change needed in `casazium/license` beyond its own 1.6.2.
+
 ## [1.3.5] - 2026-09-28
 
 ### Fixed
