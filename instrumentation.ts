@@ -22,17 +22,31 @@
  * app uses (Node.js for routes/actions, Edge for proxy.ts's middleware)
  * - better-sqlite3 is a native addon that doesn't exist in the Edge
  * runtime, so this must only run once, in the Node.js runtime.
+ *
+ * It also reads `LICENSE_ADMIN_API_KEY_FILE` (lib/secret-files.ts) first,
+ * for the same reason: an unreadable key file should stop the server at
+ * boot, not surface as a 403 on whichever request first talks to License
+ * Server. proxy.ts (Edge) never reads the admin key, so Node.js-only is
+ * enough here too.
  */
 export async function register() {
-  if (process.env.NEXT_RUNTIME !== 'nodejs') {
+  if (process.env.NEXT_RUNTIME !== "nodejs") {
     return;
   }
 
   try {
-    const { getDb } = await import('./lib/db');
+    const { applySecretFiles } = await import("./lib/secret-files");
+    const fromFiles = applySecretFiles(process.env);
+    if (fromFiles.length > 0) {
+      console.log(
+        `Read ${fromFiles.join(", ")} from the file(s) named by *_FILE.`,
+      );
+    }
+
+    const { getDb } = await import("./lib/db");
     getDb();
   } catch (err) {
-    console.error('Fatal error during startup:', err);
+    console.error("Fatal error during startup:", err);
     process.exit(1);
   }
 }
