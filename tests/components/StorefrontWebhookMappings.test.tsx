@@ -40,7 +40,7 @@ describe('StorefrontWebhookMappings - "Add mapping" form typing (regression, cur
   });
 
   async function openForm() {
-    renderWithMantine(<StorefrontWebhookMappings webhookId="wh_1" active={true} />);
+    renderWithMantine(<StorefrontWebhookMappings webhookId="wh_1" provider="stripe" active={true} />);
     await waitFor(() => expect(listMappingsAction).toHaveBeenCalledWith('wh_1'));
     fireEvent.click(await screen.findByRole('button', { name: 'Add mapping' }));
   }
@@ -93,5 +93,78 @@ describe('StorefrontWebhookMappings - "Add mapping" form typing (regression, cur
         expect.objectContaining({ external_ref: 'plink_abc123', product_id: 'widget-pro', tier: 'pro' })
       )
     );
+  });
+});
+
+describe('StorefrontWebhookMappings - per-provider reference types', () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  async function openFormFor(provider: 'stripe' | 'lemonsqueezy') {
+    renderWithMantine(<StorefrontWebhookMappings webhookId="wh_1" provider={provider} active={true} />);
+    await waitFor(() => expect(listMappingsAction).toHaveBeenCalledWith('wh_1'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Add mapping' }));
+  }
+
+  it('a Lemon Squeezy webhook defaults to a Variant ID reference and submits ref_kind variant', async () => {
+    await openFormFor('lemonsqueezy');
+    expect(screen.getByLabelText('Variant ID')).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('plink_...')).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Variant ID'), { target: { value: '123456' } });
+    fireEvent.change(screen.getByLabelText('Product ID'), { target: { value: 'widget-pro' } });
+    fireEvent.change(screen.getByLabelText('Tier'), { target: { value: 'pro' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add mapping' }));
+
+    await waitFor(() =>
+      expect(createMappingAction).toHaveBeenCalledWith(
+        'wh_1',
+        expect.objectContaining({ ref_kind: 'variant', external_ref: '123456' })
+      )
+    );
+  });
+
+  it('a non-numeric Variant ID is caught before the round trip, in plain language', async () => {
+    await openFormFor('lemonsqueezy');
+    fireEvent.change(screen.getByLabelText('Variant ID'), { target: { value: 'Pro yearly' } });
+    fireEvent.change(screen.getByLabelText('Product ID'), { target: { value: 'widget-pro' } });
+    fireEvent.change(screen.getByLabelText('Tier'), { target: { value: 'pro' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add mapping' }));
+
+    expect(await screen.findByText(/A Variant ID is a number/)).toBeInTheDocument();
+    expect(createMappingAction).not.toHaveBeenCalled();
+  });
+
+  it('a Stripe webhook still defaults to a Payment Link reference', async () => {
+    await openFormFor('stripe');
+    expect(screen.getByLabelText('Payment Link ID')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Variant ID')).not.toBeInTheDocument();
+  });
+
+  it('existing mappings are labelled by their reference type', async () => {
+    listMappingsAction.mockResolvedValueOnce({
+      ok: true,
+      data: [
+        {
+          id: 'map_1',
+          webhook_id: 'wh_1',
+          tenant_id: 't',
+          provider: 'lemonsqueezy',
+          ref_kind: 'variant',
+          external_ref: '123456',
+          product_id: 'widget-pro',
+          tier: 'pro',
+          limits_json: null,
+          max_activations: null,
+          duration_days: null,
+          notes: null,
+          created_at: '2026-10-05T00:00:00Z',
+        },
+      ],
+    });
+    renderWithMantine(<StorefrontWebhookMappings webhookId="wh_1" provider="lemonsqueezy" active={true} />);
+    expect(await screen.findByText('123456')).toBeInTheDocument();
+    expect(screen.getByText('Variant')).toBeInTheDocument();
   });
 });

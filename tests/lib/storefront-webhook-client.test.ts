@@ -48,6 +48,49 @@ describe('storefront webhook live client (lib/license-client.live.ts)', () => {
     await expect(createStorefrontWebhook('stripe', 'tenant-key')).rejects.toBeInstanceOf(LicenseApiError);
   });
 
+  it('createStorefrontWebhook explains a Lemon Squeezy rejection from a License Server older than 1.7.0', async () => {
+    // What a pre-1.7.0 server's schema validation actually returns.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: 'body/provider must be equal to one of the allowed values' }), {
+          status: 400,
+          statusText: 'Bad Request',
+        })
+      )
+    );
+    await expect(createStorefrontWebhook('lemonsqueezy', 'tenant-key')).rejects.toMatchObject({
+      message: expect.stringContaining('Connecting Lemon Squeezy needs License Server 1.7.0 or later'),
+      status: 400,
+    });
+  });
+
+  it("createStorefrontWebhook keeps the server's own 400 text for Stripe", async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: 'some validation error' }), { status: 400 }))
+    );
+    await expect(createStorefrontWebhook('stripe', 'tenant-key')).rejects.toMatchObject({
+      message: 'some validation error',
+      status: 400,
+    });
+  });
+
+  it("setStorefrontWebhookSecret preserves the server's 400 text (Lemon Squeezy secret length)", async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: 'A lemonsqueezy signing secret must be 16-40 characters' }), {
+          status: 400,
+        })
+      )
+    );
+    await expect(setStorefrontWebhookSecret('wh_1', 'short', 'tenant-key')).rejects.toMatchObject({
+      message: 'A lemonsqueezy signing secret must be 16-40 characters',
+      status: 400,
+    });
+  });
+
   it('setStorefrontWebhookSecret returns false on a 404 (webhook not found/not owned), not an exception', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
     await expect(setStorefrontWebhookSecret('wh_missing', 'whsec_x', 'tenant-key')).resolves.toBe(false);

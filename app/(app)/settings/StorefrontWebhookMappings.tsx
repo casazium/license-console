@@ -4,24 +4,30 @@ import { useEffect, useRef, useState } from 'react';
 import { Button, Group, NumberInput, Select, Stack, Table, Text, Textarea, TextInput } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { notifyRateLimited } from '@/lib/notify';
-import type { CreateStorefrontMappingInput, StorefrontMapping, StorefrontMappingRefKind } from '@/lib/license-client';
+import type {
+  CreateStorefrontMappingInput,
+  StorefrontMapping,
+  StorefrontMappingRefKind,
+  StorefrontWebhookProvider,
+} from '@/lib/license-client';
+import { STOREFRONT_PROVIDERS, refKindLabel } from '@/lib/storefront-providers';
 import { createStorefrontMappingAction, deleteStorefrontMappingAction, listStorefrontMappingsAction } from './actions';
 
-const REF_KIND_OPTIONS: { value: StorefrontMappingRefKind; label: string }[] = [
-  { value: 'payment_link', label: 'Payment Link' },
-  { value: 'metadata', label: 'Metadata (casazium_ref)' },
-];
-
-const EMPTY_FORM = {
-  ref_kind: 'payment_link' as StorefrontMappingRefKind,
-  external_ref: '',
-  product_id: '',
-  tier: '',
-  max_activations: '',
-  duration_days: '',
-  notes: '',
-  limitsJson: '',
-};
+// Reference types come from the webhook's provider - the server rejects a
+// kind its provider never produces, so the form only offers valid ones
+// (and defaults to the provider's main one: Payment Link, or Variant).
+function emptyForm(provider: StorefrontWebhookProvider) {
+  return {
+    ref_kind: STOREFRONT_PROVIDERS[provider].refKinds[0].value as StorefrontMappingRefKind,
+    external_ref: '',
+    product_id: '',
+    tier: '',
+    max_activations: '',
+    duration_days: '',
+    notes: '',
+    limitsJson: '',
+  };
+}
 
 /**
  * STOREFRONT_WEBHOOK_PLAN.md's own console spec: "a mappings table ...
@@ -39,10 +45,19 @@ const EMPTY_FORM = {
  * plain mount-time effect would fetch every webhook's mappings at once
  * instead of only the one the tenant actually expanded.
  */
-export function StorefrontWebhookMappings({ webhookId, active }: { webhookId: string; active: boolean }) {
+export function StorefrontWebhookMappings({
+  webhookId,
+  provider,
+  active,
+}: {
+  webhookId: string;
+  provider: StorefrontWebhookProvider;
+  active: boolean;
+}) {
+  const refKinds = STOREFRONT_PROVIDERS[provider].refKinds;
   const [mappings, setMappings] = useState<StorefrontMapping[] | null>(null);
   const [formOpen, setFormOpen] = useState(false);
-  const [form, setForm] = useState(EMPTY_FORM);
+  const [form, setForm] = useState(() => emptyForm(provider));
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   // A ref, not state - the initial fetch's own in-flight guard shouldn't
@@ -83,6 +98,7 @@ export function StorefrontWebhookMappings({ webhookId, active }: { webhookId: st
   }, [active, webhookId, mappings]);
 
   const loading = active && mappings === null;
+  const selectedRefKind = refKinds.find((k) => k.value === form.ref_kind) ?? refKinds[0];
 
   async function refresh() {
     const result = await listStorefrontMappingsAction(webhookId);
@@ -93,6 +109,11 @@ export function StorefrontWebhookMappings({ webhookId, active }: { webhookId: st
     setFormError(null);
     if (!form.external_ref.trim() || !form.product_id.trim() || !form.tier.trim()) {
       setFormError('Reference, product, and tier are all required');
+      return;
+    }
+    // The server rejects this too, but in API terms ("external_ref").
+    if (form.ref_kind === 'variant' && !/^[0-9]+$/.test(form.external_ref.trim())) {
+      setFormError("A Variant ID is a number - copy it from the variant's page in Lemon Squeezy");
       return;
     }
 
@@ -118,7 +139,7 @@ export function StorefrontWebhookMappings({ webhookId, active }: { webhookId: st
         }
         return;
       }
-      setForm(EMPTY_FORM);
+      setForm(emptyForm(provider));
       setFormOpen(false);
       await refresh();
     } catch {
@@ -147,8 +168,12 @@ export function StorefrontWebhookMappings({ webhookId, active }: { webhookId: st
         Product mappings
       </Text>
       <Text size="xs" c="dimmed">
-        Map each Payment Link (or a <Text component="code" fz="xs">casazium_ref</Text> metadata value) to the
-        product, tier, and limits a purchase through it should issue.
+        Map each {provider === 'lemonsqueezy' ? 'product variant' : 'Payment Link'} (or a{' '}
+        <Text component="code" fz="xs">
+          casazium_ref
+        </Text>{' '}
+        {provider === 'lemonsqueezy' ? 'custom data' : 'metadata'} value) to the product, tier, and limits a
+        purchase through it should issue.
       </Text>
 
       {loading && (
@@ -219,7 +244,7 @@ export function StorefrontWebhookMappings({ webhookId, active }: { webhookId: st
                       {mapping.external_ref}
                     </Text>
                     <Text size="xs" c="dimmed">
-                      {mapping.ref_kind === 'payment_link' ? 'Payment Link' : 'Metadata'}
+                      {refKindLabel(mapping.ref_kind)}
                     </Text>
                   </Table.Td>
                   <Table.Td style={{ wordBreak: 'break-word' }}>{mapping.product_id}</Table.Td>
@@ -249,13 +274,13 @@ export function StorefrontWebhookMappings({ webhookId, active }: { webhookId: st
           <Group grow>
             <Select
               label="Reference type"
-              data={REF_KIND_OPTIONS}
+              data={refKinds.map(({ value, label }) => ({ value, label }))}
               value={form.ref_kind}
               onChange={(value) => setForm((f) => ({ ...f, ref_kind: (value as StorefrontMappingRefKind) || f.ref_kind }))}
             />
             <TextInput
-              label={form.ref_kind === 'payment_link' ? 'Payment Link ID' : 'casazium_ref value'}
-              placeholder={form.ref_kind === 'payment_link' ? 'plink_...' : 'my-product-ref'}
+              label={selectedRefKind.inputLabel}
+              placeholder={selectedRefKind.placeholder}
               value={form.external_ref}
               onChange={(e) => {
                 const externalRef = e.currentTarget.value;

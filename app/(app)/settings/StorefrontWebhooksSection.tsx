@@ -6,16 +6,10 @@ import { notifications } from '@mantine/notifications';
 import { notifyRateLimited } from '@/lib/notify';
 import { formatDateTime } from '@/lib/format';
 import type { StorefrontWebhook, StorefrontWebhookProvider } from '@/lib/license-client';
+import { CONNECTABLE_PROVIDERS, STOREFRONT_PROVIDERS, generateWebhookSecret, providerLabel } from '@/lib/storefront-providers';
 import { createStorefrontWebhookAction, disableStorefrontWebhookAction, setStorefrontWebhookSecretAction } from './actions';
 import { StorefrontWebhookMappings } from './StorefrontWebhookMappings';
 import { StorefrontWebhookDeliveries } from './StorefrontWebhookDeliveries';
-
-// Only 'stripe' exists today (STOREFRONT_WEBHOOK_PLAN.md) - a second
-// storefront provider adds a second entry here, not a redesign of this
-// button.
-const CONNECTABLE_PROVIDERS: { provider: StorefrontWebhookProvider; label: string }[] = [
-  { provider: 'stripe', label: 'Connect Stripe' },
-];
 
 function statusBadge(status: StorefrontWebhook['status']): { label: string; color: string } {
   switch (status) {
@@ -36,9 +30,12 @@ function statusBadge(status: StorefrontWebhook['status']): { label: string; colo
  * no backend change needed for this section. Three pieces, matching that
  * plan almost verbatim:
  *
- * 1. "Connect Stripe" flow - create the row (pending, real URL right
- *    away), the tenant pastes the URL into Stripe, then pastes the
- *    signing secret back here (flips to active). Shown inline in the
+ * 1. "Connect <provider>" flow - create the row (pending, real URL right
+ *    away), the tenant pastes the URL into their storefront, then saves
+ *    the signing secret here (flips to active). Stripe generates that
+ *    secret; Lemon Squeezy has the vendor choose one, so its setup offers
+ *    a generated one to paste into both places
+ *    (lib/storefront-providers.ts). Shown inline in the
  *    just-created row's own expanded panel, not a separate modal step -
  *    a webhook left in 'pending' (abandoned mid-setup) can resume the
  *    exact same panel later.
@@ -125,7 +122,7 @@ export function StorefrontWebhooksSection({
   // the button disappears once connected, rather than letting a click
   // reach the server just to bounce off its 409.
   const connectableProviders = CONNECTABLE_PROVIDERS.filter(
-    ({ provider }) => !webhooks.some((w) => w.provider === provider && w.status !== 'disabled')
+    (provider) => !webhooks.some((w) => w.provider === provider && w.status !== 'disabled')
   );
 
   return (
@@ -138,9 +135,14 @@ export function StorefrontWebhooksSection({
 
       {connectableProviders.length > 0 && (
         <Group>
-          {connectableProviders.map(({ provider, label }) => (
-            <Button key={provider} onClick={() => handleConnect(provider)} loading={connecting === provider}>
-              {label}
+          {connectableProviders.map((provider) => (
+            <Button
+              key={provider}
+              onClick={() => handleConnect(provider)}
+              loading={connecting === provider}
+              disabled={connecting !== null && connecting !== provider}
+            >
+              Connect {providerLabel(provider)}
             </Button>
           ))}
         </Group>
@@ -159,9 +161,7 @@ export function StorefrontWebhooksSection({
                 <Accordion.Control>
                   <Group justify="space-between" pr="md" wrap="nowrap">
                     <Group gap="sm">
-                      <Text fw={600} tt="capitalize">
-                        {webhook.provider}
-                      </Text>
+                      <Text fw={600}>{providerLabel(webhook.provider)}</Text>
                       <Badge color={badge.color} variant="light">
                         {badge.label}
                       </Badge>
@@ -203,8 +203,16 @@ export function StorefrontWebhooksSection({
                           </Group>
                         </div>
 
-                        <StorefrontWebhookMappings webhookId={webhook.id} active={openId === webhook.id} />
-                        <StorefrontWebhookDeliveries webhookId={webhook.id} active={openId === webhook.id} />
+                        <StorefrontWebhookMappings
+                          webhookId={webhook.id}
+                          provider={webhook.provider}
+                          active={openId === webhook.id}
+                        />
+                        <StorefrontWebhookDeliveries
+                          webhookId={webhook.id}
+                          provider={webhook.provider}
+                          active={openId === webhook.id}
+                        />
                       </>
                     )}
 
@@ -250,21 +258,38 @@ function WebhookSecretSetup({
   webhookUrl: string;
   onSaved: () => void;
 }) {
+  const info = STOREFRONT_PROVIDERS[webhook.provider];
   const [secret, setSecret] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   async function handleSave() {
     setError(null);
-    if (!secret.trim()) {
-      setError('Paste the signing secret Stripe shows you after adding this endpoint');
+    const trimmed = secret.trim();
+    if (!trimmed) {
+      setError(
+        info.vendorChosenSecret
+          ? 'Generate a signing secret (or enter your own), and use the same one in Lemon Squeezy'
+          : 'Paste the signing secret Stripe shows you after adding this endpoint'
+      );
       return;
+    }
+    if (info.secretLength) {
+      const { length } = [...trimmed];
+      if (length < info.secretLength.min || length > info.secretLength.max) {
+        setError(`The signing secret must be ${info.secretLength.min}-${info.secretLength.max} characters`);
+        return;
+      }
     }
     setSaving(true);
     try {
-      const result = await setStorefrontWebhookSecretAction(webhook.id, secret.trim());
+      const result = await setStorefrontWebhookSecretAction(webhook.id, trimmed);
       if (!result.ok) {
-        notifyRateLimited();
+        if (result.reason === 'rate-limited') {
+          notifyRateLimited();
+        } else {
+          setError(result.message);
+        }
         return;
       }
       if (!result.data) {
@@ -286,11 +311,21 @@ function WebhookSecretSetup({
   return (
     <Stack gap="sm">
       <Alert color="yellow" variant="light" title="Finish connecting">
-        1. In Stripe, add a webhook endpoint with the URL below, listening for{' '}
-        <Code fz="xs">checkout.session.completed</Code>,{' '}
-        <Code fz="xs">checkout.session.async_payment_succeeded</Code>, and{' '}
-        <Code fz="xs">checkout.session.async_payment_failed</Code>. 2. Paste the signing secret Stripe
-        gives you below.
+        {webhook.provider === 'lemonsqueezy' ? (
+          <>
+            1. Generate a signing secret below and copy it. 2. In Lemon Squeezy, go to Settings → Webhooks,
+            add a webhook with the URL below, paste the secret as its signing secret, and select the{' '}
+            <Code fz="xs">order_created</Code> event. 3. Save the same secret here.
+          </>
+        ) : (
+          <>
+            1. In Stripe, add a webhook endpoint with the URL below, listening for{' '}
+            <Code fz="xs">checkout.session.completed</Code>,{' '}
+            <Code fz="xs">checkout.session.async_payment_succeeded</Code>, and{' '}
+            <Code fz="xs">checkout.session.async_payment_failed</Code>. 2. Paste the signing secret Stripe
+            gives you below.
+          </>
+        )}
       </Alert>
 
       <div>
@@ -313,12 +348,31 @@ function WebhookSecretSetup({
 
       <TextInput
         label="Signing secret"
-        placeholder="whsec_..."
+        description={
+          info.secretLength
+            ? `${info.secretLength.min}-${info.secretLength.max} characters - Lemon Squeezy doesn't generate one, so use the same secret there and here`
+            : undefined
+        }
+        placeholder={info.vendorChosenSecret ? 'Generate one, or enter your own' : 'whsec_...'}
         value={secret}
         onChange={(e) => setSecret(e.currentTarget.value)}
         error={error}
       />
-      <Group justify="flex-end">
+      <Group justify={info.vendorChosenSecret ? 'space-between' : 'flex-end'}>
+        {info.vendorChosenSecret && (
+          <Group gap="xs">
+            <Button variant="default" onClick={() => setSecret(generateWebhookSecret())}>
+              Generate
+            </Button>
+            <CopyButton value={secret}>
+              {({ copied, copy }) => (
+                <Button variant="default" onClick={copy} disabled={!secret} color={copied ? 'teal' : undefined}>
+                  {copied ? 'Copied' : 'Copy'}
+                </Button>
+              )}
+            </CopyButton>
+          </Group>
+        )}
         <Button onClick={handleSave} loading={saving}>
           Save secret
         </Button>
