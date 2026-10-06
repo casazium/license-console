@@ -65,6 +65,7 @@ import type {
   StorefrontMapping,
   StorefrontWebhook,
   StorefrontWebhookProvider,
+  StorefrontRefundPolicy,
   TierAStatus,
   UpdateLicenseTermsInput,
   UpdateLicenseTermsResult,
@@ -818,6 +819,35 @@ export async function setStorefrontWebhookSecret(
   if (res.status === 404) return false;
   if (!res.ok) {
     await throwForFailedResponse(res, 'Failed to save storefront webhook secret');
+  }
+  return true;
+}
+
+// What a full refund does on this webhook (License Server 1.8.0+). false
+// on a 404 for the webhook itself, like setStorefrontWebhookSecret. An
+// older server has no PATCH route at all: Fastify answers that with its
+// own 404 ("Route PATCH:... not found"), turned into a message naming
+// the version - though the console only offers the setting when the
+// server reported a refund_policy, so this is a fallback.
+export async function setStorefrontRefundPolicy(
+  webhookId: string,
+  refundPolicy: StorefrontRefundPolicy,
+  tenantApiKey?: string
+): Promise<boolean> {
+  const res = await liveFetch(
+    `/admin/storefront-webhooks/${encodeURIComponent(webhookId)}`,
+    { method: 'PATCH', body: JSON.stringify({ refund_policy: refundPolicy }) },
+    tenantApiKey
+  );
+  if (res.status === 404) {
+    const body: { message?: string } = await res.json().catch(() => ({}));
+    if (body.message?.startsWith('Route ')) {
+      throw new LicenseApiError('Refund handling needs License Server 1.8.0 or later.', 404);
+    }
+    return false;
+  }
+  if (!res.ok) {
+    await throwForFailedResponse(res, 'Failed to update the refund setting');
   }
   return true;
 }

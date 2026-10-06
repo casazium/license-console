@@ -31,6 +31,11 @@ describe('lib/storefront-providers', () => {
     expect(STOREFRONT_PROVIDERS.stripe.secretLength).toBeUndefined();
   });
 
+  it("names each provider's refund event (License Server 1.8.0+)", () => {
+    expect(STOREFRONT_PROVIDERS.stripe.refundEvent).toBe('charge.refunded');
+    expect(STOREFRONT_PROVIDERS.lemonsqueezy.refundEvent).toBe('order_refunded');
+  });
+
   it('generates 32 lowercase hex characters, inside the 16-40 bounds, different each time', () => {
     const a = generateWebhookSecret();
     const b = generateWebhookSecret();

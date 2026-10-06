@@ -1,13 +1,31 @@
 'use client';
 
-import { useState } from 'react';
-import { Alert, Accordion, Badge, Button, Code, CopyButton, Group, Modal, Stack, Text, TextInput } from '@mantine/core';
+import { useId, useState } from 'react';
+import {
+  Alert,
+  Accordion,
+  Badge,
+  Button,
+  Code,
+  CopyButton,
+  Group,
+  Modal,
+  SegmentedControl,
+  Stack,
+  Text,
+  TextInput,
+} from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { notifyRateLimited } from '@/lib/notify';
 import { formatDateTime } from '@/lib/format';
-import type { StorefrontWebhook, StorefrontWebhookProvider } from '@/lib/license-client';
+import type { StorefrontRefundPolicy, StorefrontWebhook, StorefrontWebhookProvider } from '@/lib/license-client';
 import { CONNECTABLE_PROVIDERS, STOREFRONT_PROVIDERS, generateWebhookSecret, providerLabel } from '@/lib/storefront-providers';
-import { createStorefrontWebhookAction, disableStorefrontWebhookAction, setStorefrontWebhookSecretAction } from './actions';
+import {
+  createStorefrontWebhookAction,
+  disableStorefrontWebhookAction,
+  setStorefrontRefundPolicyAction,
+  setStorefrontWebhookSecretAction,
+} from './actions';
 import { StorefrontWebhookMappings } from './StorefrontWebhookMappings';
 import { StorefrontWebhookDeliveries } from './StorefrontWebhookDeliveries';
 
@@ -117,6 +135,10 @@ export function StorefrontWebhooksSection({
     setWebhooks((prev) => prev.map((w) => (w.id === webhookId ? { ...w, status: 'active' } : w)));
   }
 
+  function handleRefundPolicyChanged(webhookId: string, refundPolicy: StorefrontRefundPolicy) {
+    setWebhooks((prev) => prev.map((w) => (w.id === webhookId ? { ...w, refund_policy: refundPolicy } : w)));
+  }
+
   // The server enforces at most one non-disabled webhook per {tenant,
   // provider} (schema.sql's own partial unique index) - mirrored here so
   // the button disappears once connected, rather than letting a click
@@ -165,6 +187,13 @@ export function StorefrontWebhooksSection({
                       <Badge color={badge.color} variant="light">
                         {badge.label}
                       </Badge>
+                      {webhook.refund_policy === 'record' && webhook.status !== 'disabled' && (
+                        // Revoke is the default, so only the exception is
+                        // flagged on the collapsed row.
+                        <Badge color="gray" variant="outline">
+                          Refunds: record only
+                        </Badge>
+                      )}
                     </Group>
                     <Text size="xs" c="dimmed">
                       {webhook.last_event_at
@@ -202,6 +231,10 @@ export function StorefrontWebhooksSection({
                             </CopyButton>
                           </Group>
                         </div>
+
+                        {webhook.refund_policy && (
+                          <RefundPolicyControl webhook={webhook} onChanged={handleRefundPolicyChanged} />
+                        )}
 
                         <StorefrontWebhookMappings
                           webhookId={webhook.id}
@@ -315,15 +348,29 @@ function WebhookSecretSetup({
           <>
             1. Generate a signing secret below and copy it. 2. In Lemon Squeezy, go to Settings → Webhooks,
             add a webhook with the URL below, paste the secret as its signing secret, and select the{' '}
-            <Code fz="xs">order_created</Code> event. 3. Save the same secret here.
+            <Code fz="xs">order_created</Code>
+            {webhook.refund_policy ? (
+              <>
+                {' '}
+                and <Code fz="xs">order_refunded</Code> events
+              </>
+            ) : (
+              ' event'
+            )}
+            . 3. Save the same secret here.
           </>
         ) : (
           <>
             1. In Stripe, add a webhook endpoint with the URL below, listening for{' '}
             <Code fz="xs">checkout.session.completed</Code>,{' '}
-            <Code fz="xs">checkout.session.async_payment_succeeded</Code>, and{' '}
-            <Code fz="xs">checkout.session.async_payment_failed</Code>. 2. Paste the signing secret Stripe
-            gives you below.
+            <Code fz="xs">checkout.session.async_payment_succeeded</Code>,{' '}
+            <Code fz="xs">checkout.session.async_payment_failed</Code>
+            {webhook.refund_policy ? (
+              <>
+                , and <Code fz="xs">charge.refunded</Code>
+              </>
+            ) : null}
+            . 2. Paste the signing secret Stripe gives you below.
           </>
         )}
       </Alert>
@@ -380,3 +427,72 @@ function WebhookSecretSetup({
     </Stack>
   );
 }
+
+// What a full refund does on this webhook (License Server 1.8.0+; only
+// rendered when the server reported a refund_policy). Revoke is the
+// default. Saved immediately, like the rest of this section, and reverted
+// on failure.
+function RefundPolicyControl({
+  webhook,
+  onChanged,
+}: {
+  webhook: StorefrontWebhook;
+  onChanged: (webhookId: string, refundPolicy: StorefrontRefundPolicy) => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const labelId = useId();
+  const refundEvent = STOREFRONT_PROVIDERS[webhook.provider].refundEvent;
+
+  async function handleChange(value: string) {
+    const next = value as StorefrontRefundPolicy;
+    if (next === webhook.refund_policy) return;
+    const previous = webhook.refund_policy as StorefrontRefundPolicy;
+    onChanged(webhook.id, next);
+    setSaving(true);
+    try {
+      const result = await setStorefrontRefundPolicyAction(webhook.id, next);
+      if (!result.ok || !result.data) {
+        onChanged(webhook.id, previous);
+        if (!result.ok && result.reason === 'rate-limited') {
+          notifyRateLimited();
+        } else {
+          notifications.show({
+            color: 'red',
+            title: "Couldn't change the refund setting",
+            message: !result.ok ? result.message : 'This webhook could not be found - try reloading',
+          });
+        }
+      }
+    } catch {
+      onChanged(webhook.id, previous);
+      notifications.show({ color: 'red', title: "Couldn't change the refund setting", message: 'Something went wrong. Please try again.' });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div role="group" aria-labelledby={labelId}>
+      <Text id={labelId} size="sm" fw={600} mb={4}>
+        When a purchase is fully refunded
+      </Text>
+      <SegmentedControl
+        size="xs"
+        disabled={saving}
+        value={webhook.refund_policy}
+        onChange={handleChange}
+        data={[
+          { label: 'Revoke the license', value: 'revoke' },
+          { label: 'Keep it (record only)', value: 'record' },
+        ]}
+      />
+      <Text size="xs" c="dimmed" mt={4}>
+        Needs the <Code fz="xs">{refundEvent}</Code> event in your {providerLabel(webhook.provider)} webhook settings.
+        Partial refunds are only recorded. Either way, a purchase refunded before its license is issued never gets one,
+        and a refunded purchase is never emailed its key. A license file the buyer already downloaded keeps working
+        offline until it expires.
+      </Text>
+    </div>
+  );
+}
+

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, Badge, Button, Code, Group, Stack, Table, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { notifyRateLimited } from '@/lib/notify';
-import { formatDateTime } from '@/lib/format';
+import { formatDate, formatDateTime } from '@/lib/format';
 import type { StorefrontDelivery, StorefrontWebhookProvider } from '@/lib/license-client';
 import { listStorefrontDeliveriesAction } from './actions';
 
@@ -34,8 +34,34 @@ function outcomeBadge(delivery: StorefrontDelivery): { label: string; color: str
       return { label: 'Invalid input', color: 'red' };
     case 'error':
       return { label: 'Error', color: 'red' };
+    case 'refunded_before_issue':
+      return { label: 'Refunded first', color: 'gray' };
     default:
       return { label: delivery.outcome, color: 'gray' };
+  }
+}
+
+// License Server 1.8.0+: what a refund did. Null when the purchase has
+// had no refund (or the server predates refund handling), and for
+// 'refunded_before_issue', whose outcome badge already says it. Labels
+// stay short enough for the 180px Outcome column at Mantine's uppercase
+// badge size (checked live).
+function refundBadge(delivery: StorefrontDelivery): { label: string; color: string; variant: 'light' | 'outline' } | null {
+  if (delivery.outcome === 'refunded_before_issue') return null;
+  if (delivery.refund_kind === 'partial') return { label: 'Partly refunded', color: 'gray', variant: 'outline' };
+  if (delivery.refund_kind !== 'full') return null;
+  switch (delivery.refund_action) {
+    case 'revoked':
+      return { label: 'Refunded · revoked', color: 'grape', variant: 'light' };
+    case 'recorded':
+      return { label: 'Refunded · kept', color: 'gray', variant: 'light' };
+    case 'already_revoked':
+      // Revoked by hand before the refund arrived - revoked either way.
+      return { label: 'Refunded · revoked', color: 'grape', variant: 'light' };
+    case 'revoke_failed':
+      return { label: 'Revoke by hand', color: 'red', variant: 'light' };
+    default:
+      return { label: 'Refunded', color: 'gray', variant: 'light' };
   }
 }
 
@@ -52,8 +78,32 @@ function parseTimestamp(value: string): number {
   return new Date(isoLike).getTime();
 }
 
+// A muted line under the refund badge: when, and for a partial refund how
+// much. Amounts arrive in the provider's smallest currency unit with no
+// currency attached, so this shows a percentage rather than guessing at
+// a currency's decimal places (yen has none).
+function refundDetail(delivery: StorefrontDelivery): string | null {
+  if (!delivery.refund_kind) return null;
+  const parts: string[] = [];
+  if (
+    delivery.refund_kind === 'partial' &&
+    typeof delivery.refunded_amount === 'number' &&
+    typeof delivery.amount_total === 'number' &&
+    delivery.amount_total > 0
+  ) {
+    parts.push(`${Math.round((delivery.refunded_amount / delivery.amount_total) * 100)}% refunded`);
+  }
+  if (delivery.refunded_at) {
+    parts.push(formatDate(new Date(parseTimestamp(delivery.refunded_at)).toISOString()));
+  }
+  return parts.length > 0 ? parts.join(' · ') : null;
+}
+
 function isStuck(delivery: StorefrontDelivery): boolean {
   if (delivery.outcome !== 'issued' || delivery.delivery_status === 'sent') return false;
+  // A fully refunded purchase is never emailed (License Server 1.8.0+),
+  // so an unsent email there isn't stuck.
+  if (delivery.refund_kind === 'full') return false;
   if (!delivery.processed_at) return false;
   return Date.now() - parseTimestamp(delivery.processed_at) > STUCK_THRESHOLD_MS;
 }
@@ -241,6 +291,8 @@ export function StorefrontWebhookDeliveries({
             <Table.Tbody>
               {deliveries.map((delivery) => {
                 const badge = outcomeBadge(delivery);
+                const refund = refundBadge(delivery);
+                const detail = refund ? refundDetail(delivery) : null;
                 const stuck = isStuck(delivery);
                 return (
                   <Table.Tr key={delivery.checkout_session_id}>
@@ -254,6 +306,16 @@ export function StorefrontWebhookDeliveries({
                         <Badge color={badge.color} variant="light">
                           {badge.label}
                         </Badge>
+                        {refund && (
+                          <Badge color={refund.color} variant={refund.variant}>
+                            {refund.label}
+                          </Badge>
+                        )}
+                        {detail && (
+                          <Text size="xs" c="dimmed" w="100%">
+                            {detail}
+                          </Text>
+                        )}
                         {stuck && (
                           <Badge color="orange" variant="outline">
                             Needs attention

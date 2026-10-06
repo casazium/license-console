@@ -7,6 +7,7 @@ import {
   rotateApiKey as rotateApiKeyOnServer,
   createStorefrontWebhook as createStorefrontWebhookOnServer,
   setStorefrontWebhookSecret as setStorefrontWebhookSecretOnServer,
+  setStorefrontRefundPolicy as setStorefrontRefundPolicyOnServer,
   disableStorefrontWebhook as disableStorefrontWebhookOnServer,
   listStorefrontMappings as listStorefrontMappingsOnServer,
   createStorefrontMapping as createStorefrontMappingOnServer,
@@ -19,6 +20,7 @@ import type {
   StorefrontMapping,
   StorefrontWebhook,
   StorefrontWebhookProvider,
+  StorefrontRefundPolicy,
 } from '@/lib/license-client';
 import { verifyAccountPassword } from '@/lib/auth';
 import { encrypt } from '@/lib/crypto';
@@ -350,6 +352,24 @@ export async function setStorefrontWebhookSecretAction(
   const { identity, tenantApiKey } = await requireSessionWithTenantKey();
   try {
     const data = await setStorefrontWebhookSecretOnServer(webhookId, secret, tenantApiKey);
+    return { ok: true, data };
+  } catch (err) {
+    if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
+    markIfTenantRejected(err, identity.tenantId);
+    if (err instanceof Error) return { ok: false, reason: 'validation', message: err.message };
+    throw err;
+  }
+}
+
+// What a full refund does on this webhook (License Server 1.8.0+). A
+// validation failure here is an older server without the route.
+export async function setStorefrontRefundPolicyAction(
+  webhookId: string,
+  refundPolicy: StorefrontRefundPolicy
+): Promise<ValidatedActionResult<boolean>> {
+  const { identity, tenantApiKey } = await requireSessionWithTenantKey();
+  try {
+    const data = await setStorefrontRefundPolicyOnServer(webhookId, refundPolicy, tenantApiKey);
     return { ok: true, data };
   } catch (err) {
     if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };

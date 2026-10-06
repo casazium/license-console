@@ -31,6 +31,7 @@ import type {
   SelfLicenseStatus,
   StorefrontDelivery,
   StorefrontMapping,
+  StorefrontRefundPolicy,
   StorefrontWebhook,
   StorefrontWebhookProvider,
   TierAStatus,
@@ -165,6 +166,7 @@ function seedStore(): Store {
         status: 'active',
         created_at: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString(),
         last_event_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+        refund_policy: 'revoke',
       },
     ],
     storefrontMappings: [
@@ -204,6 +206,36 @@ function seedStore(): Store {
         // attention, redeliver from Stripe" flagging.
         delivery_status: 'pending',
         processed_at: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
+      },
+      // Refunds (License Server 1.8.0+) - so mock mode shows the refund
+      // badges and detail line too.
+      {
+        tenant_id: 'demo-tenant',
+        checkout_session_id: 'cs_test_demo_refunded',
+        outcome: 'issued',
+        attempts: 1,
+        license_key: 'CASZ-DEMO-GAMMA-0003',
+        delivery_status: 'sent',
+        processed_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+        refund_kind: 'full',
+        refunded_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+        refund_action: 'revoked',
+        refunded_amount: 4900,
+        amount_total: 4900,
+      },
+      {
+        tenant_id: 'demo-tenant',
+        checkout_session_id: 'cs_test_demo_partly_refunded',
+        outcome: 'issued',
+        attempts: 1,
+        license_key: 'CASZ-DEMO-DELTA-0004',
+        delivery_status: 'sent',
+        processed_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+        refund_kind: 'partial',
+        refunded_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+        refund_action: 'recorded',
+        refunded_amount: 980,
+        amount_total: 4900,
       },
       {
         tenant_id: 'demo-tenant',
@@ -799,6 +831,7 @@ export async function createStorefrontWebhook(
     status: 'pending',
     created_at: new Date().toISOString(),
     last_event_at: null,
+    refund_policy: 'revoke',
   };
   storefrontWebhooks.push(webhook);
   return webhook;
@@ -819,6 +852,17 @@ export async function setStorefrontWebhookSecret(
     throw new Error(`A ${webhook.provider} signing secret must be ${bounds.min}-${bounds.max} characters`);
   }
   webhook.status = 'active';
+  return true;
+}
+
+export async function setStorefrontRefundPolicy(
+  webhookId: string,
+  refundPolicy: StorefrontRefundPolicy,
+  _tenantApiKey?: string
+): Promise<boolean> {
+  const webhook = getStore().storefrontWebhooks.find((w) => w.id === webhookId);
+  if (!webhook) return false;
+  webhook.refund_policy = refundPolicy;
   return true;
 }
 

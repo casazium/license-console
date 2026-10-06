@@ -7,6 +7,7 @@ import {
   listStorefrontDeliveries,
   listStorefrontMappings,
   listStorefrontWebhooks,
+  setStorefrontRefundPolicy,
   setStorefrontWebhookSecret,
 } from '@/lib/license-client.live';
 import { LicenseApiError } from '@/lib/errors';
@@ -88,6 +89,44 @@ describe('storefront webhook live client (lib/license-client.live.ts)', () => {
     await expect(setStorefrontWebhookSecret('wh_1', 'short', 'tenant-key')).rejects.toMatchObject({
       message: 'A lemonsqueezy signing secret must be 16-40 characters',
       status: 400,
+    });
+  });
+
+  describe('setStorefrontRefundPolicy', () => {
+    it('PATCHes the webhook with the policy and returns true', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(new Response(JSON.stringify({ id: 'wh_1', refund_policy: 'record' }), { status: 200 }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      await expect(setStorefrontRefundPolicy('wh_1', 'record', 'tenant-key')).resolves.toBe(true);
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(String(url)).toContain('/admin/storefront-webhooks/wh_1');
+      expect(init.method).toBe('PATCH');
+      expect(JSON.parse(init.body)).toEqual({ refund_policy: 'record' });
+    });
+
+    it('returns false when the webhook itself is not found', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: 'Storefront webhook not found' }), { status: 404 }))
+      );
+      await expect(setStorefrontRefundPolicy('wh_missing', 'record', 'tenant-key')).resolves.toBe(false);
+    });
+
+    it("explains a License Server older than 1.8.0, which has no PATCH route (Fastify's own 404)", async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({ message: 'Route PATCH:/v1/admin/storefront-webhooks/wh_1 not found', error: 'Not Found', statusCode: 404 }),
+            { status: 404 }
+          )
+        )
+      );
+      await expect(setStorefrontRefundPolicy('wh_1', 'record', 'tenant-key')).rejects.toMatchObject({
+        message: 'Refund handling needs License Server 1.8.0 or later.',
+      });
     });
   });
 

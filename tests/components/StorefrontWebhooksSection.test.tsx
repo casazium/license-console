@@ -8,10 +8,12 @@ import type { StorefrontWebhook } from '@/lib/license-client';
 
 const createWebhookAction = vi.fn();
 const setSecretAction = vi.fn();
+const setRefundPolicyAction = vi.fn();
 
 vi.mock('@/app/(app)/settings/actions', () => ({
   createStorefrontWebhookAction: (...args: unknown[]) => createWebhookAction(...args),
   setStorefrontWebhookSecretAction: (...args: unknown[]) => setSecretAction(...args),
+  setStorefrontRefundPolicyAction: (...args: unknown[]) => setRefundPolicyAction(...args),
   disableStorefrontWebhookAction: vi.fn(),
   listStorefrontMappingsAction: vi.fn().mockResolvedValue({ ok: true, data: [] }),
   createStorefrontMappingAction: vi.fn(),
@@ -112,5 +114,88 @@ describe('StorefrontWebhooksSection - providers', () => {
     expect(screen.queryByRole('button', { name: 'Generate' })).not.toBeInTheDocument();
     expect(screen.getByText('checkout.session.completed')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('whsec_...')).toBeInTheDocument();
+  });
+});
+
+describe('StorefrontWebhooksSection - refunds (License Server 1.8.0+)', () => {
+  afterEach(() => {
+    setRefundPolicyAction.mockReset();
+  });
+
+  function activeWebhook(provider: StorefrontWebhook['provider'], refund_policy?: 'revoke' | 'record'): StorefrontWebhook {
+    return { ...pendingWebhook(provider), status: 'active', ...(refund_policy ? { refund_policy } : {}) };
+  }
+
+  async function open(webhook: StorefrontWebhook) {
+    renderWithMantine(<StorefrontWebhooksSection initialWebhooks={[webhook]} apiBaseUrl="" />);
+    // Anchored: the other provider's "Connect ..." button also names it.
+    const label = webhook.provider === 'stripe' ? 'Stripe' : 'Lemon Squeezy';
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(`^${label}`) }));
+    await screen.findByRole('button', { name: 'Disable this webhook' });
+  }
+
+  it('shows the refund setting when the server reports a policy, naming the refund event', async () => {
+    await open(activeWebhook('stripe', 'revoke'));
+    expect(screen.getByText('When a purchase is fully refunded')).toBeInTheDocument();
+    expect(screen.getByText('charge.refunded')).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Revoke the license' })).toBeChecked();
+  });
+
+  it('the setting is a labelled group, for assistive technology', async () => {
+    await open(activeWebhook('stripe', 'revoke'));
+    expect(screen.getByRole('group', { name: 'When a purchase is fully refunded' })).toBeInTheDocument();
+  });
+
+  it('flags a record-only webhook on its collapsed row, and only that one', () => {
+    renderWithMantine(
+      <StorefrontWebhooksSection
+        initialWebhooks={[activeWebhook('stripe', 'record'), activeWebhook('lemonsqueezy', 'revoke')]}
+        apiBaseUrl=""
+      />
+    );
+    expect(screen.getAllByText('Refunds: record only')).toHaveLength(1);
+  });
+
+  it('hides the refund setting against a server older than 1.8.0 (no refund_policy reported)', async () => {
+    await open(activeWebhook('stripe'));
+    expect(screen.queryByText('When a purchase is fully refunded')).not.toBeInTheDocument();
+  });
+
+  it('switching to record only saves it', async () => {
+    setRefundPolicyAction.mockResolvedValueOnce({ ok: true, data: true });
+    await open(activeWebhook('lemonsqueezy', 'revoke'));
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Keep it (record only)' }));
+
+    await waitFor(() => expect(setRefundPolicyAction).toHaveBeenCalledWith('wh_lemonsqueezy', 'record'));
+    // The save finished (the control re-enables) and the choice stuck.
+    await waitFor(() => expect(screen.getByRole('radio', { name: 'Revoke the license' })).toBeEnabled());
+    expect(screen.getByRole('radio', { name: 'Keep it (record only)' })).toBeChecked();
+    expect(screen.getByText('Refunds: record only')).toBeInTheDocument();
+  });
+
+  it('reverts the setting if saving fails', async () => {
+    setRefundPolicyAction.mockResolvedValueOnce({ ok: false, reason: 'validation', message: 'nope' });
+    await open(activeWebhook('stripe', 'revoke'));
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Keep it (record only)' }));
+
+    await waitFor(() => expect(screen.getByRole('radio', { name: 'Revoke the license' })).toBeChecked());
+  });
+
+  it('setup steps name the refund event only when the server handles refunds', async () => {
+    renderWithMantine(
+      <StorefrontWebhooksSection initialWebhooks={[{ ...pendingWebhook('lemonsqueezy'), refund_policy: 'revoke' }]} apiBaseUrl="" />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Lemon Squeezy/ }));
+    await screen.findByRole('button', { name: 'Save secret' });
+    expect(screen.getByText('order_refunded')).toBeInTheDocument();
+  });
+
+  it("setup steps don't mention the refund event against an older server", async () => {
+    renderWithMantine(<StorefrontWebhooksSection initialWebhooks={[pendingWebhook('stripe')]} apiBaseUrl="" />);
+    fireEvent.click(screen.getByRole('button', { name: /Stripe/ }));
+    await screen.findByRole('button', { name: 'Save secret' });
+    expect(screen.queryByText('charge.refunded')).not.toBeInTheDocument();
   });
 });
