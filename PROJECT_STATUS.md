@@ -1,7 +1,13 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-10-05 (§159:
+Last updated: 2026-10-06 (§160:
+released 1.4.0: Lemon Squeezy in Settings -> Storefront webhooks
+(casazium/license 1.7.0) - connect, a generated 16-40 character secret,
+Variant ID mappings, recovery help, and a "needs License Server 1.7.0 or
+later" message against older servers. Hosted-only screen, as before.
+PRs #55-#56, tag `v1.4.0`. See §160 below.)
+2026-10-05 (§159:
 released 1.3.6: `LICENSE_ADMIN_API_KEY_FILE` reads the admin key from a
 file (Docker-secrets convention), loaded in `instrumentation.ts` before
 any request; a direct value wins, a missing/empty file stops boot. Lets
@@ -9471,3 +9477,51 @@ since it's assembled at runtime - and exits at boot on a missing key
 file. casazium/license's bundle (§286 there) now pins 1.3.6 and sets
 `LICENSE_ADMIN_API_KEY_FILE`; verified end to end on the published images.
 
+## 160. Released 1.4.0: Lemon Squeezy storefront settings (2026-10-06, PRs #55-#56, tag `v1.4.0`)
+
+casazium/license 1.7.0 (§288 there) added Lemon Squeezy storefront
+fulfillment. This release lets a hosted tenant set it up from Settings ->
+Storefront webhooks instead of the admin API. The screen stays
+hosted-only (Settings 404s under self-hosted, as before), so self-hosted
+operators still use the API.
+
+**Change (#55):**
+- `lib/storefront-providers.ts`: per-provider labels, mapping reference
+  types (Stripe: Payment Link or `casazium_ref`; Lemon Squeezy: Variant or
+  `casazium_ref`), secret rules (Lemon Squeezy: vendor-chosen, 16-40
+  characters) and a 32-hex-character secret generator.
+- "Connect Lemon Squeezy" beside "Connect Stripe"; provider names shown
+  properly.
+- Lemon Squeezy setup steps (`order_created`), with Generate and Copy and
+  a client-side length check. `setStorefrontWebhookSecretAction` now
+  returns validation errors, so the server's own 400 text shows inline.
+- Mappings offer each provider's reference types, label them in the
+  table, and catch a non-numeric Variant ID in plain language.
+- Deliveries help explains Lemon Squeezy's recovery: resend within 7 days
+  of the order (the server's replay window), or send the key by hand.
+- The mock client mirrors the server's per-provider checks.
+
+Deliberately not version-gated: a pre-1.7.0 server rejects the provider
+with a schema 400, which the live client turns into "Connecting Lemon
+Squeezy needs License Server 1.7.0 or later". Gating on the reported
+version would have hidden the button during the live test, since `main`
+reported 1.6.2 until release. `MIN_COMPATIBLE_SERVER_VERSION` stays 1.5.3.
+
+**Tests:** 211 (19 new: provider details, live-client messages, the
+settings section, per-provider mapping form). Also checked by hand against
+a local License Server from `main` with this console in hosted mode
+(connect, short secret rejected, generated secret activating the webhook,
+non-numeric then numeric variant, Stripe unchanged); that check found and
+fixed a layout bug (Generate/Copy misaligned when an error showed).
+Locally, `better-sqlite3`'s native module was compiled for Node 22; a
+rebuild attempt under Node 26 failed and removed it, and it was restored
+by rebuilding under Node 22 (CI's version).
+
+**Release (#56):** `main` confirmed carrying the bump before tagging
+(`v1.4.0`, annotated, on `c74f238`). Image published, `latest` the same
+digest (`sha256:9b1aa3a6...`); the published image checked: version stamp
+`v1.4.0`, `package.json` 1.4.0, and the new UI strings present. The live
+Lemon Squeezy test (casazium/license §288) ran this console from `main`:
+connect, generated secret and activation, and a variant mapping all
+worked. casazium/license's bundle now pins 1.4.0 with License Server
+1.7.0, verified end to end from scratch.
