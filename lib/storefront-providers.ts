@@ -14,6 +14,8 @@ export type StorefrontProviderInfo = {
   vendorChosenSecret: boolean;
   // Enforced by the server too (400) - checked here only to fail fast.
   secretLength?: { min: number; max: number };
+  // The event that reports a refund (License Server 1.8.0+).
+  refundEvent: string;
   // The License Server release that first accepts this provider, when
   // it's newer than MIN_COMPATIBLE_SERVER_VERSION (lib/version.ts). A
   // console pointed at an older server gets a 400 on connect, which the
@@ -36,6 +38,7 @@ export const STOREFRONT_PROVIDERS: Record<StorefrontWebhookProvider, StorefrontP
       { ...CASAZIUM_REF_KIND, label: 'Metadata (casazium_ref)' },
     ],
     vendorChosenSecret: false,
+    refundEvent: 'charge.refunded',
   },
   lemonsqueezy: {
     label: 'Lemon Squeezy',
@@ -46,6 +49,7 @@ export const STOREFRONT_PROVIDERS: Record<StorefrontWebhookProvider, StorefrontP
     vendorChosenSecret: true,
     secretLength: { min: 16, max: 40 },
     minServerVersion: '1.7.0',
+    refundEvent: 'order_refunded',
   },
 };
 

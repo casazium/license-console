@@ -373,12 +373,20 @@ export type StorefrontWebhookProvider = 'stripe' | 'lemonsqueezy';
 // needing a stable FK target to survive under).
 export type StorefrontWebhookStatus = 'pending' | 'active' | 'disabled';
 
+// What a full refund does (casazium/license 1.8.0+,
+// REFUND_REVOCATION_DESIGN.md there): revoke the license the purchase
+// issued, or only record the refund.
+export type StorefrontRefundPolicy = 'revoke' | 'record';
+
 export type StorefrontWebhook = {
   id: string;
   provider: StorefrontWebhookProvider;
   status: StorefrontWebhookStatus;
   created_at: string;
   last_event_at: string | null;
+  // Absent from a License Server older than 1.8.0 - which is how this
+  // console tells whether refund handling exists at all.
+  refund_policy?: StorefrontRefundPolicy;
 };
 
 // Per provider (the server rejects a kind its webhook's provider never
@@ -436,7 +444,10 @@ export type StorefrontDeliveryOutcome =
   | 'unmapped'
   | 'over_quota'
   | 'invalid_input'
-  | 'error';
+  | 'error'
+  // License Server 1.8.0+: fully refunded before a license was issued,
+  // so none was.
+  | 'refunded_before_issue';
 
 export type StorefrontDeliveryStatus = 'pending' | 'sending' | 'sent';
 
@@ -448,7 +459,17 @@ export type StorefrontDelivery = {
   license_key: string | null;
   delivery_status: StorefrontDeliveryStatus;
   processed_at: string | null;
+  // License Server 1.8.0+ (absent before); null until a refund arrives.
+  // refund_kind 'full' is final. Amounts are the provider's smallest
+  // currency unit, for display only.
+  refund_kind?: 'partial' | 'full' | null;
+  refunded_at?: string | null;
+  refund_action?: StorefrontRefundAction | null;
+  refunded_amount?: number | null;
+  amount_total?: number | null;
 };
+
+export type StorefrontRefundAction = 'revoked' | 'recorded' | 'no_license' | 'already_revoked' | 'revoke_failed';
 
 export type ListStorefrontDeliveriesParams = {
   limit?: number;
