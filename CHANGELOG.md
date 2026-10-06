@@ -10,6 +10,29 @@ surface this console depends on (`casazium/license`) notes whether it
 needs a corresponding change there, and vice versa — see
 `SELF_HOSTED_DISTRIBUTION_DESIGN.md` §4 for why this discipline exists.
 
+## [1.4.0] - 2026-10-06
+
+### Added
+
+- **Lemon Squeezy in Settings → Storefront webhooks**, alongside Stripe.
+  "Connect Lemon Squeezy" shows the callback URL and Lemon Squeezy's own
+  setup steps (subscribe the webhook to `order_created`). Lemon Squeezy
+  has the vendor choose the signing secret, so the setup offers
+  **Generate** (32 random hex characters) and **Copy** to paste the same
+  secret into both places; a secret outside 16-40 characters is caught
+  before saving, and the License Server's own message is shown if it
+  rejects one. Product mappings offer the provider's own reference
+  types - **Variant ID** or `casazium_ref` for Lemon Squeezy, Payment
+  Link or `casazium_ref` for Stripe - and a non-numeric Variant ID is
+  caught in plain language. The deliveries help explains Lemon Squeezy's
+  recovery: resend the webhook from Lemon Squeezy within 7 days of the
+  order, or send the key by hand.
+  Admin API surface: needs casazium/license **1.7.0** for Lemon Squeezy.
+  Against an older License Server, "Connect Lemon Squeezy" shows
+  "Connecting Lemon Squeezy needs License Server 1.7.0 or later";
+  everything else, Stripe included, works unchanged.
+  `MIN_COMPATIBLE_SERVER_VERSION` stays 1.5.3.
+
 ## [1.3.6] - 2026-10-05
 
 ### Added
