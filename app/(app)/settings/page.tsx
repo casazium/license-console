@@ -182,7 +182,7 @@ export default async function SettingsPage({
           <Title order={3}>Storefront webhooks</Title>
         </Stack>
         <Text size="sm" c="dimmed" mt={4} mb="md">
-          Connect your storefront (Stripe Payment Links today) so a completed purchase
+          Connect your storefront (Stripe Payment Links or Lemon Squeezy) so a completed purchase
           automatically issues a license and emails your buyer their key — no integration code
           required.
         </Text>

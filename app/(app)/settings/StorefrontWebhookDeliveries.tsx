@@ -5,7 +5,7 @@ import { Alert, Badge, Button, Code, Group, Stack, Table, Text } from '@mantine/
 import { notifications } from '@mantine/notifications';
 import { notifyRateLimited } from '@/lib/notify';
 import { formatDateTime } from '@/lib/format';
-import type { StorefrontDelivery } from '@/lib/license-client';
+import type { StorefrontDelivery, StorefrontWebhookProvider } from '@/lib/license-client';
 import { listStorefrontDeliveriesAction } from './actions';
 
 const PAGE_SIZE = 20;
@@ -70,7 +70,15 @@ function isStuck(delivery: StorefrontDelivery): boolean {
  * path (outcome 'issued', delivery_status not yet 'sent') picks it back
  * up correctly - so a stuck row here just points the tenant at that.
  */
-export function StorefrontWebhookDeliveries({ webhookId, active }: { webhookId: string; active: boolean }) {
+export function StorefrontWebhookDeliveries({
+  webhookId,
+  provider,
+  active,
+}: {
+  webhookId: string;
+  provider: StorefrontWebhookProvider;
+  active: boolean;
+}) {
   const [deliveries, setDeliveries] = useState<StorefrontDelivery[] | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [offset, setOffset] = useState(0);
@@ -142,8 +150,21 @@ export function StorefrontWebhookDeliveries({ webhookId, active }: { webhookId: 
       {stuckCount > 0 && (
         <Alert color="orange" variant="light" title="Needs attention">
           {stuckCount === 1 ? 'One purchase issued a license' : `${stuckCount} purchases issued a license`}{' '}
-          but its confirmation email hasn&apos;t gone out. Redeliver the matching event from your Stripe
-          dashboard (Developers → Webhooks → this endpoint) to retry — no license will be issued twice.
+          but its confirmation email hasn&apos;t gone out.{' '}
+          {provider === 'lemonsqueezy' ? (
+            // The License Server ignores a Lemon Squeezy order more than 7
+            // days old (its replay window), so a later resend does nothing.
+            <>
+              Resend the order&apos;s webhook from Lemon Squeezy (Settings → Webhooks) within 7 days of the
+              order to retry — no license will be issued twice. After that, send the buyer their key
+              yourself.
+            </>
+          ) : (
+            <>
+              Redeliver the matching event from your Stripe dashboard (Developers → Webhooks → this endpoint)
+              to retry — no license will be issued twice.
+            </>
+          )}
         </Alert>
       )}
 

@@ -359,10 +359,11 @@ export type BackendVersion = {
 
 // STOREFRONT_WEBHOOK_PLAN.md - inbound purchase-webhook auto-fulfillment.
 // Mirrors casazium/license's src/routes/admin-storefront-webhooks.js
-// response shapes exactly. Only 'stripe' exists today (Stripe Payment
-// Links) - a second storefront provider adds a second value here, not a
-// new type.
-export type StorefrontWebhookProvider = 'stripe';
+// response shapes exactly. 'stripe' (Stripe Payment Links) and
+// 'lemonsqueezy' (License Server 1.7.0+, LEMON_SQUEEZY_FULFILLMENT_DESIGN.md
+// there) - another storefront provider adds another value here, not a new
+// type.
+export type StorefrontWebhookProvider = 'stripe' | 'lemonsqueezy';
 
 // 'pending' - row exists, webhook URL can be shown, but no secret has
 // been saved yet (POST .../secret hasn't succeeded), so the route
@@ -380,11 +381,14 @@ export type StorefrontWebhook = {
   last_event_at: string | null;
 };
 
-// A Payment Link's own id, or a value the tenant sets themselves via
-// Stripe's `casazium_ref` Checkout Session metadata key (useful when
-// several Payment Links should resolve to the same mapping) -
-// storefront-webhook.js's own MAPPING_METADATA_KEY.
-export type StorefrontMappingRefKind = 'payment_link' | 'metadata';
+// Per provider (the server rejects a kind its webhook's provider never
+// produces - storefront-adapters.js's STOREFRONT_REF_KINDS):
+// - Stripe: a Payment Link's own id ('payment_link'), or
+// - Lemon Squeezy: a variant's numeric id ('variant'), or
+// - either: a value the tenant sets themselves as `casazium_ref` (Stripe
+//   Checkout Session metadata, or Lemon Squeezy checkout custom data) -
+//   useful when several links/variants should resolve to one mapping.
+export type StorefrontMappingRefKind = 'payment_link' | 'variant' | 'metadata';
 
 export type StorefrontMapping = {
   id: string;

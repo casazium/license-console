@@ -36,6 +36,7 @@
 import { cache } from 'react';
 import { LicenseApiError } from './errors';
 import { isMultiTenant } from './config';
+import { STOREFRONT_PROVIDERS } from './storefront-providers';
 import type {
   Activation,
   BackendVersion,
@@ -768,9 +769,13 @@ export async function listStorefrontWebhooks(tenantApiKey?: string): Promise<Sto
 }
 
 // 409 (an active webhook for this provider already exists) is the one
-// realistic failure the "Connect Stripe" button can hit - surfaced via
-// throwForFailedResponse's own preserved-message handling so the caller
-// can show the server's exact text rather than a generic failure.
+// realistic failure a "Connect ..." button can hit on a current server -
+// surfaced via throwForFailedResponse's own preserved-message handling so
+// the caller can show the server's exact text rather than a generic
+// failure. The other: a License Server older than the provider's
+// minServerVersion rejects the provider with a schema 400 ("body/provider
+// must be equal to one of the allowed values"), replaced here with a
+// message that says what to do about it.
 export async function createStorefrontWebhook(
   provider: StorefrontWebhookProvider,
   tenantApiKey?: string
@@ -780,6 +785,13 @@ export async function createStorefrontWebhook(
     { method: 'POST', body: JSON.stringify({ provider }) },
     tenantApiKey
   );
+  const { label, minServerVersion } = STOREFRONT_PROVIDERS[provider];
+  if (res.status === 400 && minServerVersion) {
+    throw new LicenseApiError(
+      `Connecting ${label} needs License Server ${minServerVersion} or later - ask whoever runs your license server to upgrade it.`,
+      400
+    );
+  }
   if (!res.ok) {
     await throwForFailedResponse(res, 'Failed to create storefront webhook');
   }
@@ -790,7 +802,9 @@ export async function createStorefrontWebhook(
 // (admin-storefront-webhooks.js) - false on a 404 (webhook_id not found
 // or not owned by this tenant), matching setLicenseRevoked/deleteLicense's
 // own "boolean outcome, not an exception" convention for a caller-facing
-// not-found that isn't really exceptional.
+// not-found that isn't really exceptional. A 400 (a Lemon Squeezy secret
+// outside 16-40 characters) keeps the server's message for inline
+// display.
 export async function setStorefrontWebhookSecret(
   webhookId: string,
   secret: string,

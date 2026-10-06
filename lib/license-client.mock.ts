@@ -4,6 +4,7 @@
  * dispatcher. State resets whenever the dev server process restarts.
  */
 
+import { STOREFRONT_PROVIDERS } from './storefront-providers';
 import type {
   Activation,
   BackendVersion,
@@ -805,11 +806,18 @@ export async function createStorefrontWebhook(
 
 export async function setStorefrontWebhookSecret(
   webhookId: string,
-  _secret: string,
+  secret: string,
   _tenantApiKey?: string
 ): Promise<boolean> {
   const webhook = getStore().storefrontWebhooks.find((w) => w.id === webhookId);
   if (!webhook) return false;
+  // Same per-provider bounds as the real route, so the setup form's
+  // inline error is demonstrable in standalone mode.
+  const bounds = STOREFRONT_PROVIDERS[webhook.provider].secretLength;
+  const length = [...secret].length;
+  if (bounds && (length < bounds.min || length > bounds.max)) {
+    throw new Error(`A ${webhook.provider} signing secret must be ${bounds.min}-${bounds.max} characters`);
+  }
   webhook.status = 'active';
   return true;
 }
@@ -839,6 +847,17 @@ export async function createStorefrontMapping(
   }
 
   const { ref_kind, external_ref, product_id, tier, limitsJson, max_activations, duration_days, notes } = input;
+
+  // Same per-provider ref-kind and variant-id checks as the real route.
+  const providerRefKinds = STOREFRONT_PROVIDERS[webhook.provider].refKinds.map((k) => k.value);
+  if (!providerRefKinds.includes(ref_kind)) {
+    throw new Error(
+      `ref_kind '${ref_kind}' is not valid for a ${webhook.provider} webhook (use ${providerRefKinds.join(' or ')})`
+    );
+  }
+  if (ref_kind === 'variant' && !/^[0-9]+$/.test(external_ref)) {
+    throw new Error('A variant external_ref must be a Lemon Squeezy variant ID (digits only)');
+  }
 
   // Same malformed-JSON guard as the live client, and the same real
   // duplicate-reference check the server enforces - both are worth

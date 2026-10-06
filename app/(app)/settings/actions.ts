@@ -309,13 +309,16 @@ export async function changePasswordAction(
 // second, genuinely distinct failure mode worth telling apart from an
 // opaque "something went wrong"):
 // - SimpleActionResult: the only realistic failure is a 429 - true for
-//   every list/secret/disable/delete call, since a 404 there ("that
+//   every list/disable/delete call, since a 404 there ("that
 //   webhook/mapping no longer exists") is already handled as a normal
 //   `false`/`[]` return by the client functions themselves, not an error.
 // - ValidatedActionResult: createStorefrontWebhookAction (409, an active
-//   webhook already exists) and createStorefrontMappingAction (400 from
-//   validateLicenseLimits.js, or 409, a duplicate mapping reference) can
-//   both fail on genuinely retryable-with-different-input user error -
+//   webhook already exists; 400, a server too old for the provider),
+//   setStorefrontWebhookSecretAction (400, a Lemon Squeezy secret outside
+//   16-40 characters) and createStorefrontMappingAction (400 from
+//   validateLicenseLimits.js or a ref kind the provider doesn't use, or
+//   409, a duplicate mapping reference) can all fail on genuinely
+//   retryable-with-different-input user error -
 //   the server's own message text is safe to show verbatim here (unlike
 //   a buyer-facing surface, every message on this admin-only CRUD
 //   describes the tenant's own configuration mistake back to them).
@@ -343,7 +346,7 @@ export async function createStorefrontWebhookAction(
 export async function setStorefrontWebhookSecretAction(
   webhookId: string,
   secret: string
-): Promise<SimpleActionResult<boolean>> {
+): Promise<ValidatedActionResult<boolean>> {
   const { identity, tenantApiKey } = await requireSessionWithTenantKey();
   try {
     const data = await setStorefrontWebhookSecretOnServer(webhookId, secret, tenantApiKey);
@@ -351,6 +354,7 @@ export async function setStorefrontWebhookSecretAction(
   } catch (err) {
     if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
     markIfTenantRejected(err, identity.tenantId);
+    if (err instanceof Error) return { ok: false, reason: 'validation', message: err.message };
     throw err;
   }
 }
