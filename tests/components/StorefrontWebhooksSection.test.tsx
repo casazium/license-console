@@ -10,6 +10,11 @@ const createWebhookAction = vi.fn();
 const setSecretAction = vi.fn();
 const setRefundPolicyAction = vi.fn();
 const setGraceAction = vi.fn();
+const notifyShow = vi.fn();
+const notifyRateLimited = vi.fn();
+
+vi.mock('@mantine/notifications', () => ({ notifications: { show: (...args: unknown[]) => notifyShow(...args) } }));
+vi.mock('@/lib/notify', () => ({ notifyRateLimited: () => notifyRateLimited() }));
 
 vi.mock('@/app/(app)/settings/actions', () => ({
   createStorefrontWebhookAction: (...args: unknown[]) => createWebhookAction(...args),
@@ -218,6 +223,8 @@ describe('StorefrontWebhooksSection - refunds (License Server 1.8.0+)', () => {
 describe('StorefrontWebhooksSection - subscriptions (License Server 1.9.0+)', () => {
   afterEach(() => {
     setGraceAction.mockReset();
+    notifyShow.mockReset();
+    notifyRateLimited.mockReset();
   });
 
   function activeWebhook(provider: StorefrontWebhook['provider'], grace?: number): StorefrontWebhook {
@@ -287,12 +294,39 @@ describe('StorefrontWebhooksSection - subscriptions (License Server 1.9.0+)', ()
     expect(graceInput()).toHaveValue('14 days');
   });
 
-  it("shows the server's own message inline when it refuses the value", async () => {
-    setGraceAction.mockResolvedValueOnce({ ok: false, reason: 'validation', message: 'subscription_grace_days must be a whole number of days, 0-30' });
+  // The value is checked before the round trip, so a server refusal is
+  // about the webhook (disabled elsewhere) or the server: a notification,
+  // as for the refund setting, not a field error.
+  it("shows a server refusal (a webhook disabled elsewhere) as a notification, keeping the typed value", async () => {
+    setGraceAction.mockResolvedValueOnce({ ok: false, reason: 'validation', message: 'This webhook is disabled - connect a new one' });
     await open(activeWebhook('stripe', 7));
     fireEvent.change(graceInput(), { target: { value: '3' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    expect(await screen.findByText(/must be a whole number of days, 0-30/)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(notifyShow).toHaveBeenCalledWith(expect.objectContaining({ message: 'This webhook is disabled - connect a new one' }))
+    );
+    expect(screen.queryByText('This webhook is disabled - connect a new one')).not.toBeInTheDocument();
+    expect(graceInput()).toHaveValue('3 days');
+  });
+
+  it('rate limited: tells the user, keeps the value unsaved', async () => {
+    setGraceAction.mockResolvedValueOnce({ ok: false, reason: 'rate-limited' });
+    await open(activeWebhook('stripe', 7));
+    fireEvent.change(graceInput(), { target: { value: '10' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(notifyRateLimited).toHaveBeenCalled());
+    expect(graceInput()).toHaveValue('10 days');
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
+  });
+
+  it('a webhook the server no longer finds is a notification', async () => {
+    setGraceAction.mockResolvedValueOnce({ ok: true, data: false });
+    await open(activeWebhook('stripe', 7));
+    fireEvent.change(graceInput(), { target: { value: '10' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(notifyShow).toHaveBeenCalledWith(expect.objectContaining({ message: 'This webhook could not be found - try reloading' }))
+    );
   });
 
   it.each(['45', '99'])('an out-of-range value (%s) is refused, never silently clamped to 0-30', async (typed) => {

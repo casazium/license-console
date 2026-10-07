@@ -243,7 +243,14 @@ export function StorefrontWebhooksSection({
                         )}
 
                         {webhook.subscription_grace_days !== undefined && webhook.status !== 'disabled' && (
-                          <SubscriptionGraceControl webhook={webhook} onChanged={handleGraceChanged} />
+                          // Keyed on the saved value, so the field resets
+                          // whenever the webhook's grace changes from
+                          // outside the control (e.g. a future refresh).
+                          <SubscriptionGraceControl
+                            key={`${webhook.id}:${webhook.subscription_grace_days}`}
+                            webhook={webhook}
+                            onChanged={handleGraceChanged}
+                          />
                         )}
 
                         <StorefrontWebhookMappings
@@ -561,15 +568,22 @@ function SubscriptionGraceControl({
     try {
       const result = await setStorefrontSubscriptionGraceAction(webhook.id, numeric);
       if (!result.ok) {
+        // The value was checked above, so a refusal now is about the
+        // webhook (disabled elsewhere, a 409) or the server - a
+        // notification, as for the refund setting, not a field error.
         if (result.reason === 'rate-limited') {
           notifyRateLimited();
         } else {
-          setError(result.message);
+          notifications.show({ color: 'red', title: "Couldn't change the grace period", message: result.message });
         }
         return;
       }
       if (!result.data) {
-        setError('This webhook could not be found - try reloading');
+        notifications.show({
+          color: 'red',
+          title: "Couldn't change the grace period",
+          message: 'This webhook could not be found - try reloading',
+        });
         return;
       }
       onChanged(webhook.id, numeric);

@@ -127,13 +127,24 @@ function subscriptionBadge(delivery: StorefrontDelivery): { label: string; color
 
 // A muted line under the subscription badge: what's paid, or when it
 // ends. The server sends ISO dates here (unlike processed_at).
+//
+// ends_at means something different per state: when it ended (terminal),
+// when it lapsed for non-payment (ended), or when a cancellation takes
+// effect (ending - and past_due, which keeps a cancellation still pending
+// behind the failed payment).
 function subscriptionDetail(delivery: StorefrontDelivery): string | null {
   if (!delivery.subscription_id) return null;
-  if (delivery.subscription_state === 'terminal' && delivery.subscription_ends_at) {
-    return `Ended ${formatDate(delivery.subscription_ends_at)}`;
-  }
-  if (delivery.subscription_state === 'ending' && delivery.subscription_ends_at) {
-    return `Ends ${formatDate(delivery.subscription_ends_at)}`;
+  const endsAt = delivery.subscription_ends_at;
+  if (endsAt) {
+    switch (delivery.subscription_state) {
+      case 'terminal':
+        return `Ended ${formatDate(endsAt)}`;
+      case 'ended':
+        return `Lapsed ${formatDate(endsAt)}`;
+      case 'ending':
+      case 'past_due':
+        return `Ends ${formatDate(endsAt)}`;
+    }
   }
   if (delivery.subscription_paid_through) return `Paid to ${formatDate(delivery.subscription_paid_through)}`;
   return null;
@@ -265,9 +276,13 @@ export function StorefrontWebhookDeliveries({
           {missingEventsCount === 1 ? 'One subscription purchase has' : `${missingEventsCount} subscription purchases have`}{' '}
           had no payment recorded for over a day, so{' '}
           {provider === 'lemonsqueezy'
-            ? "its license won't extend."
-            : 'its license is on a short provisional expiry.'}{' '}
-          Check this webhook in your {provider === 'lemonsqueezy' ? 'Lemon Squeezy' : 'Stripe'} settings sends{' '}
+            ? missingEventsCount === 1
+              ? "its license won't extend."
+              : "their licenses won't extend."
+            : missingEventsCount === 1
+              ? 'its license is on a short provisional expiry.'
+              : 'their licenses are on short provisional expiries.'}{' '}
+          Check that this webhook in your {provider === 'lemonsqueezy' ? 'Lemon Squeezy' : 'Stripe'} settings sends{' '}
           {subscriptionEvents.map((event, i) => (
             <span key={event}>
               {i > 0 && (i === subscriptionEvents.length - 1 ? ' and ' : ', ')}

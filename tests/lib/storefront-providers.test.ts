@@ -62,10 +62,17 @@ describe('lib/storefront-providers', () => {
       'customer.subscription.updated',
       'customer.subscription.deleted',
     ]);
-    expect(STOREFRONT_PROVIDERS.lemonsqueezy.subscriptionEvents).toEqual(
-      expect.arrayContaining(['subscription_created', 'subscription_expired', 'subscription_payment_success', 'subscription_payment_recovered'])
-    );
-    expect(STOREFRONT_PROVIDERS.lemonsqueezy.subscriptionEvents).toHaveLength(9);
+    expect(STOREFRONT_PROVIDERS.lemonsqueezy.subscriptionEvents).toEqual([
+      'subscription_created',
+      'subscription_updated',
+      'subscription_cancelled',
+      'subscription_resumed',
+      'subscription_expired',
+      'subscription_paused',
+      'subscription_unpaused',
+      'subscription_payment_success',
+      'subscription_payment_recovered',
+    ]);
   });
 });
 
