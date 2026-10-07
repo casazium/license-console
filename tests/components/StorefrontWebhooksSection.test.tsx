@@ -9,11 +9,13 @@ import type { StorefrontWebhook } from '@/lib/license-client';
 const createWebhookAction = vi.fn();
 const setSecretAction = vi.fn();
 const setRefundPolicyAction = vi.fn();
+const setGraceAction = vi.fn();
 
 vi.mock('@/app/(app)/settings/actions', () => ({
   createStorefrontWebhookAction: (...args: unknown[]) => createWebhookAction(...args),
   setStorefrontWebhookSecretAction: (...args: unknown[]) => setSecretAction(...args),
   setStorefrontRefundPolicyAction: (...args: unknown[]) => setRefundPolicyAction(...args),
+  setStorefrontSubscriptionGraceAction: (...args: unknown[]) => setGraceAction(...args),
   disableStorefrontWebhookAction: vi.fn(),
   listStorefrontMappingsAction: vi.fn().mockResolvedValue({ ok: true, data: [] }),
   createStorefrontMappingAction: vi.fn(),
@@ -212,3 +214,124 @@ describe('StorefrontWebhooksSection - refunds (License Server 1.8.0+)', () => {
     expect(screen.queryByText('charge.refunded')).not.toBeInTheDocument();
   });
 });
+
+describe('StorefrontWebhooksSection - subscriptions (License Server 1.9.0+)', () => {
+  afterEach(() => {
+    setGraceAction.mockReset();
+  });
+
+  function activeWebhook(provider: StorefrontWebhook['provider'], grace?: number): StorefrontWebhook {
+    return {
+      ...pendingWebhook(provider),
+      status: 'active',
+      refund_policy: 'revoke',
+      ...(grace === undefined ? {} : { subscription_grace_days: grace }),
+    };
+  }
+
+  async function open(webhook: StorefrontWebhook) {
+    renderWithMantine(<StorefrontWebhooksSection initialWebhooks={[webhook]} apiBaseUrl="" />);
+    const label = webhook.provider === 'stripe' ? 'Stripe' : 'Lemon Squeezy';
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(`^${label}`) }));
+    await screen.findByRole('button', { name: 'Disable this webhook' });
+  }
+
+  const graceInput = () => screen.getByRole('textbox', { name: 'Subscriptions: grace period' });
+
+  it('shows the grace setting when the server reports one, as a labelled group with the current value', async () => {
+    await open(activeWebhook('stripe', 7));
+    expect(screen.getByRole('group', { name: 'Subscriptions: grace period' })).toBeInTheDocument();
+    expect(graceInput()).toHaveValue('7 days');
+    // Nothing changed yet, so nothing to save.
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+  });
+
+  it('names the subscription events for each provider - Lemon Squeezy stressing the payment events', async () => {
+    await open(activeWebhook('stripe', 7));
+    expect(screen.getByText('invoice.paid')).toBeInTheDocument();
+    expect(screen.getByText('customer.subscription.deleted')).toBeInTheDocument();
+  });
+
+  it('Lemon Squeezy: lists the payment events and says a subscription never extends without them', async () => {
+    await open(activeWebhook('lemonsqueezy', 7));
+    expect(screen.getByText('subscription_payment_success')).toBeInTheDocument();
+    expect(screen.getByText('subscription_payment_recovered')).toBeInTheDocument();
+    expect(screen.getByText(/without the two payment events a subscription never extends/)).toBeInTheDocument();
+  });
+
+  it('hides the grace setting against a server older than 1.9.0', async () => {
+    await open(activeWebhook('stripe'));
+    expect(screen.queryByText('Subscriptions: grace period')).not.toBeInTheDocument();
+    expect(screen.queryByText('invoice.paid')).not.toBeInTheDocument();
+  });
+
+  it('hides the grace setting on a disabled webhook', async () => {
+    renderWithMantine(
+      <StorefrontWebhooksSection initialWebhooks={[{ ...activeWebhook('stripe', 7), status: 'disabled' }]} apiBaseUrl="" />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^Stripe/ }));
+    await screen.findByText(/v1\/webhooks\/storefront\/wh_stripe/);
+    expect(screen.queryByText('Subscriptions: grace period')).not.toBeInTheDocument();
+  });
+
+  it('saves a new grace and keeps it', async () => {
+    setGraceAction.mockResolvedValueOnce({ ok: true, data: true });
+    await open(activeWebhook('stripe', 7));
+
+    fireEvent.change(graceInput(), { target: { value: '14' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(setGraceAction).toHaveBeenCalledWith('wh_stripe', 14));
+    // Saved: the button goes back to disabled at the new value.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled());
+    expect(graceInput()).toHaveValue('14 days');
+  });
+
+  it("shows the server's own message inline when it refuses the value", async () => {
+    setGraceAction.mockResolvedValueOnce({ ok: false, reason: 'validation', message: 'subscription_grace_days must be a whole number of days, 0-30' });
+    await open(activeWebhook('stripe', 7));
+    fireEvent.change(graceInput(), { target: { value: '3' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText(/must be a whole number of days, 0-30/)).toBeInTheDocument();
+  });
+
+  it.each(['45', '99'])('an out-of-range value (%s) is refused, never silently clamped to 0-30', async (typed) => {
+    await open(activeWebhook('stripe', 7));
+    fireEvent.change(graceInput(), { target: { value: typed } });
+    fireEvent.blur(graceInput());
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('Enter a whole number of days from 0 to 30')).toBeInTheDocument();
+    expect(setGraceAction).not.toHaveBeenCalled();
+  });
+
+  it('an empty value is caught before the round trip', async () => {
+    await open(activeWebhook('stripe', 7));
+    fireEvent.change(graceInput(), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('Enter a whole number of days from 0 to 30')).toBeInTheDocument();
+    expect(setGraceAction).not.toHaveBeenCalled();
+  });
+
+  it('setup steps add the subscription events only when the server supports subscriptions', async () => {
+    renderWithMantine(
+      <StorefrontWebhooksSection
+        initialWebhooks={[{ ...pendingWebhook('stripe'), refund_policy: 'revoke', subscription_grace_days: 7 }]}
+        apiBaseUrl=""
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Stripe/ }));
+    await screen.findByRole('button', { name: 'Save secret' });
+    expect(screen.getByText(/Selling subscriptions\?/)).toBeInTheDocument();
+    expect(screen.getByText('invoice.paid')).toBeInTheDocument();
+  });
+
+  it("setup steps don't mention subscriptions against an older server", async () => {
+    renderWithMantine(
+      <StorefrontWebhooksSection initialWebhooks={[{ ...pendingWebhook('stripe'), refund_policy: 'revoke' }]} apiBaseUrl="" />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Stripe/ }));
+    await screen.findByRole('button', { name: 'Save secret' });
+    expect(screen.queryByText(/Selling subscriptions\?/)).not.toBeInTheDocument();
+  });
+});
+

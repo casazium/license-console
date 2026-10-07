@@ -8,6 +8,7 @@ import {
   createStorefrontWebhook as createStorefrontWebhookOnServer,
   setStorefrontWebhookSecret as setStorefrontWebhookSecretOnServer,
   setStorefrontRefundPolicy as setStorefrontRefundPolicyOnServer,
+  setStorefrontSubscriptionGrace as setStorefrontSubscriptionGraceOnServer,
   disableStorefrontWebhook as disableStorefrontWebhookOnServer,
   listStorefrontMappings as listStorefrontMappingsOnServer,
   createStorefrontMapping as createStorefrontMappingOnServer,
@@ -370,6 +371,28 @@ export async function setStorefrontRefundPolicyAction(
   const { identity, tenantApiKey } = await requireSessionWithTenantKey();
   try {
     const data = await setStorefrontRefundPolicyOnServer(webhookId, refundPolicy, tenantApiKey);
+    return { ok: true, data };
+  } catch (err) {
+    if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
+    markIfTenantRejected(err, identity.tenantId);
+    if (err instanceof Error) return { ok: false, reason: 'validation', message: err.message };
+    throw err;
+  }
+}
+
+// How long a subscription's license stays valid past its paid period
+// (License Server 1.9.0+). Checked here too, so a bad value never leaves
+// the console: a whole number of days, 0-30 - the server's own bounds.
+export async function setStorefrontSubscriptionGraceAction(
+  webhookId: string,
+  graceDays: number
+): Promise<ValidatedActionResult<boolean>> {
+  const { identity, tenantApiKey } = await requireSessionWithTenantKey();
+  if (!Number.isInteger(graceDays) || graceDays < 0 || graceDays > 30) {
+    return { ok: false, reason: 'validation', message: 'Enter a whole number of days from 0 to 30' };
+  }
+  try {
+    const data = await setStorefrontSubscriptionGraceOnServer(webhookId, graceDays, tenantApiKey);
     return { ok: true, data };
   } catch (err) {
     if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };

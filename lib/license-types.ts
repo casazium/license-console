@@ -387,6 +387,10 @@ export type StorefrontWebhook = {
   // Absent from a License Server older than 1.8.0 - which is how this
   // console tells whether refund handling exists at all.
   refund_policy?: StorefrontRefundPolicy;
+  // License Server 1.9.0+ (absent before - the same way this console
+  // tells whether subscriptions exist): days a subscription's license
+  // stays valid past its paid period, 0-30.
+  subscription_grace_days?: number;
 };
 
 // Per provider (the server rejects a kind its webhook's provider never
@@ -467,7 +471,21 @@ export type StorefrontDelivery = {
   refund_action?: StorefrontRefundAction | null;
   refunded_amount?: number | null;
   amount_total?: number | null;
+  // License Server 1.9.0+ (absent before): the subscription holding this
+  // purchase's license, null for a one-time purchase. Dates are ISO 8601.
+  subscription_id?: string | null;
+  subscription_state?: StorefrontSubscriptionState | null;
+  subscription_paid_through?: string | null;
+  subscription_ends_at?: string | null;
+  subscription_closed_at?: string | null;
+  // Over a day old, still open, nothing paid or granted: the payment
+  // events are probably not enabled.
+  subscription_events_missing?: boolean;
 };
+
+// 'ending' = cancelled, runs to its end; 'ended' = lapsed for non-payment
+// (can still be reactivated); 'terminal' = over for good.
+export type StorefrontSubscriptionState = 'active' | 'trialing' | 'past_due' | 'ending' | 'ended' | 'terminal';
 
 export type StorefrontRefundAction = 'revoked' | 'recorded' | 'no_license' | 'already_revoked' | 'revoke_failed';
 

@@ -8,6 +8,7 @@ import {
   listStorefrontMappings,
   listStorefrontWebhooks,
   setStorefrontRefundPolicy,
+  setStorefrontSubscriptionGrace,
   setStorefrontWebhookSecret,
 } from '@/lib/license-client.live';
 import { LicenseApiError } from '@/lib/errors';
@@ -277,6 +278,52 @@ describe('storefront webhook live client (lib/license-client.live.ts)', () => {
         deliveries: [],
         hasMore: false,
       });
+    });
+  });
+
+  describe('setStorefrontSubscriptionGrace (License Server 1.9.0+)', () => {
+    it('PATCHes the webhook with only the grace and returns true', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(new Response(JSON.stringify({ id: 'wh_1', refund_policy: 'revoke', subscription_grace_days: 14 }), { status: 200 }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      await expect(setStorefrontSubscriptionGrace('wh_1', 14, 'tenant-key')).resolves.toBe(true);
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(String(url)).toContain('/admin/storefront-webhooks/wh_1');
+      expect(init.method).toBe('PATCH');
+      expect(JSON.parse(init.body)).toEqual({ subscription_grace_days: 14 });
+    });
+
+    it('returns false when the webhook itself is not found', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: 'Storefront webhook not found' }), { status: 404 }))
+      );
+      await expect(setStorefrontSubscriptionGrace('wh_missing', 7, 'tenant-key')).resolves.toBe(false);
+    });
+
+    it("explains a server with no PATCH route (Fastify's own 404)", async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({ message: 'Route PATCH:/v1/admin/storefront-webhooks/wh_1 not found', error: 'Not Found', statusCode: 404 }),
+            { status: 404 }
+          )
+        )
+      );
+      await expect(setStorefrontSubscriptionGrace('wh_1', 7, 'tenant-key')).rejects.toThrow('Subscriptions need License Server 1.9.0 or later.');
+    });
+
+    it("passes the server's 400 message through", async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response(JSON.stringify({ error: 'subscription_grace_days must be a whole number of days, 0-30' }), { status: 400 })
+        )
+      );
+      await expect(setStorefrontSubscriptionGrace('wh_1', 7, 'tenant-key')).rejects.toThrow(/0-30/);
     });
   });
 });

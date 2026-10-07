@@ -852,6 +852,35 @@ export async function setStorefrontRefundPolicy(
   return true;
 }
 
+// How long a subscription's license stays valid past its paid period
+// (License Server 1.9.0+), 0-30. Same PATCH as the refund setting, and the
+// same false-on-404. The console only offers it when the server reported
+// subscription_grace_days, so an older server is a fallback: 1.8.0 strips
+// the field and refuses a body without refund_policy (400); older still
+// has no PATCH route (Fastify's own 404).
+export async function setStorefrontSubscriptionGrace(
+  webhookId: string,
+  graceDays: number,
+  tenantApiKey?: string
+): Promise<boolean> {
+  const res = await liveFetch(
+    `/admin/storefront-webhooks/${encodeURIComponent(webhookId)}`,
+    { method: 'PATCH', body: JSON.stringify({ subscription_grace_days: graceDays }) },
+    tenantApiKey
+  );
+  if (res.status === 404) {
+    const body: { message?: string } = await res.json().catch(() => ({}));
+    if (body.message?.startsWith('Route ')) {
+      throw new LicenseApiError('Subscriptions need License Server 1.9.0 or later.', 404);
+    }
+    return false;
+  }
+  if (!res.ok) {
+    await throwForFailedResponse(res, 'Failed to update the subscription grace period');
+  }
+  return true;
+}
+
 // Soft-disable only (DELETE .../:id never hard-deletes server-side) -
 // see StorefrontWebhookStatus's own doc comment.
 export async function disableStorefrontWebhook(webhookId: string, tenantApiKey?: string): Promise<boolean> {

@@ -47,6 +47,7 @@ export type {
   StorefrontMappingRefKind,
   StorefrontRefundAction,
   StorefrontRefundPolicy,
+  StorefrontSubscriptionState,
   StorefrontWebhook,
   StorefrontWebhookProvider,
   StorefrontWebhookStatus,
@@ -198,6 +199,8 @@ export const setStorefrontWebhookSecret: typeof mock.setStorefrontWebhookSecret 
   client().setStorefrontWebhookSecret(webhookId, secret, tenantApiKey);
 export const setStorefrontRefundPolicy: typeof mock.setStorefrontRefundPolicy = (webhookId, refundPolicy, tenantApiKey) =>
   client().setStorefrontRefundPolicy(webhookId, refundPolicy, tenantApiKey);
+export const setStorefrontSubscriptionGrace: typeof mock.setStorefrontSubscriptionGrace = (webhookId, graceDays, tenantApiKey) =>
+  client().setStorefrontSubscriptionGrace(webhookId, graceDays, tenantApiKey);
 export const disableStorefrontWebhook: typeof mock.disableStorefrontWebhook = (webhookId, tenantApiKey) =>
   client().disableStorefrontWebhook(webhookId, tenantApiKey);
 export const listStorefrontMappings: typeof mock.listStorefrontMappings = (webhookId, tenantApiKey) =>
