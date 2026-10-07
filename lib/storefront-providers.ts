@@ -16,6 +16,10 @@ export type StorefrontProviderInfo = {
   secretLength?: { min: number; max: number };
   // The event that reports a refund (License Server 1.8.0+).
   refundEvent: string;
+  // The events subscriptions need (License Server 1.9.0+), all of them
+  // together - on Lemon Squeezy, the payment events above all: without
+  // them a subscription never extends.
+  subscriptionEvents: string[];
   // The License Server release that first accepts this provider, when
   // it's newer than MIN_COMPATIBLE_SERVER_VERSION (lib/version.ts). A
   // console pointed at an older server gets a 400 on connect, which the
@@ -39,6 +43,12 @@ export const STOREFRONT_PROVIDERS: Record<StorefrontWebhookProvider, StorefrontP
     ],
     vendorChosenSecret: false,
     refundEvent: 'charge.refunded',
+    subscriptionEvents: [
+      'invoice.paid',
+      'customer.subscription.created',
+      'customer.subscription.updated',
+      'customer.subscription.deleted',
+    ],
   },
   lemonsqueezy: {
     label: 'Lemon Squeezy',
@@ -50,6 +60,17 @@ export const STOREFRONT_PROVIDERS: Record<StorefrontWebhookProvider, StorefrontP
     secretLength: { min: 16, max: 40 },
     minServerVersion: '1.7.0',
     refundEvent: 'order_refunded',
+    subscriptionEvents: [
+      'subscription_created',
+      'subscription_updated',
+      'subscription_cancelled',
+      'subscription_resumed',
+      'subscription_expired',
+      'subscription_paused',
+      'subscription_unpaused',
+      'subscription_payment_success',
+      'subscription_payment_recovered',
+    ],
   },
 };
 

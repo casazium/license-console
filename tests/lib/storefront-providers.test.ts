@@ -52,4 +52,27 @@ describe('lib/storefront-providers', () => {
     expect(refKindLabel('metadata')).toBe('casazium_ref');
     expect(refKindLabel('other')).toBe('other');
   });
+
+  // Mirrors casazium/license 1.9.0's API.md §7a: every event the server's
+  // subscription handling acts on, per provider.
+  it('lists the subscription events each provider needs, Lemon Squeezy including both payment events', () => {
+    expect(STOREFRONT_PROVIDERS.stripe.subscriptionEvents).toEqual([
+      'invoice.paid',
+      'customer.subscription.created',
+      'customer.subscription.updated',
+      'customer.subscription.deleted',
+    ]);
+    expect(STOREFRONT_PROVIDERS.lemonsqueezy.subscriptionEvents).toEqual([
+      'subscription_created',
+      'subscription_updated',
+      'subscription_cancelled',
+      'subscription_resumed',
+      'subscription_expired',
+      'subscription_paused',
+      'subscription_unpaused',
+      'subscription_payment_success',
+      'subscription_payment_recovered',
+    ]);
+  });
 });
+

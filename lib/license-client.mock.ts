@@ -167,6 +167,7 @@ function seedStore(): Store {
         created_at: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString(),
         last_event_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
         refund_policy: 'revoke',
+        subscription_grace_days: 7,
       },
     ],
     storefrontMappings: [
@@ -236,6 +237,53 @@ function seedStore(): Store {
         refund_action: 'recorded',
         refunded_amount: 980,
         amount_total: 4900,
+      },
+      // Subscriptions (License Server 1.9.0+) - so mock mode shows the
+      // subscription badges and the missing-events flag too.
+      {
+        tenant_id: 'demo-tenant',
+        checkout_session_id: 'cs_test_demo_subscription',
+        outcome: 'issued',
+        attempts: 1,
+        license_key: 'CASZ-DEMO-EPSILON-0005',
+        delivery_status: 'sent',
+        processed_at: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(),
+        subscription_id: 'sub_demo0001',
+        subscription_state: 'active',
+        subscription_paid_through: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString(),
+        subscription_ends_at: null,
+        subscription_closed_at: null,
+        subscription_events_missing: false,
+      },
+      {
+        tenant_id: 'demo-tenant',
+        checkout_session_id: 'cs_test_demo_subscription_cancelled',
+        outcome: 'issued',
+        attempts: 1,
+        license_key: 'CASZ-DEMO-ZETA-0006',
+        delivery_status: 'sent',
+        processed_at: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
+        subscription_id: 'sub_demo0002',
+        subscription_state: 'ending',
+        subscription_paid_through: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
+        subscription_ends_at: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
+        subscription_closed_at: null,
+        subscription_events_missing: false,
+      },
+      {
+        tenant_id: 'demo-tenant',
+        checkout_session_id: 'cs_test_demo_subscription_no_events',
+        outcome: 'issued',
+        attempts: 1,
+        license_key: 'CASZ-DEMO-ETA-0007',
+        delivery_status: 'sent',
+        processed_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+        subscription_id: 'sub_demo0003',
+        subscription_state: null,
+        subscription_paid_through: null,
+        subscription_ends_at: null,
+        subscription_closed_at: null,
+        subscription_events_missing: true,
       },
       {
         tenant_id: 'demo-tenant',
@@ -832,6 +880,7 @@ export async function createStorefrontWebhook(
     created_at: new Date().toISOString(),
     last_event_at: null,
     refund_policy: 'revoke',
+    subscription_grace_days: 7,
   };
   storefrontWebhooks.push(webhook);
   return webhook;
@@ -863,6 +912,21 @@ export async function setStorefrontRefundPolicy(
   const webhook = getStore().storefrontWebhooks.find((w) => w.id === webhookId);
   if (!webhook) return false;
   webhook.refund_policy = refundPolicy;
+  return true;
+}
+
+export async function setStorefrontSubscriptionGrace(
+  webhookId: string,
+  graceDays: number,
+  _tenantApiKey?: string
+): Promise<boolean> {
+  const webhook = getStore().storefrontWebhooks.find((w) => w.id === webhookId);
+  if (!webhook) return false;
+  // The server's own bounds (400 outside them).
+  if (!Number.isInteger(graceDays) || graceDays < 0 || graceDays > 30) {
+    throw new Error('subscription_grace_days must be a whole number of days, 0-30');
+  }
+  webhook.subscription_grace_days = graceDays;
   return true;
 }
 

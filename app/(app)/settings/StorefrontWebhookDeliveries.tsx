@@ -6,6 +6,7 @@ import { notifications } from '@mantine/notifications';
 import { notifyRateLimited } from '@/lib/notify';
 import { formatDate, formatDateTime } from '@/lib/format';
 import type { StorefrontDelivery, StorefrontWebhookProvider } from '@/lib/license-client';
+import { STOREFRONT_PROVIDERS } from '@/lib/storefront-providers';
 import { listStorefrontDeliveriesAction } from './actions';
 
 const PAGE_SIZE = 20;
@@ -99,6 +100,56 @@ function refundDetail(delivery: StorefrontDelivery): string | null {
   return parts.length > 0 ? parts.join(' · ') : null;
 }
 
+// License Server 1.9.0+: the subscription holding this purchase's
+// license. Null for a one-time purchase (or an older server). Short
+// labels, like the refund badge, so they fit the Outcome column.
+function subscriptionBadge(delivery: StorefrontDelivery): { label: string; color: string } | null {
+  if (!delivery.subscription_id) return null;
+  switch (delivery.subscription_state) {
+    case 'active':
+      return { label: 'Subscribed', color: 'teal' };
+    case 'trialing':
+      return { label: 'Trial', color: 'cyan' };
+    case 'past_due':
+      return { label: 'Payment due', color: 'orange' };
+    case 'ending':
+      return { label: 'Cancelled', color: 'yellow' };
+    case 'ended':
+      return { label: 'Lapsed', color: 'red' };
+    case 'terminal':
+      return { label: 'Ended', color: 'gray' };
+    default:
+      // Joined but no subscription event yet - the payment may still be on
+      // its way, or the events aren't enabled (flagged separately).
+      return { label: 'Subscription', color: 'gray' };
+  }
+}
+
+// A muted line under the subscription badge: what's paid, or when it
+// ends. The server sends ISO dates here (unlike processed_at).
+//
+// ends_at means something different per state: when it ended (terminal),
+// when it lapsed for non-payment (ended), or when a cancellation takes
+// effect (ending - and past_due, which keeps a cancellation still pending
+// behind the failed payment).
+function subscriptionDetail(delivery: StorefrontDelivery): string | null {
+  if (!delivery.subscription_id) return null;
+  const endsAt = delivery.subscription_ends_at;
+  if (endsAt) {
+    switch (delivery.subscription_state) {
+      case 'terminal':
+        return `Ended ${formatDate(endsAt)}`;
+      case 'ended':
+        return `Lapsed ${formatDate(endsAt)}`;
+      case 'ending':
+      case 'past_due':
+        return `Ends ${formatDate(endsAt)}`;
+    }
+  }
+  if (delivery.subscription_paid_through) return `Paid to ${formatDate(delivery.subscription_paid_through)}`;
+  return null;
+}
+
 function isStuck(delivery: StorefrontDelivery): boolean {
   if (delivery.outcome !== 'issued' || delivery.delivery_status === 'sent') return false;
   // A fully refunded purchase is never emailed (License Server 1.8.0+),
@@ -190,6 +241,8 @@ export function StorefrontWebhookDeliveries({
   }
 
   const stuckCount = deliveries?.filter(isStuck).length ?? 0;
+  const missingEventsCount = deliveries?.filter((d) => d.subscription_events_missing).length ?? 0;
+  const subscriptionEvents = STOREFRONT_PROVIDERS[provider].subscriptionEvents;
 
   return (
     <Stack gap="xs">
@@ -215,6 +268,28 @@ export function StorefrontWebhookDeliveries({
               to retry — no license will be issued twice.
             </>
           )}
+        </Alert>
+      )}
+
+      {missingEventsCount > 0 && (
+        <Alert color="orange" variant="light" title="Subscription payments not received">
+          {missingEventsCount === 1 ? 'One subscription purchase has' : `${missingEventsCount} subscription purchases have`}{' '}
+          had no payment recorded for over a day, so{' '}
+          {provider === 'lemonsqueezy'
+            ? missingEventsCount === 1
+              ? "its license won't extend."
+              : "their licenses won't extend."
+            : missingEventsCount === 1
+              ? 'its license is on a short provisional expiry.'
+              : 'their licenses are on short provisional expiries.'}{' '}
+          Check that this webhook in your {provider === 'lemonsqueezy' ? 'Lemon Squeezy' : 'Stripe'} settings sends{' '}
+          {subscriptionEvents.map((event, i) => (
+            <span key={event}>
+              {i > 0 && (i === subscriptionEvents.length - 1 ? ' and ' : ', ')}
+              <Code fz="xs">{event}</Code>
+            </span>
+          ))}
+          .
         </Alert>
       )}
 
@@ -294,6 +369,8 @@ export function StorefrontWebhookDeliveries({
                 const refund = refundBadge(delivery);
                 const detail = refund ? refundDetail(delivery) : null;
                 const stuck = isStuck(delivery);
+                const subscription = subscriptionBadge(delivery);
+                const subscriptionLine = subscription ? subscriptionDetail(delivery) : null;
                 return (
                   <Table.Tr key={delivery.checkout_session_id}>
                     <Table.Td>
@@ -316,9 +393,24 @@ export function StorefrontWebhookDeliveries({
                             {detail}
                           </Text>
                         )}
+                        {subscription && (
+                          <Badge color={subscription.color} variant="outline">
+                            {subscription.label}
+                          </Badge>
+                        )}
+                        {subscriptionLine && (
+                          <Text size="xs" c="dimmed" w="100%">
+                            {subscriptionLine}
+                          </Text>
+                        )}
                         {stuck && (
                           <Badge color="orange" variant="outline">
                             Needs attention
+                          </Badge>
+                        )}
+                        {delivery.subscription_events_missing && (
+                          <Badge color="orange" variant="outline">
+                            No payments yet
                           </Badge>
                         )}
                       </Group>

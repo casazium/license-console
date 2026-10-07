@@ -10,6 +10,33 @@ surface this console depends on (`casazium/license`) notes whether it
 needs a corresponding change there, and vice versa — see
 `SELF_HOSTED_DISTRIBUTION_DESIGN.md` §4 for why this discipline exists.
 
+## [Unreleased]
+
+### Added
+
+- **Subscriptions in Settings → Storefront webhooks** (casazium/license
+  1.9.0's storefront subscriptions). Needs License Server 1.9.0+; against
+  an older server nothing below appears.
+  - **Grace period:** each webhook gets **"Subscriptions: grace
+    period"**, 0–30 days (default 7) — how long a subscription's license
+    stays valid past what's been paid. It has its own Save button, and
+    the server's validation message shows inline. Its help names the
+    events to enable for that provider (Stripe `invoice.paid` and
+    `customer.subscription.*`; Lemon Squeezy's seven subscription events
+    and both payment events, which it says a subscription can't extend
+    without).
+  - **Setup steps** add the same events, as "Selling subscriptions?".
+  - **Deliveries** show each purchase's subscription: Subscribed, Trial,
+    Payment due, Cancelled, Lapsed or Ended, with "Paid to …", "Ends …"
+    or "Ended …" beneath.
+  - **Missing payment events:** a subscription purchase more than a day
+    old with no payment recorded is badged "No payments yet", under a
+    "Subscription payments not received" alert naming the events to
+    enable.
+  - **API surface:** uses License Server 1.9.0's `subscription_grace_days`
+    (create, list and `PATCH`) and the deliveries subscription fields.
+    No server change needed.
+
 ## [1.5.0] - 2026-10-07
 
 ### Added

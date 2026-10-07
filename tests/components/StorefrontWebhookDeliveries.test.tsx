@@ -84,3 +84,78 @@ describe('StorefrontWebhookDeliveries - refunds (License Server 1.8.0+)', () => 
     expect(screen.queryByText(/refunded/i)).not.toBeInTheDocument();
   });
 });
+
+describe('StorefrontWebhookDeliveries - subscriptions (License Server 1.9.0+)', () => {
+  it.each([
+    [{ subscription_state: 'active', subscription_paid_through: '2026-11-06T00:00:00.000Z' }, 'Subscribed', 'Paid to 2026-11-06'],
+    [{ subscription_state: 'trialing', subscription_paid_through: null }, 'Trial', null],
+    [{ subscription_state: 'past_due', subscription_paid_through: '2026-11-06T00:00:00.000Z' }, 'Payment due', 'Paid to 2026-11-06'],
+    [{ subscription_state: 'ending', subscription_ends_at: '2026-11-06T00:00:00.000Z' }, 'Cancelled', 'Ends 2026-11-06'],
+    [{ subscription_state: 'ended', subscription_paid_through: '2026-10-06T00:00:00.000Z', subscription_ends_at: '2026-10-09T00:00:00.000Z' }, 'Lapsed', 'Lapsed 2026-10-09'],
+    [{ subscription_state: 'past_due', subscription_paid_through: '2026-10-06T00:00:00.000Z', subscription_ends_at: '2026-10-10T00:00:00.000Z' }, 'Payment due', 'Ends 2026-10-10'],
+    [{ subscription_state: null, subscription_paid_through: null }, 'Subscription', null],
+    [{ subscription_state: 'terminal', subscription_ends_at: '2026-11-06T00:00:00.000Z' }, 'Ended', 'Ended 2026-11-06'],
+  ] as const)('shows a subscription: %o -> %s / %s', async (fields, label, line) => {
+    await showDeliveries([delivery({ subscription_id: 'sub_1', ...fields })]);
+    expect(screen.getByText(label)).toBeInTheDocument();
+    if (line) expect(screen.getByText(line)).toBeInTheDocument();
+  });
+
+  it('shows nothing for a one-time purchase', async () => {
+    await showDeliveries([delivery({ subscription_id: null })]);
+    for (const label of ['Subscribed', 'Subscription', 'No payments yet']) {
+      expect(screen.queryByText(label)).not.toBeInTheDocument();
+    }
+  });
+
+  it('flags a subscription purchase with no payments, and explains which events to enable', async () => {
+    await showDeliveries([delivery({ subscription_id: 'sub_1', subscription_events_missing: true })]);
+    expect(screen.getByText('No payments yet')).toBeInTheDocument();
+    expect(screen.getByText('Subscription payments not received')).toBeInTheDocument();
+    expect(screen.getByText('invoice.paid')).toBeInTheDocument();
+    expect(screen.getByText(/provisional expiry/)).toBeInTheDocument();
+  });
+
+  it('Lemon Squeezy: the flag names its payment events and says the license will not extend', async () => {
+    const row = delivery({ subscription_id: 'sub_1', subscription_events_missing: true });
+    listDeliveriesAction.mockResolvedValueOnce({ ok: true, data: { deliveries: [row], hasMore: false } });
+    renderWithMantine(<StorefrontWebhookDeliveries webhookId="wh_1" provider="lemonsqueezy" active={true} />);
+    await screen.findByText(row.checkout_session_id);
+    expect(screen.getByText('subscription_payment_success')).toBeInTheDocument();
+    expect(screen.getByText(/won't extend/)).toBeInTheDocument();
+  });
+
+  it('no flag when payments are arriving', async () => {
+    await showDeliveries([delivery({ subscription_id: 'sub_1', subscription_state: 'active', subscription_events_missing: false })]);
+    expect(screen.queryByText('Subscription payments not received')).not.toBeInTheDocument();
+  });
+
+  it('more than one flagged purchase: the alert speaks of their licenses', async () => {
+    await showDeliveries([
+      delivery({ subscription_id: 'sub_1', subscription_events_missing: true }),
+      delivery({ subscription_id: 'sub_2', subscription_events_missing: true }),
+    ]);
+    expect(screen.getByText(/2 subscription purchases have/)).toBeInTheDocument();
+    expect(screen.getByText(/their licenses are on short provisional expiries/)).toBeInTheDocument();
+    expect(screen.getAllByText('No payments yet')).toHaveLength(2);
+  });
+
+  it('sits alongside the refund and needs-attention badges', async () => {
+    await showDeliveries([
+      delivery({
+        subscription_id: 'sub_1',
+        subscription_state: 'terminal',
+        subscription_ends_at: '2026-10-09T00:00:00.000Z',
+        refund_kind: 'full',
+        refund_action: 'revoked',
+      }),
+      delivery({ subscription_id: 'sub_2', subscription_state: 'active', delivery_status: 'pending' }),
+    ]);
+    expect(screen.getByText('Ended')).toBeInTheDocument();
+    expect(screen.getByText('Ended 2026-10-09')).toBeInTheDocument();
+    expect(screen.getByText('Refunded · revoked')).toBeInTheDocument();
+    expect(screen.getByText('Subscribed')).toBeInTheDocument();
+    // The stuck-email alert's title and the row's own badge.
+    expect(screen.getAllByText('Needs attention')).toHaveLength(2);
+  });
+});

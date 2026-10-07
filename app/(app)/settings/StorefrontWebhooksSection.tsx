@@ -10,6 +10,7 @@ import {
   CopyButton,
   Group,
   Modal,
+  NumberInput,
   SegmentedControl,
   Stack,
   Text,
@@ -24,6 +25,7 @@ import {
   createStorefrontWebhookAction,
   disableStorefrontWebhookAction,
   setStorefrontRefundPolicyAction,
+  setStorefrontSubscriptionGraceAction,
   setStorefrontWebhookSecretAction,
 } from './actions';
 import { StorefrontWebhookMappings } from './StorefrontWebhookMappings';
@@ -139,6 +141,10 @@ export function StorefrontWebhooksSection({
     setWebhooks((prev) => prev.map((w) => (w.id === webhookId ? { ...w, refund_policy: refundPolicy } : w)));
   }
 
+  function handleGraceChanged(webhookId: string, graceDays: number) {
+    setWebhooks((prev) => prev.map((w) => (w.id === webhookId ? { ...w, subscription_grace_days: graceDays } : w)));
+  }
+
   // The server enforces at most one non-disabled webhook per {tenant,
   // provider} (schema.sql's own partial unique index) - mirrored here so
   // the button disappears once connected, rather than letting a click
@@ -234,6 +240,17 @@ export function StorefrontWebhooksSection({
 
                         {webhook.refund_policy && webhook.status !== 'disabled' && (
                           <RefundPolicyControl webhook={webhook} onChanged={handleRefundPolicyChanged} />
+                        )}
+
+                        {webhook.subscription_grace_days !== undefined && webhook.status !== 'disabled' && (
+                          // Keyed on the saved value, so the field resets
+                          // whenever the webhook's grace changes from
+                          // outside the control (e.g. a future refresh).
+                          <SubscriptionGraceControl
+                            key={`${webhook.id}:${webhook.subscription_grace_days}`}
+                            webhook={webhook}
+                            onChanged={handleGraceChanged}
+                          />
                         )}
 
                         <StorefrontWebhookMappings
@@ -357,7 +374,8 @@ function WebhookSecretSetup({
             ) : (
               ' event'
             )}
-            . 3. Save the same secret here.
+            .{webhook.subscription_grace_days !== undefined && <SubscriptionEventsNote provider={webhook.provider} />} 3.
+            Save the same secret here.
           </>
         ) : (
           <>
@@ -370,7 +388,8 @@ function WebhookSecretSetup({
                 , and <Code fz="xs">charge.refunded</Code>
               </>
             ) : null}
-            . 2. Paste the signing secret Stripe gives you below.
+            .{webhook.subscription_grace_days !== undefined && <SubscriptionEventsNote provider={webhook.provider} />} 2.
+            Paste the signing secret Stripe gives you below.
           </>
         )}
       </Alert>
@@ -493,6 +512,120 @@ function RefundPolicyControl({
         Partial refunds are only recorded. Either way, a purchase refunded before its license is issued never gets one,
         and a refunded purchase is never emailed its key. A license file the buyer already downloaded keeps working
         offline until it expires.
+      </Text>
+    </div>
+  );
+}
+
+// The extra events subscriptions need (License Server 1.9.0+), as a
+// sentence for the setup steps and the grace setting's help.
+function SubscriptionEventsNote({ provider }: { provider: StorefrontWebhookProvider }) {
+  const events = STOREFRONT_PROVIDERS[provider].subscriptionEvents;
+  return (
+    <>
+      {' '}
+      Selling subscriptions? Also select{' '}
+      {events.map((event, i) => (
+        <span key={event}>
+          {i > 0 && (i === events.length - 1 ? ' and ' : ', ')}
+          <Code fz="xs">{event}</Code>
+        </span>
+      ))}
+      {provider === 'lemonsqueezy'
+        ? ' — all of them: without the two payment events a subscription never extends.'
+        : ' — without them a subscription license expires after its grace period.'}
+    </>
+  );
+}
+
+// How long a subscription's license stays valid past its paid period
+// (License Server 1.9.0+; only rendered when the server reported
+// subscription_grace_days, and never on a disabled webhook). Saved with
+// its own button rather than on every keystroke; the server applies it
+// from each subscription's next event.
+function SubscriptionGraceControl({
+  webhook,
+  onChanged,
+}: {
+  webhook: StorefrontWebhook;
+  onChanged: (webhookId: string, graceDays: number) => void;
+}) {
+  const saved = webhook.subscription_grace_days ?? 7;
+  const [value, setValue] = useState<number | string>(saved);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const labelId = useId();
+  const numeric = typeof value === 'number' ? value : Number.NaN;
+  const valid = Number.isInteger(numeric) && numeric >= 0 && numeric <= 30;
+
+  async function handleSave() {
+    setError(null);
+    if (!valid) {
+      setError('Enter a whole number of days from 0 to 30');
+      return;
+    }
+    setSaving(true);
+    try {
+      const result = await setStorefrontSubscriptionGraceAction(webhook.id, numeric);
+      if (!result.ok) {
+        // The value was checked above, so a refusal now is about the
+        // webhook (disabled elsewhere, a 409) or the server - a
+        // notification, as for the refund setting, not a field error.
+        if (result.reason === 'rate-limited') {
+          notifyRateLimited();
+        } else {
+          notifications.show({ color: 'red', title: "Couldn't change the grace period", message: result.message });
+        }
+        return;
+      }
+      if (!result.data) {
+        notifications.show({
+          color: 'red',
+          title: "Couldn't change the grace period",
+          message: 'This webhook could not be found - try reloading',
+        });
+        return;
+      }
+      onChanged(webhook.id, numeric);
+    } catch {
+      notifications.show({ color: 'red', title: "Couldn't change the grace period", message: 'Something went wrong. Please try again.' });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div role="group" aria-labelledby={labelId}>
+      <Text id={labelId} size="sm" fw={600} mb={4}>
+        Subscriptions: grace period
+      </Text>
+      <Group gap="xs" align="flex-start">
+        <NumberInput
+          aria-labelledby={labelId}
+          size="xs"
+          w={120}
+          min={0}
+          max={30}
+          allowDecimal={false}
+          allowNegative={false}
+          // No clamping: Mantine would silently turn a typed 45 into 30 on
+          // blur (found in the browser - a fumbled edit saved 30). Out of
+          // range stays visible and Save refuses it with a message.
+          clampBehavior="none"
+          suffix=" days"
+          value={value}
+          onChange={setValue}
+          error={error}
+        />
+        <Button size="xs" onClick={handleSave} loading={saving} disabled={numeric === saved}>
+          Save
+        </Button>
+      </Group>
+      <Text size="xs" c="dimmed" mt={4}>
+        A subscription&apos;s license runs to the end of what&apos;s been paid, plus this grace while each renewal&apos;s
+        payment arrives. A failed payment keeps access for the grace, then not; a cancellation keeps exactly what was
+        paid. Applies from each subscription&apos;s next event.
+        <SubscriptionEventsNote provider={webhook.provider} />
       </Text>
     </div>
   );
