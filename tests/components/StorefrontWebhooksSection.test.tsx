@@ -161,6 +161,19 @@ describe('StorefrontWebhooksSection - refunds (License Server 1.8.0+)', () => {
     expect(screen.queryByText('When a purchase is fully refunded')).not.toBeInTheDocument();
   });
 
+  it("hides the refund setting on a disabled webhook (the server refuses changing it)", async () => {
+    renderWithMantine(
+      <StorefrontWebhooksSection initialWebhooks={[{ ...activeWebhook('stripe', 'record'), status: 'disabled' }]} apiBaseUrl="" />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^Stripe/ }));
+    // The panel's history sections still render for a disabled webhook.
+    await screen.findByText(/v1\/webhooks\/storefront\/wh_stripe/);
+
+    expect(screen.queryByText('When a purchase is fully refunded')).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: 'Revoke the license' })).not.toBeInTheDocument();
+    expect(setRefundPolicyAction).not.toHaveBeenCalled();
+  });
+
   it('switching to record only saves it', async () => {
     setRefundPolicyAction.mockResolvedValueOnce({ ok: true, data: true });
     await open(activeWebhook('lemonsqueezy', 'revoke'));

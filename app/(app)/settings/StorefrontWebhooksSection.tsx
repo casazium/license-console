@@ -232,7 +232,7 @@ export function StorefrontWebhooksSection({
                           </Group>
                         </div>
 
-                        {webhook.refund_policy && (
+                        {webhook.refund_policy && webhook.status !== 'disabled' && (
                           <RefundPolicyControl webhook={webhook} onChanged={handleRefundPolicyChanged} />
                         )}
 
@@ -429,7 +429,9 @@ function WebhookSecretSetup({
 }
 
 // What a full refund does on this webhook (License Server 1.8.0+; only
-// rendered when the server reported a refund_policy). Revoke is the
+// rendered when the server reported a refund_policy, and never on a
+// disabled webhook - it receives no events, and the server refuses the
+// change with a 409). Revoke is the
 // default. Saved immediately, like the rest of this section, and reverted
 // on failure.
 function RefundPolicyControl({
