@@ -10,7 +10,7 @@ surface this console depends on (`casazium/license`) notes whether it
 needs a corresponding change there, and vice versa — see
 `SELF_HOSTED_DISTRIBUTION_DESIGN.md` §4 for why this discipline exists.
 
-## [Unreleased]
+## [1.6.0] - 2026-10-07
 
 ### Added
 
