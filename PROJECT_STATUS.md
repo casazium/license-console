@@ -1,7 +1,13 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-10-06 (§160:
+Last updated: 2026-10-07 (§161:
+released 1.5.0: the refund setting ("When a purchase is fully refunded:
+Revoke the license / Keep it (record only)") and refund status in
+Deliveries, for casazium/license 1.8.0's revoke-on-refund; refund support
+detected from the server's own webhook list, so nothing new appears on
+older servers. PRs #57-#59, tag `v1.5.0`. See §161 below.)
+2026-10-06 (§160:
 released 1.4.0: Lemon Squeezy in Settings -> Storefront webhooks
 (casazium/license 1.7.0) - connect, a generated 16-40 character secret,
 Variant ID mappings, recovery help, and a "needs License Server 1.7.0 or
@@ -9525,3 +9531,50 @@ Lemon Squeezy test (casazium/license §288) ran this console from `main`:
 connect, generated secret and activation, and a variant mapping all
 worked. casazium/license's bundle now pins 1.4.0 with License Server
 1.7.0, verified end to end from scratch.
+
+## 161. Released 1.5.0: refund setting and refund status (2026-10-07, PRs #57-#59, tag `v1.5.0`)
+
+casazium/license 1.8.0 (§289 there) revokes a storefront license when its
+purchase is fully refunded, by default for every webhook. This release
+gives hosted tenants the controls and visibility for it; Settings stays
+hosted-only, so self-hosted operators use the API.
+
+**Change (#57):**
+- **Refund setting** per webhook - "When a purchase is fully refunded:
+  Revoke the license / Keep it (record only)" (`PATCH
+  .../storefront-webhooks/:id`) - saved immediately, switched back on
+  failure, a labelled group; help names the provider's refund event
+  (`charge.refunded` / `order_refunded`), what either setting still does,
+  and the offline-file caveat. A record-only webhook is flagged on its
+  collapsed row ("Refunds: record only").
+- **Setup steps** name the refund event.
+- **Feature detection:** `refund_policy` in the webhook list (absent
+  before 1.8.0), so the setting and refund steps appear only where they
+  work; a pre-1.8.0 server's own "Route PATCH:... not found" 404 becomes
+  "Refund handling needs License Server 1.8.0 or later" (verified against
+  what this server's Fastify actually returns).
+- **Deliveries:** Refunded · revoked / kept, Partly refunded (with the
+  percentage - amounts carry no currency, so no money is shown), Revoke by
+  hand, Refunded first, with the refund date; a fully refunded purchase is
+  never flagged as a stuck email (the server deliberately doesn't send
+  it).
+- Mock mode mirrors it, including refunded deliveries.
+
+An independent review (approve with Low fixes) was folded in before the
+commit: the detail line, the record-only flag, help-text wording, the
+group label, and stronger tests. Checked by hand against a local License
+Server from `main` with real signed Stripe purchase and refund events -
+which also found two badge labels too long for the 180px column and a
+redundant second badge, both fixed. 23 new tests (234; 235 with #58).
+
+**#58** (from a task-card session): the refund setting is hidden on a
+disabled webhook, matching the server's new `409`.
+
+**Release (#59):** a first "merged" report was premature (the PR was
+still open; `main` still read 1.4.0), so nothing was tagged until `main`
+carried the bump. Then `v1.5.0` (annotated, on `6ddb085`); image
+published, `latest` the same digest (`sha256:907b2594...`); the published
+image checked: version stamp, `package.json` 1.5.0, refund UI strings
+present. casazium/license's bundle pins 1.5.0 with License Server 1.8.0,
+verified end to end from scratch.
+
