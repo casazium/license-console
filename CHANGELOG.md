@@ -10,6 +10,40 @@ surface this console depends on (`casazium/license`) notes whether it
 needs a corresponding change there, and vice versa — see
 `SELF_HOSTED_DISTRIBUTION_DESIGN.md` §4 for why this discipline exists.
 
+## [1.5.0] - 2026-10-07
+
+### Added
+
+- **Refunds in Settings → Storefront webhooks** (casazium/license
+  1.8.0's revoke-on-refund). Each webhook gets **"When a purchase is
+  fully refunded: Revoke the license / Keep it (record only)"** — revoke
+  is the server's default for every webhook — saved immediately and
+  switched back if the save fails. Its help names the refund event to
+  enable (Stripe `charge.refunded`, Lemon Squeezy `order_refunded`) and
+  says what either setting still does (a purchase refunded before issue
+  never gets a license; a refunded purchase is never emailed) and that
+  a downloaded offline license file keeps working until it expires. A
+  webhook set to record only is flagged on its collapsed row. The setup
+  steps name the refund event.
+- **Refund status in Deliveries:** Refunded · revoked / kept, Partly
+  refunded, Revoke by hand (the server couldn't revoke it), and Refunded
+  first (refunded before a license was issued), with the refund date and,
+  for a partial refund, the percentage refunded. A fully refunded
+  purchase is never flagged as a stuck email, since the server
+  deliberately doesn't send it.
+
+### Changed
+
+- The refund setting is hidden on a disabled webhook (#58): the License
+  Server refuses changes to a disabled webhook with `409` (1.8.0), and a
+  disabled webhook receives no purchases to apply it to.
+
+Admin API surface: refunds need casazium/license **1.8.0**. The console
+detects support from the server's own webhook list (`refund_policy` is
+absent before 1.8.0), so against an older server nothing new appears and
+everything else works unchanged. `MIN_COMPATIBLE_SERVER_VERSION` stays
+1.5.3.
+
 ## [1.4.0] - 2026-10-06
 
 ### Added
