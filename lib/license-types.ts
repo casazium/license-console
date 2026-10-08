@@ -483,7 +483,7 @@ export type StorefrontDelivery = {
   subscription_events_missing?: boolean;
 };
 
-// 'ending' = cancelled, runs to its end; 'ended' = lapsed for non-payment
+// 'ending' = canceled, runs to its end; 'ended' = lapsed for non-payment
 // (can still be reactivated); 'terminal' = over for good.
 export type StorefrontSubscriptionState = 'active' | 'trialing' | 'past_due' | 'ending' | 'ended' | 'terminal';
 
