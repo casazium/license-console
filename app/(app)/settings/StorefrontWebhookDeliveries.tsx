@@ -113,7 +113,7 @@ function subscriptionBadge(delivery: StorefrontDelivery): { label: string; color
     case 'past_due':
       return { label: 'Payment due', color: 'orange' };
     case 'ending':
-      return { label: 'Cancelled', color: 'yellow' };
+      return { label: 'Canceled', color: 'yellow' };
     case 'ended':
       return { label: 'Lapsed', color: 'red' };
     case 'terminal':

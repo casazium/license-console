@@ -10,6 +10,14 @@ surface this console depends on (`casazium/license`) notes whether it
 needs a corresponding change there, and vice versa — see
 `SELF_HOSTED_DISTRIBUTION_DESIGN.md` §4 for why this discipline exists.
 
+## [Unreleased]
+
+### Fixed
+
+- **Settings → Storefront webhooks:** a canceled subscription's
+  delivery badge now reads "Canceled" (US spelling) instead of
+  "Cancelled". No server change needed.
+
 ## [1.6.0] - 2026-10-07
 
 ### Added
