@@ -1,7 +1,14 @@
 # PROJECT_STATUS.md — license-console
 
 Status: Draft
-Last updated: 2026-10-07 (§161:
+Last updated: 2026-10-07 (§162:
+released 1.6.0: subscriptions in Settings -> Storefront webhooks, for
+casazium/license 1.9.0 - the grace period setting, the subscription
+events in each provider's setup steps, subscription state and dates in
+Deliveries, and a flag for subscription purchases with no payments.
+Detected from the server's webhook list, so nothing new on older
+servers. PRs #60-#61, tag `v1.6.0`. See §162 below.)
+2026-10-07 (§161:
 released 1.5.0: the refund setting ("When a purchase is fully refunded:
 Revoke the license / Keep it (record only)") and refund status in
 Deliveries, for casazium/license 1.8.0's revoke-on-refund; refund support
@@ -9577,4 +9584,52 @@ published, `latest` the same digest (`sha256:907b2594...`); the published
 image checked: version stamp, `package.json` 1.5.0, refund UI strings
 present. casazium/license's bundle pins 1.5.0 with License Server 1.8.0,
 verified end to end from scratch.
+
+## 162. Released 1.6.0: subscriptions in Storefront webhooks (2026-10-07, PRs #60-#61, tag `v1.6.0`)
+
+casazium/license 1.9.0 (§290 there) keeps a storefront subscription's
+license in step with what's been paid, plus a per-webhook grace. This
+release gives hosted tenants the setting and the visibility; Settings
+stays hosted-only, so self-hosted operators use the API.
+
+**Change (#60):**
+- **Grace period** per webhook, 0-30 days (`PATCH
+  .../storefront-webhooks/:id { subscription_grace_days }`), its own Save
+  button, a labelled group; help explains grace and names the events.
+- **Setup steps** add "Selling subscriptions? Also select ..." inside the
+  events step; Lemon Squeezy's say a subscription never extends without
+  its two payment events.
+- **Deliveries:** Subscribed / Trial / Payment due / Cancelled / Lapsed /
+  Ended, with Paid to / Ends / Lapsed / Ended dates beneath; "No payments
+  yet" under a "Subscription payments not received" alert naming the
+  events to enable.
+- **Feature detection:** `subscription_grace_days` in the webhook list
+  (absent before 1.9.0). A server with no PATCH route gets "Subscriptions
+  need License Server 1.9.0 or later".
+- Mock mode mirrors it.
+
+**Checked in a browser** against the published `license:1.9.0` in hosted
+mode locally (a throwaway account; signed Stripe subscription events:
+active, cancelled, past due, no payments). That found a bug the tests
+missed: Mantine's `NumberInput` clamps on blur, so a typed 45 silently
+became 30 and was saved - fixed (`clampBehavior="none"`, refused with a
+message) with a test that fails if it returns. Running the console's dev
+server locally also showed its own `.env` points it at a real backend:
+the check overrode every setting explicitly, never touching it.
+
+**Independent review** (approve with changes, two medium): alert grammar
+for several purchases; "Lapsed <date>" and "Ends <date>" where the server
+sets `ends_at`; a server refusal shown as a notification, not a field
+error; the grace control keyed on its saved value. All fixed in #60 with
+tests (each mutation-checked, except the key, which nothing can exercise
+yet). 277 tests.
+
+**Release (#61):** `main` carried 1.6.0 before tagging; `v1.6.0`
+(annotated, on `1e9af74`); image published, the same digest (`sha256:bb548ab63330...`).
+The published image checked against the published `license:1.9.0`, both
+in hosted mode on a private network: it starts, its footer reads
+`v1.6.0`, and the built code carries the grace setting, the
+missing-payments alert, the Lemon Squeezy payment events and the clamp
+fix. `MIN_COMPATIBLE_SERVER_VERSION` stays 1.5.3. Next: the bundle on
+1.9.0 / 1.6.0 (casazium/license).
 
