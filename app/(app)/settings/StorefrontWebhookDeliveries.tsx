@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, Badge, Button, Code, Group, Stack, Table, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { notifyRateLimited } from '@/lib/notify';
-import { formatDate, formatDateTime } from '@/lib/format';
+import { formatDate, formatDateTime, parseTimestamp } from '@/lib/format';
 import type { StorefrontDelivery, StorefrontWebhookProvider } from '@/lib/license-client';
 import { STOREFRONT_PROVIDERS } from '@/lib/storefront-providers';
 import { listStorefrontDeliveriesAction } from './actions';
@@ -66,19 +66,6 @@ function refundBadge(delivery: StorefrontDelivery): { label: string; color: stri
   }
 }
 
-// Independent-review finding (M1): casazium/license's own processed_at
-// column is written via SQLite's CURRENT_TIMESTAMP, which produces
-// "YYYY-MM-DD HH:MM:SS" - genuinely UTC, but with no 'T' or 'Z' marker.
-// `new Date()` parses that exact shape as the *viewer's local* time, not
-// UTC - confirmed directly (a delivery 10 minutes old computed as -401
-// minutes under America/Los_Angeles). Mock mode's own seeded
-// toISOString() values already carry a 'T'/'Z' and were never affected,
-// which is exactly why this went unnoticed in standalone-mode testing.
-function parseTimestamp(value: string): number {
-  const isoLike = value.includes('T') ? value : `${value.replace(' ', 'T')}Z`;
-  return new Date(isoLike).getTime();
-}
-
 // A muted line under the refund badge: when, and for a partial refund how
 // much. Amounts arrive in the provider's smallest currency unit with no
 // currency attached, so this shows a percentage rather than guessing at
@@ -95,7 +82,7 @@ function refundDetail(delivery: StorefrontDelivery): string | null {
     parts.push(`${Math.round((delivery.refunded_amount / delivery.amount_total) * 100)}% refunded`);
   }
   if (delivery.refunded_at) {
-    parts.push(formatDate(new Date(parseTimestamp(delivery.refunded_at)).toISOString()));
+    parts.push(formatDate(delivery.refunded_at));
   }
   return parts.length > 0 ? parts.join(' · ') : null;
 }

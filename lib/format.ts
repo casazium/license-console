@@ -34,8 +34,21 @@
 // which is the Unix epoch, not "never" - silently rendering a perpetual
 // license's expiry as 1970-01-01 rather than a caller ever having a
 // chance to special-case it.
+//
+// Read as UTC whatever the shape (live test, 2026-10-11): License Server
+// writes many timestamps with SQLite's CURRENT_TIMESTAMP - issued_at,
+// activated_at, releases' and webhooks' created_at, deliveries'
+// processed_at - as "YYYY-MM-DD HH:MM:SS", UTC but with no 'T' or 'Z'.
+// `new Date()` reads that shape as the runtime's local time, so a client
+// component showed it shifted by the viewer's UTC offset (4 hours ahead
+// in EDT) while a server component, in a UTC container, showed it right.
+export function parseTimestamp(value: string): number {
+  const isoLike = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)?$/.test(value) ? `${value.replace(' ', 'T')}Z` : value;
+  return new Date(isoLike).getTime();
+}
+
 export function formatDate(iso: string | null): string {
-  return iso === null ? 'Never' : new Date(iso).toISOString().slice(0, 10);
+  return iso === null ? 'Never' : new Date(parseTimestamp(iso)).toISOString().slice(0, 10);
 }
 
 // "UTC" suffix, not left implicit: operator-reported gap - a bare
@@ -47,7 +60,7 @@ export function formatDate(iso: string | null): string {
 // zone instead of having to mentally convert from UTC. Until then, at
 // least label what zone is actually shown so it isn't ambiguous.
 export function formatDateTime(iso: string | null): string {
-  return iso === null ? 'Never' : `${new Date(iso).toISOString().slice(0, 19).replace('T', ' ')} UTC`;
+  return iso === null ? 'Never' : `${new Date(parseTimestamp(iso)).toISOString().slice(0, 19).replace('T', ' ')} UTC`;
 }
 
 // A license's `status` column never auto-transitions on expiry - no
