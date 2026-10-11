@@ -10,13 +10,22 @@ surface this console depends on (`casazium/license`) notes whether it
 needs a corresponding change there, and vice versa — see
 `SELF_HOSTED_DISTRIBUTION_DESIGN.md` §4 for why this discipline exists.
 
-## [Unreleased]
+## [1.6.1] - 2026-10-11
 
 ### Fixed
 
+- **Times shown in the browser were shifted by the viewer's UTC
+  offset.** License Server stores issue, activation, creation and
+  delivery times as UTC without a zone marker, and the browser read
+  them as local time — so a delivery processed at 12:20 UTC showed as
+  16:20 UTC to a viewer in EDT. Affected the Storefront webhook
+  deliveries' Processed time and "Last event"/"Connected", activation
+  tables and the releases list; pages rendered on the server were
+  already right. All now read these times as UTC (#63). No server
+  change needed.
 - **Settings → Storefront webhooks:** a canceled subscription's
   delivery badge now reads "Canceled" (US spelling) instead of
-  "Cancelled". No server change needed.
+  "Cancelled" (#62). No server change needed.
 
 ## [1.6.0] - 2026-10-07
 
