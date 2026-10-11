@@ -9633,3 +9633,30 @@ missing-payments alert, the Lemon Squeezy payment events and the clamp
 fix. `MIN_COMPATIBLE_SERVER_VERSION` stays 1.5.3. Next: the bundle on
 1.9.0 / 1.6.0 (casazium/license).
 
+
+## 163. Released 1.6.1: browser times in UTC; "Canceled" (2026-10-11, PRs #62-#64, tag `v1.6.1`)
+
+**Why.** The subscriptions live test (casazium/license §291) showed a
+delivery processed at 12:20 UTC as 16:20 UTC to a viewer in EDT.
+
+**Change.**
+- **#63** - License Server writes `issued_at`, `activated_at`,
+  `created_at` and `processed_at` with SQLite's `CURRENT_TIMESTAMP`
+  (`YYYY-MM-DD HH:MM:SS`, UTC, no zone). `new Date()` reads that as
+  local time, so client components showed it shifted by the viewer's
+  offset; server components (UTC container) were right - also a
+  hydration-mismatch risk. `lib/format.ts`'s `parseTimestamp` now reads
+  that shape as UTC for `formatDate`/`formatDateTime`; the deliveries
+  table's private copy is gone. Test runs under
+  `TZ=America/New_York`; 3 of 6 fail with the fix reverted. 283 tests.
+- **#62** - the `ending` badge reads "Canceled" (US spelling).
+
+**Release (#64).** `main` carried 1.6.1 before tagging; `v1.6.1`
+(annotated, on `47f9938`); image published
+(`sha256:b50aa2397ab6...`), also `latest`. The published image reads
+1.6.1 and its built code carries "Canceled" (no "Cancelled") and the
+UTC parse. `MIN_COMPATIBLE_SERVER_VERSION` stays 1.5.3. Bundle checked
+from scratch on `license:1.9.0` / `license-console:1.6.1` (keygen exit
+0, health and login 200, signed in: app 1.6.1 / API 1.9.0, not
+incompatible; a license issued, its portal page shows the key) - pinned
+in casazium/license.
