@@ -10,6 +10,17 @@ surface this console depends on (`casazium/license`) notes whether it
 needs a corresponding change there, and vice versa — see
 `SELF_HOSTED_DISTRIBUTION_DESIGN.md` §4 for why this discipline exists.
 
+## [Unreleased]
+
+### Changed
+
+- **Settings uses a wide window.** The page was capped at 640px and
+  left-aligned, leaving most of a wide window empty while the Storefront
+  webhooks tables wrapped every Payment Link and checkout id. Text and
+  forms stay at a readable 640px; the storefront webhook panels - the
+  callback URL and the mappings and deliveries tables - widen to 1100px.
+  No server change needed.
+
 ## [1.6.1] - 2026-10-11
 
 ### Fixed

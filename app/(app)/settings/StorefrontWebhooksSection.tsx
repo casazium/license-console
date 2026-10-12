@@ -5,6 +5,7 @@ import {
   Alert,
   Accordion,
   Badge,
+  Box,
   Button,
   Code,
   CopyButton,
@@ -30,6 +31,7 @@ import {
 } from './actions';
 import { StorefrontWebhookMappings } from './StorefrontWebhookMappings';
 import { StorefrontWebhookDeliveries } from './StorefrontWebhookDeliveries';
+import { SETTINGS_TEXT_WIDTH } from './widths';
 
 function statusBadge(status: StorefrontWebhook['status']): { label: string; color: string } {
   switch (status) {
@@ -210,17 +212,24 @@ export function StorefrontWebhooksSection({
                 </Accordion.Control>
                 <Accordion.Panel>
                   <Stack gap="lg">
+                    {/* Setup and settings at the readable width; the
+                        callback URL and the mappings and deliveries tables
+                        use the panel's. */}
                     {webhook.status === 'pending' && (
-                      <WebhookSecretSetup
-                        webhook={webhook}
-                        webhookUrl={webhookUrlFor(webhook.id)}
-                        onSaved={() => handleSecretSaved(webhook.id)}
-                      />
+                      <Box maw={SETTINGS_TEXT_WIDTH}>
+                        <WebhookSecretSetup
+                          webhook={webhook}
+                          webhookUrl={webhookUrlFor(webhook.id)}
+                          onSaved={() => handleSecretSaved(webhook.id)}
+                        />
+                      </Box>
                     )}
 
                     {webhook.status !== 'pending' && (
                       <>
-                        <div>
+                        {/* Full width: a value to copy, not prose - in the
+                            text column it scrolled sideways. */}
+                        <Box>
                           <Text size="xs" fw={700} tt="uppercase" c="dimmed" mb={4}>
                             Callback URL
                           </Text>
@@ -236,21 +245,25 @@ export function StorefrontWebhooksSection({
                               )}
                             </CopyButton>
                           </Group>
-                        </div>
+                        </Box>
 
                         {webhook.refund_policy && webhook.status !== 'disabled' && (
-                          <RefundPolicyControl webhook={webhook} onChanged={handleRefundPolicyChanged} />
+                          <Box maw={SETTINGS_TEXT_WIDTH}>
+                            <RefundPolicyControl webhook={webhook} onChanged={handleRefundPolicyChanged} />
+                          </Box>
                         )}
 
                         {webhook.subscription_grace_days !== undefined && webhook.status !== 'disabled' && (
                           // Keyed on the saved value, so the field resets
                           // whenever the webhook's grace changes from
                           // outside the control (e.g. a future refresh).
-                          <SubscriptionGraceControl
-                            key={`${webhook.id}:${webhook.subscription_grace_days}`}
-                            webhook={webhook}
-                            onChanged={handleGraceChanged}
-                          />
+                          <Box maw={SETTINGS_TEXT_WIDTH}>
+                            <SubscriptionGraceControl
+                              key={`${webhook.id}:${webhook.subscription_grace_days}`}
+                              webhook={webhook}
+                              onChanged={handleGraceChanged}
+                            />
+                          </Box>
                         )}
 
                         <StorefrontWebhookMappings

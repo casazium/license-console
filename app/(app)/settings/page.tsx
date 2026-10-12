@@ -16,6 +16,7 @@ import { ChangePasswordSection } from './ChangePasswordSection';
 import { ChangeEmailSection } from './ChangeEmailSection';
 import { ExportDataSection } from './ExportDataSection';
 import { DeleteAccountSection } from './DeleteAccountSection';
+import { SETTINGS_TEXT_WIDTH, SETTINGS_WIDE_WIDTH } from './widths';
 
 // Beta-readiness finding: nothing in this console ever showed a hosted
 // tenant their own API key or the API's real base URL, even though
@@ -96,92 +97,98 @@ export default async function SettingsPage({
   const { emailChanged, emailChangeError, exportError } = await searchParams;
   const exportErrorMessage = exportError ? EXPORT_ERROR_MESSAGES[exportError] : undefined;
 
+  // Two widths (./widths.ts); section dividers span the full width so the
+  // page still reads as one column.
   return (
-    <Stack maw={640}>
-      {emailChanged && (
-        <Alert color="teal" variant="light" title="Email changed">
-          Your account email is now {currentEmail}.
-        </Alert>
-      )}
-      {emailChangeError && (
-        <Alert color="red" variant="light" title="Couldn't change email">
-          That confirmation link was invalid, expired, or the address was already taken. Start
-          over from the Email section below.
-        </Alert>
-      )}
-      {exportErrorMessage && (
-        <Alert color="red" variant="light" title="Couldn't export your data">
-          {exportErrorMessage}
-        </Alert>
-      )}
+    <Stack maw={SETTINGS_WIDE_WIDTH}>
+      <Stack maw={SETTINGS_TEXT_WIDTH}>
+        {emailChanged && (
+          <Alert color="teal" variant="light" title="Email changed">
+            Your account email is now {currentEmail}.
+          </Alert>
+        )}
+        {emailChangeError && (
+          <Alert color="red" variant="light" title="Couldn't change email">
+            That confirmation link was invalid, expired, or the address was already taken. Start
+            over from the Email section below.
+          </Alert>
+        )}
+        {exportErrorMessage && (
+          <Alert color="red" variant="light" title="Couldn't export your data">
+            {exportErrorMessage}
+          </Alert>
+        )}
 
-      <Title order={2} mb="lg">
-        Settings
-      </Title>
-
-      <Stack gap={4}>
-        <Text size="sm" fw={700} tt="uppercase" c="dimmed" style={{ letterSpacing: '0.05em' }}>
-          API
-        </Text>
-        <Title order={3}>API access</Title>
+        <Title order={2} mb="lg">
+          Settings
+        </Title>
       </Stack>
-      <Text size="sm" c="dimmed">
-        Use this API key and base URL to call the License Server directly from your own
-        application — it&apos;s the same API a self-hosted deployment uses, scoped to your
-        account.
-      </Text>
 
-      <ApiKeyReveal apiKey={tenantApiKey} />
-
-      <div>
-        <Text size="sm" fw={700} mb={4}>
-          API base URL
+      <Stack maw={SETTINGS_TEXT_WIDTH}>
+        <Stack gap={4}>
+          <Text size="sm" fw={700} tt="uppercase" c="dimmed" style={{ letterSpacing: '0.05em' }}>
+            API
+          </Text>
+          <Title order={3}>API access</Title>
+        </Stack>
+        <Text size="sm" c="dimmed">
+          Use this API key and base URL to call the License Server directly from your own
+          application — it&apos;s the same API a self-hosted deployment uses, scoped to your
+          account.
         </Text>
-        <ApiBaseUrlDisplay
-          apiBaseUrl={apiBaseUrl}
-          fallback={
-            <>
-              Not configured —{' '}
-              {supportEmail ? (
-                <Anchor href={`mailto:${supportEmail}`}>contact support</Anchor>
-              ) : (
-                'contact support'
-              )}
-            </>
-          }
-        />
-      </div>
 
-      <Text size="sm" c="dimmed">
-        See the{' '}
-        <Anchor
-          href="https://docs.casazium.com/docs/license-server/getting-started/authentication"
-          target="_blank"
-          rel="noreferrer"
-        >
-          API authentication docs
-        </Anchor>{' '}
-        for how to call admin endpoints with this key, or the{' '}
-        <Anchor
-          href="https://docs.casazium.com/docs/license-server/integration/overview"
-          target="_blank"
-          rel="noreferrer"
-        >
-          integration guide
-        </Anchor>{' '}
-        to activate/verify licenses from your licensed application.
-      </Text>
+        <ApiKeyReveal apiKey={tenantApiKey} />
 
-      <RotateApiKeySection />
+        <div>
+          <Text size="sm" fw={700} mb={4}>
+            API base URL
+          </Text>
+          <ApiBaseUrlDisplay
+            apiBaseUrl={apiBaseUrl}
+            fallback={
+              <>
+                Not configured —{' '}
+                {supportEmail ? (
+                  <Anchor href={`mailto:${supportEmail}`}>contact support</Anchor>
+                ) : (
+                  'contact support'
+                )}
+              </>
+            }
+          />
+        </div>
+
+        <Text size="sm" c="dimmed">
+          See the{' '}
+          <Anchor
+            href="https://docs.casazium.com/docs/license-server/getting-started/authentication"
+            target="_blank"
+            rel="noreferrer"
+          >
+            API authentication docs
+          </Anchor>{' '}
+          for how to call admin endpoints with this key, or the{' '}
+          <Anchor
+            href="https://docs.casazium.com/docs/license-server/integration/overview"
+            target="_blank"
+            rel="noreferrer"
+          >
+            integration guide
+          </Anchor>{' '}
+          to activate/verify licenses from your licensed application.
+        </Text>
+
+        <RotateApiKeySection />
+      </Stack>
 
       <Box mt="xl" pt="lg" style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>
-        <Stack gap={4}>
+        <Stack gap={4} maw={SETTINGS_TEXT_WIDTH}>
           <Text size="sm" fw={700} tt="uppercase" c="dimmed" style={{ letterSpacing: '0.05em' }}>
             Storefront
           </Text>
           <Title order={3}>Storefront webhooks</Title>
         </Stack>
-        <Text size="sm" c="dimmed" mt={4} mb="md">
+        <Text size="sm" c="dimmed" mt={4} mb="md" maw={SETTINGS_TEXT_WIDTH}>
           Connect your storefront (Stripe Payment Links or Lemon Squeezy) so a completed purchase
           automatically issues a license and emails your buyer their key — no integration code
           required.
@@ -204,10 +211,12 @@ export default async function SettingsPage({
           Account
         </Text>
       </Box>
-      {currentEmail && <ChangeEmailSection currentEmail={currentEmail} />}
-      <ChangePasswordSection />
-      <ExportDataSection />
-      <DeleteAccountSection />
+      <Stack maw={SETTINGS_TEXT_WIDTH}>
+        {currentEmail && <ChangeEmailSection currentEmail={currentEmail} />}
+        <ChangePasswordSection />
+        <ExportDataSection />
+        <DeleteAccountSection />
+      </Stack>
     </Stack>
   );
 }

@@ -12,6 +12,7 @@ import type {
 } from '@/lib/license-client';
 import { STOREFRONT_PROVIDERS, refKindLabel } from '@/lib/storefront-providers';
 import { createStorefrontMappingAction, deleteStorefrontMappingAction, listStorefrontMappingsAction } from './actions';
+import { SETTINGS_TEXT_WIDTH } from './widths';
 
 // Reference types come from the webhook's provider - the server rejects a
 // kind its provider never produces, so the form only offers valid ones
@@ -167,7 +168,7 @@ export function StorefrontWebhookMappings({
       <Text size="sm" fw={600}>
         Product mappings
       </Text>
-      <Text size="xs" c="dimmed">
+      <Text size="xs" c="dimmed" maw={SETTINGS_TEXT_WIDTH}>
         Map each {provider === 'lemonsqueezy' ? 'product variant' : 'Payment Link'} (or a{' '}
         <Text component="code" fz="xs">
           casazium_ref
@@ -270,7 +271,12 @@ export function StorefrontWebhookMappings({
       )}
 
       {formOpen ? (
-        <Stack gap="xs" p="sm" style={{ border: '1px solid var(--mantine-color-default-border)', borderRadius: 8 }}>
+        <Stack
+          gap="xs"
+          p="sm"
+          maw={SETTINGS_TEXT_WIDTH}
+          style={{ border: '1px solid var(--mantine-color-default-border)', borderRadius: 8 }}
+        >
           <Group grow>
             <Select
               label="Reference type"
