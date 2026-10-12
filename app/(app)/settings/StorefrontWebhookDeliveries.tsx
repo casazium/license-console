@@ -8,6 +8,7 @@ import { formatDate, formatDateTime, parseTimestamp } from '@/lib/format';
 import type { StorefrontDelivery, StorefrontWebhookProvider } from '@/lib/license-client';
 import { STOREFRONT_PROVIDERS } from '@/lib/storefront-providers';
 import { listStorefrontDeliveriesAction } from './actions';
+import { SETTINGS_TEXT_WIDTH } from './widths';
 
 const PAGE_SIZE = 20;
 
@@ -238,7 +239,7 @@ export function StorefrontWebhookDeliveries({
       </Text>
 
       {stuckCount > 0 && (
-        <Alert color="orange" variant="light" title="Needs attention">
+        <Alert color="orange" variant="light" maw={SETTINGS_TEXT_WIDTH} title="Needs attention">
           {stuckCount === 1 ? 'One purchase issued a license' : `${stuckCount} purchases issued a license`}{' '}
           but its confirmation email hasn&apos;t gone out.{' '}
           {provider === 'lemonsqueezy' ? (
@@ -259,7 +260,7 @@ export function StorefrontWebhookDeliveries({
       )}
 
       {missingEventsCount > 0 && (
-        <Alert color="orange" variant="light" title="Subscription payments not received">
+        <Alert color="orange" variant="light" maw={SETTINGS_TEXT_WIDTH} title="Subscription payments not received">
           {missingEventsCount === 1 ? 'One subscription purchase has' : `${missingEventsCount} subscription purchases have`}{' '}
           had no payment recorded for over a day, so{' '}
           {provider === 'lemonsqueezy'
