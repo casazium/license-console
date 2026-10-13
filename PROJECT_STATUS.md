@@ -9680,3 +9680,24 @@ published image reads 1.6.2 and its built code carries the new widths,
 (released the same day, casazium/license §295) on the test deployment
 and in the bundle built from both mains; `MIN_COMPATIBLE_SERVER_VERSION`
 stays 1.5.3. Next: the bundle on 1.10.0 / 1.6.2 (casazium/license).
+
+## 165. Released 1.6.3: Delete account says when the subscription couldn't be canceled (2026-10-13, PRs #67-#68, tag `v1.6.3`)
+
+**Why.** License Server 1.10.0 (casazium/license #40, §295) cancels a
+hosted tenant's paid subscription before deleting the account and, if it
+can't, keeps the account and answers 502; the console showed a generic
+"Something went wrong".
+
+**Change (#67).** `deleteAccountAction` returns
+`subscription-not-canceled` for a 502 (other failures still throw;
+nothing deleted locally); `DeleteAccountSection` shows "Account not
+deleted - we couldn't cancel your subscription, so your account wasn't
+deleted. Please try again in a few minutes." New
+`tests/lib/delete-account-action.test.ts` (fails without the branch).
+285 tests.
+
+**Release (#68).** `main` carried 1.6.3 at `e9ee623` before tagging;
+`v1.6.3` (annotated) published the image (`sha256:0e1131f6ec47...`),
+which reads 1.6.3 and carries the new message.
+`MIN_COMPATIBLE_SERVER_VERSION` stays 1.5.3. Next: the bundle on
+1.10.0 / 1.6.3 and the casazium bundle zip.
