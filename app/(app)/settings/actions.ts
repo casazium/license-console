@@ -35,7 +35,7 @@ import {
   sessionCookieOptions,
 } from '@/lib/session';
 import { requireSessionWithTenantKey, markIfTenantRejected } from '@/lib/tenant-context';
-import { isRateLimited } from '@/lib/errors';
+import { LicenseApiError, isRateLimited } from '@/lib/errors';
 import { getNotificationProvider } from '@/lib/notifications';
 
 // Same values and reasoning as signup/route.ts and reset-password/route.ts's
@@ -61,7 +61,11 @@ const MAX_PASSWORD_LENGTH = 256;
 // wrongly wrote it off as harmless noise. redirect() inside the action
 // itself sidesteps this: it resolves to a navigation response directly,
 // without Next ever attempting that in-between re-render.
-type DeleteAccountFailure = { reason: 'rate-limited' | 'invalid-password' };
+// 'subscription-not-canceled': License Server 1.10.0+ cancels the paid
+// subscription before deleting the account and, if it can't, keeps the
+// account and answers 502 - the user needs to hear that nothing was
+// deleted, not a generic failure.
+type DeleteAccountFailure = { reason: 'rate-limited' | 'invalid-password' | 'subscription-not-canceled' };
 
 /**
  * Self-service hard account deletion (BETA_LAUNCH_STATUS.md §4).
@@ -111,6 +115,7 @@ export async function deleteAccountAction(password: string): Promise<DeleteAccou
     await deleteAccountOnServer(tenantApiKey);
   } catch (err) {
     if (isRateLimited(err)) return { reason: 'rate-limited' };
+    if (err instanceof LicenseApiError && err.status === 502) return { reason: 'subscription-not-canceled' };
     markIfTenantRejected(err, identity.tenantId);
     throw err;
   }

@@ -42,6 +42,13 @@ export function DeleteAccountSection() {
       const result = await deleteAccountAction(password);
       if (result.reason === 'invalid-password') {
         setError('Incorrect password');
+      } else if (result.reason === 'subscription-not-canceled') {
+        notifications.show({
+          color: 'red',
+          title: 'Account not deleted',
+          message:
+            "We couldn't cancel your subscription, so your account wasn't deleted. Please try again in a few minutes.",
+        });
       } else {
         notifyRateLimited();
       }

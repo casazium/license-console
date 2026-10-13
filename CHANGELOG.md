@@ -10,6 +10,17 @@ surface this console depends on (`casazium/license`) notes whether it
 needs a corresponding change there, and vice versa — see
 `SELF_HOSTED_DISTRIBUTION_DESIGN.md` §4 for why this discipline exists.
 
+## [Unreleased]
+
+### Fixed
+
+- **Settings → Delete account:** when License Server (1.10.0+) can't
+  cancel the paid subscription, it keeps the account and answers 502;
+  the console showed a generic "Something went wrong". It now says the
+  subscription couldn't be canceled, so the account wasn't deleted, and
+  to try again. Needs License Server 1.10.0 for the 502; older servers
+  delete without canceling.
+
 ## [1.6.2] - 2026-10-13
 
 ### Changed
