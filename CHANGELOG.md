@@ -10,7 +10,7 @@ surface this console depends on (`casazium/license`) notes whether it
 needs a corresponding change there, and vice versa — see
 `SELF_HOSTED_DISTRIBUTION_DESIGN.md` §4 for why this discipline exists.
 
-## [Unreleased]
+## [1.6.2] - 2026-10-13
 
 ### Changed
 
@@ -20,6 +20,12 @@ needs a corresponding change there, and vice versa — see
   forms stay at a readable 640px; the storefront webhook panels - the
   callback URL and the mappings and deliveries tables - widen to 1100px.
   No server change needed.
+
+### Compatibility
+
+- Checked against License Server 1.10.0 (released the same day), on the
+  test deployment and in the self-hosted bundle built from both
+  projects' main. `MIN_COMPATIBLE_SERVER_VERSION` stays 1.5.3.
 
 ## [1.6.1] - 2026-10-11
 
