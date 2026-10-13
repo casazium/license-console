@@ -9660,3 +9660,23 @@ from scratch on `license:1.9.0` / `license-console:1.6.1` (keygen exit
 0, health and login 200, signed in: app 1.6.1 / API 1.9.0, not
 incompatible; a license issued, its portal page shows the key) - pinned
 in casazium/license.
+
+## 164. Released 1.6.2: Settings uses a wide window (2026-10-13, PRs #65-#66, tag `v1.6.2`)
+
+**Why.** Operator-reported: on a wide window Settings left most of the
+screen empty (capped at 640px, left-aligned) while the Storefront
+webhooks tables wrapped every Payment Link and checkout id.
+
+**Change (#65).** `settings/widths.ts`: text and forms at 640px, the
+storefront webhook panels (callback URL, mappings and deliveries tables)
+at 1100px; section dividers span the wide width. Checked in a browser at
+1600px against a local License Server with a webhook, three mappings and
+four deliveries, and on the test deployment.
+
+**Release (#66).** `main` carried 1.6.2 at `c29279a` before tagging;
+`v1.6.2` (annotated) published the image (`sha256:e2613420dbdd...`). The
+published image reads 1.6.2 and its built code carries the new widths,
+"Canceled" and 1.6.1's UTC parse. Checked against License Server 1.10.0
+(released the same day, casazium/license §295) on the test deployment
+and in the bundle built from both mains; `MIN_COMPATIBLE_SERVER_VERSION`
+stays 1.5.3. Next: the bundle on 1.10.0 / 1.6.2 (casazium/license).
