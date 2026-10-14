@@ -27,19 +27,12 @@ export type StorefrontProviderInfo = {
   minServerVersion?: string;
 };
 
-const CASAZIUM_REF_KIND = {
-  value: 'metadata' as const,
-  label: 'casazium_ref',
-  inputLabel: 'casazium_ref value',
-  placeholder: 'my-product-ref',
-};
-
 export const STOREFRONT_PROVIDERS: Record<StorefrontWebhookProvider, StorefrontProviderInfo> = {
   stripe: {
     label: 'Stripe',
     refKinds: [
       { value: 'payment_link', label: 'Payment Link', inputLabel: 'Payment Link ID', placeholder: 'plink_...' },
-      { ...CASAZIUM_REF_KIND, label: 'Metadata (casazium_ref)' },
+      { value: 'metadata', label: 'Metadata (casazium_ref)', inputLabel: 'casazium_ref value', placeholder: 'my-product-ref' },
     ],
     vendorChosenSecret: false,
     refundEvent: 'charge.refunded',
@@ -53,8 +46,9 @@ export const STOREFRONT_PROVIDERS: Record<StorefrontWebhookProvider, StorefrontP
   lemonsqueezy: {
     label: 'Lemon Squeezy',
     refKinds: [
+      // Variant only: a buyer can add custom data to any checkout link,
+      // so a casazium_ref can't say what they bought (casazium/license#53).
       { value: 'variant', label: 'Variant', inputLabel: 'Variant ID', placeholder: '123456' },
-      { ...CASAZIUM_REF_KIND, label: 'Custom data (casazium_ref)' },
     ],
     vendorChosenSecret: true,
     secretLength: { min: 16, max: 40 },

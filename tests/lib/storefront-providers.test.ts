@@ -18,7 +18,8 @@ describe('lib/storefront-providers', () => {
 
   it("each provider's ref kinds match the server's", () => {
     expect(STOREFRONT_PROVIDERS.stripe.refKinds.map((k) => k.value)).toEqual(['payment_link', 'metadata']);
-    expect(STOREFRONT_PROVIDERS.lemonsqueezy.refKinds.map((k) => k.value)).toEqual(['variant', 'metadata']);
+    // Variant only: buyers can edit Lemon Squeezy custom data (casazium/license#53).
+    expect(STOREFRONT_PROVIDERS.lemonsqueezy.refKinds.map((k) => k.value)).toEqual(['variant']);
   });
 
   it('only Lemon Squeezy has a vendor-chosen secret, bounded 16-40, needing License Server 1.7.0', () => {

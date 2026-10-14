@@ -136,6 +136,21 @@ describe('StorefrontWebhookMappings - per-provider reference types', () => {
     expect(createMappingAction).not.toHaveBeenCalled();
   });
 
+  // A buyer can edit Lemon Squeezy custom data, so the form offers no
+  // casazium_ref option there (casazium/license#53).
+  it('a Lemon Squeezy webhook offers no casazium_ref reference and no reference-type choice', async () => {
+    await openFormFor('lemonsqueezy');
+    expect(screen.queryByLabelText('Reference type')).not.toBeInTheDocument();
+    expect(screen.queryByText(/custom data \(casazium_ref\)/i)).not.toBeInTheDocument();
+    expect(screen.queryByText('casazium_ref')).not.toBeInTheDocument();
+  });
+
+  it('a Stripe webhook still offers a reference-type choice and names casazium_ref', async () => {
+    await openFormFor('stripe');
+    expect(screen.getAllByLabelText('Reference type').length).toBeGreaterThan(0);
+    expect(screen.getByText('casazium_ref')).toBeInTheDocument();
+  });
+
   it('a Stripe webhook still defaults to a Payment Link reference', async () => {
     await openFormFor('stripe');
     expect(screen.getByLabelText('Payment Link ID')).toBeInTheDocument();
@@ -166,5 +181,58 @@ describe('StorefrontWebhookMappings - per-provider reference types', () => {
     renderWithMantine(<StorefrontWebhookMappings webhookId="wh_1" provider="lemonsqueezy" active={true} />);
     expect(await screen.findByText('123456')).toBeInTheDocument();
     expect(screen.getByText('Variant')).toBeInTheDocument();
+    expect(screen.queryByText(/Not safe/)).not.toBeInTheDocument();
+  });
+
+  it('an old Lemon Squeezy casazium_ref mapping is flagged as unsafe, with the fix', async () => {
+    listMappingsAction.mockResolvedValueOnce({
+      ok: true,
+      data: [
+        {
+          id: 'map_2',
+          webhook_id: 'wh_1',
+          tenant_id: 't',
+          provider: 'lemonsqueezy',
+          ref_kind: 'metadata',
+          external_ref: 'my-app-pro',
+          product_id: 'widget-pro',
+          tier: 'pro',
+          limits_json: null,
+          max_activations: null,
+          duration_days: null,
+          notes: null,
+          created_at: '2026-10-05T00:00:00Z',
+        },
+      ],
+    });
+    renderWithMantine(<StorefrontWebhookMappings webhookId="wh_1" provider="lemonsqueezy" active={true} />);
+    expect(await screen.findByText('my-app-pro')).toBeInTheDocument();
+    expect(screen.getByText(/Not safe: buyers can edit custom data. Map the variant instead/)).toBeInTheDocument();
+  });
+
+  it('a Stripe casazium_ref mapping is not flagged', async () => {
+    listMappingsAction.mockResolvedValueOnce({
+      ok: true,
+      data: [
+        {
+          id: 'map_3',
+          webhook_id: 'wh_1',
+          tenant_id: 't',
+          provider: 'stripe',
+          ref_kind: 'metadata',
+          external_ref: 'my-app-pro',
+          product_id: 'widget-pro',
+          tier: 'pro',
+          limits_json: null,
+          max_activations: null,
+          duration_days: null,
+          notes: null,
+          created_at: '2026-10-05T00:00:00Z',
+        },
+      ],
+    });
+    renderWithMantine(<StorefrontWebhookMappings webhookId="wh_1" provider="stripe" active={true} />);
+    expect(await screen.findByText('my-app-pro')).toBeInTheDocument();
+    expect(screen.queryByText(/Not safe/)).not.toBeInTheDocument();
   });
 });

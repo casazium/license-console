@@ -10,6 +10,21 @@ surface this console depends on (`casazium/license`) notes whether it
 needs a corresponding change there, and vice versa — see
 `SELF_HOSTED_DISTRIBUTION_DESIGN.md` §4 for why this discipline exists.
 
+## [Unreleased]
+
+### Security
+
+- **Settings → Storefront webhooks, Lemon Squeezy mappings:** the form
+  no longer offers a "Custom data (casazium_ref)" reference. A buyer can
+  add custom data to any Lemon Squeezy checkout link, so it could name
+  a dearer mapping than the variant they paid for. Lemon Squeezy
+  mappings are by variant only, and the reference-type choice is hidden
+  there. An existing Lemon Squeezy `casazium_ref` mapping is flagged
+  "Not safe" with the fix: map the variant, then remove it. Stripe
+  mappings are unchanged. Pairs with casazium/license#53, after which
+  License Server refuses those mappings (400) and never matches them;
+  against an older server, nothing else changes.
+
 ## [1.6.3] - 2026-10-13
 
 ### Fixed
