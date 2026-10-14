@@ -3,6 +3,7 @@ import {
   CONNECTABLE_PROVIDERS,
   STOREFRONT_PROVIDERS,
   generateWebhookSecret,
+  paddleKeyEnvironment,
   providerLabel,
   refKindLabel,
 } from '@/lib/storefront-providers';
@@ -12,8 +13,8 @@ import {
 // admin-storefront-webhooks.js (secret bounds) - the server is the real
 // check; these pin what the console offers.
 describe('lib/storefront-providers', () => {
-  it('offers both providers, Stripe first', () => {
-    expect(CONNECTABLE_PROVIDERS).toEqual(['stripe', 'lemonsqueezy']);
+  it('offers all three providers, Stripe first', () => {
+    expect(CONNECTABLE_PROVIDERS).toEqual(['stripe', 'lemonsqueezy', 'paddle']);
   });
 
   it("each provider's ref kinds match the server's", () => {
@@ -47,7 +48,10 @@ describe('lib/storefront-providers', () => {
   it('labels providers and ref kinds, falling back to the raw value', () => {
     expect(providerLabel('lemonsqueezy')).toBe('Lemon Squeezy');
     expect(providerLabel('stripe')).toBe('Stripe');
-    expect(providerLabel('paddle')).toBe('paddle');
+    expect(providerLabel('paddle')).toBe('Paddle');
+    expect(providerLabel('gumroad')).toBe('gumroad');
+    expect(refKindLabel('price')).toBe('Price');
+    expect(refKindLabel('product')).toBe('Product');
     expect(refKindLabel('variant')).toBe('Variant');
     expect(refKindLabel('payment_link')).toBe('Payment Link');
     expect(refKindLabel('metadata')).toBe('casazium_ref');
@@ -75,5 +79,27 @@ describe('lib/storefront-providers', () => {
       'subscription_payment_recovered',
     ]);
   });
-});
 
+  it("Paddle's setup matches the server (License Server 1.11.0)", () => {
+    const paddle = STOREFRONT_PROVIDERS.paddle;
+    expect(paddle.refKinds.map((k) => k.value)).toEqual(['price', 'product', 'metadata']);
+    expect(paddle).toMatchObject({
+      vendorChosenSecret: false,
+      secretLength: { min: 64, max: 128 },
+      secretPrefix: 'pdl_ntfset_',
+      needsEnvironment: true,
+      needsApiKey: true,
+      minServerVersion: '1.11.0',
+      refundEvent: 'adjustment.updated',
+    });
+    expect(paddle.subscriptionEvents).toContain('subscription.canceled');
+  });
+
+  it("reads a Paddle API key's environment from its prefix, and refuses anything else", () => {
+    const key = (env: string) => `pdl_${env}_apikey_01m4xapsjdq2ac7r5ke66my10d_${'K'.repeat(22)}_abc`;
+    expect(paddleKeyEnvironment(key('sdbx'))).toBe('sandbox');
+    expect(paddleKeyEnvironment(key('live'))).toBe('live');
+    expect(paddleKeyEnvironment('a'.repeat(50))).toBeNull();
+    expect(paddleKeyEnvironment('pdl_sdbx_apikey_short')).toBeNull();
+  });
+});

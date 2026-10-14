@@ -7,6 +7,8 @@ import {
   rotateApiKey as rotateApiKeyOnServer,
   createStorefrontWebhook as createStorefrontWebhookOnServer,
   setStorefrontWebhookSecret as setStorefrontWebhookSecretOnServer,
+  setStorefrontWebhookApiKey as setStorefrontWebhookApiKeyOnServer,
+  sendStorefrontPendingDeliveries as sendStorefrontPendingDeliveriesOnServer,
   setStorefrontRefundPolicy as setStorefrontRefundPolicyOnServer,
   setStorefrontSubscriptionGrace as setStorefrontSubscriptionGraceOnServer,
   disableStorefrontWebhook as disableStorefrontWebhookOnServer,
@@ -19,8 +21,11 @@ import type {
   CreateStorefrontMappingInput,
   ListStorefrontDeliveriesResult,
   StorefrontMapping,
+  StorefrontSendPendingResult,
   StorefrontWebhook,
+  StorefrontWebhookEnvironment,
   StorefrontWebhookProvider,
+  StorefrontWebhookStatus,
   StorefrontRefundPolicy,
 } from '@/lib/license-client';
 import { verifyAccountPassword } from '@/lib/auth';
@@ -337,11 +342,12 @@ type ValidatedActionResult<T> =
   | { ok: false; reason: 'validation'; message: string };
 
 export async function createStorefrontWebhookAction(
-  provider: StorefrontWebhookProvider
+  provider: StorefrontWebhookProvider,
+  environment?: StorefrontWebhookEnvironment
 ): Promise<ValidatedActionResult<StorefrontWebhook>> {
   const { identity, tenantApiKey } = await requireSessionWithTenantKey();
   try {
-    const data = await createStorefrontWebhookOnServer(provider, tenantApiKey);
+    const data = await createStorefrontWebhookOnServer(provider, tenantApiKey, environment);
     return { ok: true, data };
   } catch (err) {
     if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
@@ -351,13 +357,52 @@ export async function createStorefrontWebhookAction(
   }
 }
 
+// The webhook's status after saving, or null if it no longer exists.
 export async function setStorefrontWebhookSecretAction(
   webhookId: string,
   secret: string
-): Promise<ValidatedActionResult<boolean>> {
+): Promise<ValidatedActionResult<StorefrontWebhookStatus | null>> {
   const { identity, tenantApiKey } = await requireSessionWithTenantKey();
   try {
     const data = await setStorefrontWebhookSecretOnServer(webhookId, secret, tenantApiKey);
+    return { ok: true, data };
+  } catch (err) {
+    if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
+    markIfTenantRejected(err, identity.tenantId);
+    if (err instanceof Error) return { ok: false, reason: 'validation', message: err.message };
+    throw err;
+  }
+}
+
+// A Paddle webhook's API key (License Server 1.11.0+). The server checks
+// it with Paddle first; every refusal (format, environment, Paddle said
+// no, Paddle unreachable or rate limiting) comes back as a message to
+// show. The status after saving, or null if the webhook no longer exists.
+export async function setStorefrontWebhookApiKeyAction(
+  webhookId: string,
+  apiKey: string
+): Promise<ValidatedActionResult<StorefrontWebhookStatus | null>> {
+  const { identity, tenantApiKey } = await requireSessionWithTenantKey();
+  try {
+    const data = await setStorefrontWebhookApiKeyOnServer(webhookId, apiKey, tenantApiKey);
+    return { ok: true, data };
+  } catch (err) {
+    if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
+    markIfTenantRejected(err, identity.tenantId);
+    if (err instanceof Error) return { ok: false, reason: 'validation', message: err.message };
+    throw err;
+  }
+}
+
+// Paddle's "Send pending deliveries" (License Server 1.11.0+). null if the
+// webhook no longer exists; a 409 (already running, not set up) comes
+// back as a message.
+export async function sendStorefrontPendingDeliveriesAction(
+  webhookId: string
+): Promise<ValidatedActionResult<StorefrontSendPendingResult | null>> {
+  const { identity, tenantApiKey } = await requireSessionWithTenantKey();
+  try {
+    const data = await sendStorefrontPendingDeliveriesOnServer(webhookId, tenantApiKey);
     return { ok: true, data };
   } catch (err) {
     if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };

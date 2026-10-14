@@ -169,7 +169,17 @@ export function StorefrontWebhookMappings({
         Product mappings
       </Text>
       <Text size="xs" c="dimmed" maw={SETTINGS_TEXT_WIDTH}>
-        {provider === 'lemonsqueezy' ? (
+        {provider === 'paddle' ? (
+          <>
+            Map each Paddle price (or a product, to cover all its prices) to the product, tier, and limits a purchase of
+            it should issue. A{' '}
+            <Text component="code" fz="xs">
+              casazium_ref
+            </Text>{' '}
+            only counts on checkouts you create through Paddle&apos;s API: Paddle.js lets a buyer set custom data in their
+            browser.
+          </>
+        ) : provider === 'lemonsqueezy' ? (
           <>Map each product variant to the product, tier, and limits a purchase of it should issue.</>
         ) : (
           <>

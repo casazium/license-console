@@ -359,15 +359,34 @@ export type BackendVersion = {
 
 // STOREFRONT_WEBHOOK_PLAN.md - inbound purchase-webhook auto-fulfillment.
 // Mirrors casazium/license's src/routes/admin-storefront-webhooks.js
-// response shapes exactly. 'stripe' (Stripe Payment Links) and
-// 'lemonsqueezy' (License Server 1.7.0+, LEMON_SQUEEZY_FULFILLMENT_DESIGN.md
-// there) - another storefront provider adds another value here, not a new
-// type.
-export type StorefrontWebhookProvider = 'stripe' | 'lemonsqueezy';
+// response shapes exactly. 'stripe' (Stripe Payment Links), 'lemonsqueezy'
+// (License Server 1.7.0+, LEMON_SQUEEZY_FULFILLMENT_DESIGN.md there) and
+// 'paddle' (License Server 1.11.0+, PADDLE_FULFILLMENT_DESIGN.md) - another
+// storefront provider adds another value here, not a new type.
+export type StorefrontWebhookProvider = 'stripe' | 'lemonsqueezy' | 'paddle';
+
+// Paddle only: its payloads never say sandbox or live, so the webhook says
+// it, chosen when it's created and never changed.
+export type StorefrontWebhookEnvironment = 'sandbox' | 'live';
+
+// Paddle only: why the webhook's API key isn't fetching buyer emails.
+// key_expiring is a warning (the key still works); customer_not_found
+// usually means the other environment; the rest stop Paddle calls until a
+// new key is saved.
+export type StorefrontApiKeyProblem =
+  | 'key_rejected'
+  | 'no_api_key'
+  | 'key_unreadable'
+  | 'customer_not_found'
+  | 'key_expiring'
+  | 'key_expired'
+  | 'key_revoked';
 
 // 'pending' - row exists, webhook URL can be shown, but no secret has
 // been saved yet (POST .../secret hasn't succeeded), so the route
-// rejects every real delivery with a signature-verification failure.
+// rejects every real delivery with a signature-verification failure. A
+// Paddle webhook stays pending until it has both its secret and its API
+// key.
 // 'disabled' is soft (DELETE .../:id never hard-deletes - schema.sql's
 // own comment on storefront_purchase_events/storefront_product_mappings
 // needing a stable FK target to survive under).
@@ -391,6 +410,23 @@ export type StorefrontWebhook = {
   // tells whether subscriptions exist): days a subscription's license
   // stays valid past its paid period, 0-30.
   subscription_grace_days?: number;
+  // License Server 1.11.0+, Paddle only (null for the other providers).
+  environment?: StorefrontWebhookEnvironment | null;
+  has_api_key?: boolean;
+  api_key_problem?: StorefrontApiKeyProblem | null;
+};
+
+// Paddle's "Send pending deliveries" (License Server 1.11.0+): what one
+// run did. stopped is null when it got through everything, or why it
+// stopped: batch_limit / time_budget (run it again), daily_cap,
+// send_failed, a fetch failure reason, or an api_key_problem value.
+export type StorefrontSendPendingResult = {
+  sent: number;
+  skipped: number;
+  not_found: number;
+  failed: number;
+  remaining: number;
+  stopped: string | null;
 };
 
 // Per provider (the server rejects a kind its webhook's provider never
@@ -402,7 +438,10 @@ export type StorefrontWebhook = {
 // - Lemon Squeezy: a variant's numeric id ('variant') only. 'metadata'
 //   (checkout custom data) was accepted once, but a buyer can edit it, so
 //   the server now refuses it and never matches the old ones.
-export type StorefrontMappingRefKind = 'payment_link' | 'variant' | 'metadata';
+// - Paddle: a price ('price', pri_...) or a product ('product', pro_...),
+//   or a casazium_ref ('metadata') - trusted only on transactions the
+//   vendor creates through Paddle's API.
+export type StorefrontMappingRefKind = 'payment_link' | 'variant' | 'metadata' | 'price' | 'product';
 
 export type StorefrontMapping = {
   id: string;

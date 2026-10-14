@@ -48,7 +48,10 @@ export type {
   StorefrontRefundAction,
   StorefrontRefundPolicy,
   StorefrontSubscriptionState,
+  StorefrontApiKeyProblem,
+  StorefrontSendPendingResult,
   StorefrontWebhook,
+  StorefrontWebhookEnvironment,
   StorefrontWebhookProvider,
   StorefrontWebhookStatus,
   TierAStatus,
@@ -193,10 +196,14 @@ export const getTierAStatus: typeof mock.getTierAStatus = (tenantApiKey) =>
 // STOREFRONT_WEBHOOK_PLAN.md
 export const listStorefrontWebhooks: typeof mock.listStorefrontWebhooks = (tenantApiKey) =>
   client().listStorefrontWebhooks(tenantApiKey);
-export const createStorefrontWebhook: typeof mock.createStorefrontWebhook = (provider, tenantApiKey) =>
-  client().createStorefrontWebhook(provider, tenantApiKey);
+export const createStorefrontWebhook: typeof mock.createStorefrontWebhook = (provider, tenantApiKey, environment) =>
+  client().createStorefrontWebhook(provider, tenantApiKey, environment);
 export const setStorefrontWebhookSecret: typeof mock.setStorefrontWebhookSecret = (webhookId, secret, tenantApiKey) =>
   client().setStorefrontWebhookSecret(webhookId, secret, tenantApiKey);
+export const setStorefrontWebhookApiKey: typeof mock.setStorefrontWebhookApiKey = (webhookId, apiKey, tenantApiKey) =>
+  client().setStorefrontWebhookApiKey(webhookId, apiKey, tenantApiKey);
+export const sendStorefrontPendingDeliveries: typeof mock.sendStorefrontPendingDeliveries = (webhookId, tenantApiKey) =>
+  client().sendStorefrontPendingDeliveries(webhookId, tenantApiKey);
 export const setStorefrontRefundPolicy: typeof mock.setStorefrontRefundPolicy = (webhookId, refundPolicy, tenantApiKey) =>
   client().setStorefrontRefundPolicy(webhookId, refundPolicy, tenantApiKey);
 export const setStorefrontSubscriptionGrace: typeof mock.setStorefrontSubscriptionGrace = (webhookId, graceDays, tenantApiKey) =>
