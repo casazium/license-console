@@ -10,7 +10,7 @@ surface this console depends on (`casazium/license`) notes whether it
 needs a corresponding change there, and vice versa — see
 `SELF_HOSTED_DISTRIBUTION_DESIGN.md` §4 for why this discipline exists.
 
-## [Unreleased]
+## [1.6.4] - 2026-10-14
 
 ### Security
 
@@ -21,9 +21,10 @@ needs a corresponding change there, and vice versa — see
   mappings are by variant only, and the reference-type choice is hidden
   there. An existing Lemon Squeezy `casazium_ref` mapping is flagged
   "Not safe" with the fix: map the variant, then remove it. Stripe
-  mappings are unchanged. Pairs with casazium/license#53, after which
-  License Server refuses those mappings (400) and never matches them;
-  against an older server, nothing else changes.
+  mappings are unchanged. Pairs with License Server 1.10.1
+  (casazium/license#53), which refuses those mappings (400) and never
+  matches them; against an older server, nothing else changes. Admin
+  API surface: none new; MIN_COMPATIBLE_SERVER_VERSION stays 1.5.3.
 
 ## [1.6.3] - 2026-10-13
 
