@@ -395,11 +395,13 @@ export type StorefrontWebhook = {
 
 // Per provider (the server rejects a kind its webhook's provider never
 // produces - storefront-adapters.js's STOREFRONT_REF_KINDS):
-// - Stripe: a Payment Link's own id ('payment_link'), or
-// - Lemon Squeezy: a variant's numeric id ('variant'), or
-// - either: a value the tenant sets themselves as `casazium_ref` (Stripe
-//   Checkout Session metadata, or Lemon Squeezy checkout custom data) -
-//   useful when several links/variants should resolve to one mapping.
+// - Stripe: a Payment Link's own id ('payment_link'), or a value the
+//   tenant sets themselves as `casazium_ref` in Checkout Session metadata
+//   ('metadata') - useful when several links should resolve to one
+//   mapping;
+// - Lemon Squeezy: a variant's numeric id ('variant') only. 'metadata'
+//   (checkout custom data) was accepted once, but a buyer can edit it, so
+//   the server now refuses it and never matches the old ones.
 export type StorefrontMappingRefKind = 'payment_link' | 'variant' | 'metadata';
 
 export type StorefrontMapping = {

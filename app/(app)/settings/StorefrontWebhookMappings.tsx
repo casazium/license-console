@@ -169,12 +169,17 @@ export function StorefrontWebhookMappings({
         Product mappings
       </Text>
       <Text size="xs" c="dimmed" maw={SETTINGS_TEXT_WIDTH}>
-        Map each {provider === 'lemonsqueezy' ? 'product variant' : 'Payment Link'} (or a{' '}
-        <Text component="code" fz="xs">
-          casazium_ref
-        </Text>{' '}
-        {provider === 'lemonsqueezy' ? 'custom data' : 'metadata'} value) to the product, tier, and limits a
-        purchase through it should issue.
+        {provider === 'lemonsqueezy' ? (
+          <>Map each product variant to the product, tier, and limits a purchase of it should issue.</>
+        ) : (
+          <>
+            Map each Payment Link (or a{' '}
+            <Text component="code" fz="xs">
+              casazium_ref
+            </Text>{' '}
+            metadata value) to the product, tier, and limits a purchase through it should issue.
+          </>
+        )}
       </Text>
 
       {loading && (
@@ -247,6 +252,13 @@ export function StorefrontWebhookMappings({
                     <Text size="xs" c="dimmed">
                       {refKindLabel(mapping.ref_kind)}
                     </Text>
+                    {provider === 'lemonsqueezy' && mapping.ref_kind === 'metadata' && (
+                      // Made before custom data was refused: a buyer can
+                      // edit it, so newer servers never match it.
+                      <Text size="xs" c="orange">
+                        Not safe: buyers can edit custom data. Map the variant instead, then remove this.
+                      </Text>
+                    )}
                   </Table.Td>
                   <Table.Td style={{ wordBreak: 'break-word' }}>{mapping.product_id}</Table.Td>
                   <Table.Td>{mapping.tier}</Table.Td>
@@ -278,12 +290,14 @@ export function StorefrontWebhookMappings({
           style={{ border: '1px solid var(--mantine-color-default-border)', borderRadius: 8 }}
         >
           <Group grow>
-            <Select
-              label="Reference type"
-              data={refKinds.map(({ value, label }) => ({ value, label }))}
-              value={form.ref_kind}
-              onChange={(value) => setForm((f) => ({ ...f, ref_kind: (value as StorefrontMappingRefKind) || f.ref_kind }))}
-            />
+            {refKinds.length > 1 && (
+              <Select
+                label="Reference type"
+                data={refKinds.map(({ value, label }) => ({ value, label }))}
+                value={form.ref_kind}
+                onChange={(value) => setForm((f) => ({ ...f, ref_kind: (value as StorefrontMappingRefKind) || f.ref_kind }))}
+              />
+            )}
             <TextInput
               label={selectedRefKind.inputLabel}
               placeholder={selectedRefKind.placeholder}
