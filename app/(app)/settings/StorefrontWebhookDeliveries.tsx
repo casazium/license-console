@@ -6,7 +6,7 @@ import { notifications } from '@mantine/notifications';
 import { notifyRateLimited } from '@/lib/notify';
 import { formatDate, formatDateTime, parseTimestamp } from '@/lib/format';
 import type { StorefrontDelivery, StorefrontWebhookProvider } from '@/lib/license-client';
-import { STOREFRONT_PROVIDERS } from '@/lib/storefront-providers';
+import { STOREFRONT_PROVIDERS, providerLabel } from '@/lib/storefront-providers';
 import { listStorefrontDeliveriesAction } from './actions';
 import { SETTINGS_TEXT_WIDTH } from './widths';
 
@@ -242,7 +242,14 @@ export function StorefrontWebhookDeliveries({
         <Alert color="orange" variant="light" maw={SETTINGS_TEXT_WIDTH} title="Needs attention">
           {stuckCount === 1 ? 'One purchase issued a license' : `${stuckCount} purchases issued a license`}{' '}
           but its confirmation email hasn&apos;t gone out.{' '}
-          {provider === 'lemonsqueezy' ? (
+          {provider === 'paddle' ? (
+            // Paddle doesn't resend an event it was answered, so a license
+            // whose email waits is sent from here (License Server 1.11.0+).
+            <>
+              Usually the API key couldn&apos;t look up the buyer&apos;s email. Once it works, use Send pending deliveries
+              above — no license will be issued twice.
+            </>
+          ) : provider === 'lemonsqueezy' ? (
             // The License Server ignores a Lemon Squeezy order more than 7
             // days old (its replay window), so a later resend does nothing.
             <>
@@ -270,7 +277,7 @@ export function StorefrontWebhookDeliveries({
             : missingEventsCount === 1
               ? 'its license is on a short provisional expiry.'
               : 'their licenses are on short provisional expiries.'}{' '}
-          Check that this webhook in your {provider === 'lemonsqueezy' ? 'Lemon Squeezy' : 'Stripe'} settings sends{' '}
+          Check that this webhook in your {providerLabel(provider)} settings sends{' '}
           {subscriptionEvents.map((event, i) => (
             <span key={event}>
               {i > 0 && (i === subscriptionEvents.length - 1 ? ' and ' : ', ')}

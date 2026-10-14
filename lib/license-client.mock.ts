@@ -32,7 +32,10 @@ import type {
   StorefrontDelivery,
   StorefrontMapping,
   StorefrontRefundPolicy,
+  StorefrontSendPendingResult,
   StorefrontWebhook,
+  StorefrontWebhookEnvironment,
+  StorefrontWebhookStatus,
   StorefrontWebhookProvider,
   TierAStatus,
   UpdateLicenseTermsInput,
@@ -862,9 +865,14 @@ export async function listStorefrontWebhooks(_tenantApiKey?: string): Promise<St
 
 export async function createStorefrontWebhook(
   provider: StorefrontWebhookProvider,
-  _tenantApiKey?: string
+  _tenantApiKey?: string,
+  environment?: StorefrontWebhookEnvironment
 ): Promise<StorefrontWebhook> {
   const { storefrontWebhooks } = getStore();
+  // The real route's rule: Paddle needs an environment, the others refuse one.
+  if (provider === 'paddle' && !environment) {
+    throw new Error("A paddle webhook needs an environment: 'sandbox' or 'live'");
+  }
   // Mirrors the real route's own partial-unique-index rule (at most one
   // non-disabled webhook per {tenant, provider}) so the "Connect Stripe"
   // button's 409 path is demonstrable in standalone mode too.
@@ -881,27 +889,76 @@ export async function createStorefrontWebhook(
     last_event_at: null,
     refund_policy: 'revoke',
     subscription_grace_days: 7,
+    environment: provider === 'paddle' ? environment : null,
+    has_api_key: false,
+    api_key_problem: null,
   };
   storefrontWebhooks.push(webhook);
   return webhook;
+}
+
+// Mock-only: whether a webhook's secret has been saved (the real server
+// keeps it encrypted and never reports it).
+const mockSecretSaved = new Set<string>();
+
+function mockStatusAfterSave(webhook: StorefrontWebhook): StorefrontWebhookStatus {
+  return webhook.provider !== 'paddle' || (mockSecretSaved.has(webhook.id) && webhook.has_api_key) ? 'active' : 'pending';
 }
 
 export async function setStorefrontWebhookSecret(
   webhookId: string,
   secret: string,
   _tenantApiKey?: string
-): Promise<boolean> {
+): Promise<StorefrontWebhookStatus | null> {
   const webhook = getStore().storefrontWebhooks.find((w) => w.id === webhookId);
-  if (!webhook) return false;
-  // Same per-provider bounds as the real route, so the setup form's
+  if (!webhook) return null;
+  // Same per-provider rules as the real route, so the setup form's
   // inline error is demonstrable in standalone mode.
-  const bounds = STOREFRONT_PROVIDERS[webhook.provider].secretLength;
+  const info = STOREFRONT_PROVIDERS[webhook.provider];
+  if (info.secretPrefix && !secret.startsWith(info.secretPrefix)) {
+    throw new Error(`A ${webhook.provider} signing secret starts with ${info.secretPrefix} - copy it from the notification destination`);
+  }
+  const bounds = info.secretLength;
   const length = [...secret].length;
   if (bounds && (length < bounds.min || length > bounds.max)) {
     throw new Error(`A ${webhook.provider} signing secret must be ${bounds.min}-${bounds.max} characters`);
   }
-  webhook.status = 'active';
-  return true;
+  mockSecretSaved.add(webhook.id);
+  webhook.status = mockStatusAfterSave(webhook);
+  return webhook.status;
+}
+
+// No call to Paddle in mock mode: any key of the right shape and
+// environment is accepted.
+export async function setStorefrontWebhookApiKey(
+  webhookId: string,
+  apiKey: string,
+  _tenantApiKey?: string
+): Promise<StorefrontWebhookStatus | null> {
+  const webhook = getStore().storefrontWebhooks.find((w) => w.id === webhookId);
+  if (!webhook) return null;
+  if (webhook.provider !== 'paddle') throw new Error(`${webhook.provider} webhooks don't use an API key`);
+  const match = /^pdl_(live|sdbx)_apikey_[a-z\d]{26}_[a-zA-Z\d]{22}_[a-zA-Z\d]{3}$/.exec(apiKey.trim());
+  if (!match) throw new Error('That is not a Paddle API key (pdl_sdbx_apikey_... or pdl_live_apikey_...).');
+  const keyEnvironment = match[1] === 'live' ? 'live' : 'sandbox';
+  if (keyEnvironment !== webhook.environment) {
+    throw new Error(`That is a ${keyEnvironment} key, and this webhook is for Paddle's ${webhook.environment} environment`);
+  }
+  webhook.has_api_key = true;
+  webhook.api_key_problem = null;
+  webhook.status = mockStatusAfterSave(webhook);
+  return webhook.status;
+}
+
+export async function sendStorefrontPendingDeliveries(
+  webhookId: string,
+  _tenantApiKey?: string
+): Promise<StorefrontSendPendingResult | null> {
+  const webhook = getStore().storefrontWebhooks.find((w) => w.id === webhookId);
+  if (!webhook) return null;
+  if (webhook.provider !== 'paddle') throw new Error(`${webhook.provider} purchases carry their buyer's email - nothing to send this way`);
+  if (webhook.status !== 'active') throw new Error("Save this webhook's signing secret and API key first");
+  return { sent: 0, skipped: 0, not_found: 0, failed: 0, remaining: 0, stopped: null };
 }
 
 export async function setStorefrontRefundPolicy(

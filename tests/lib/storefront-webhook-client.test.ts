@@ -9,6 +9,8 @@ import {
   listStorefrontWebhooks,
   setStorefrontRefundPolicy,
   setStorefrontSubscriptionGrace,
+  sendStorefrontPendingDeliveries,
+  setStorefrontWebhookApiKey,
   setStorefrontWebhookSecret,
 } from '@/lib/license-client.live';
 import { LicenseApiError } from '@/lib/errors';
@@ -131,17 +133,22 @@ describe('storefront webhook live client (lib/license-client.live.ts)', () => {
     });
   });
 
-  it('setStorefrontWebhookSecret returns false on a 404 (webhook not found/not owned), not an exception', async () => {
+  it('setStorefrontWebhookSecret returns null on a 404 (webhook not found/not owned), not an exception', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
-    await expect(setStorefrontWebhookSecret('wh_missing', 'whsec_x', 'tenant-key')).resolves.toBe(false);
+    await expect(setStorefrontWebhookSecret('wh_missing', 'whsec_x', 'tenant-key')).resolves.toBeNull();
   });
 
-  it('setStorefrontWebhookSecret returns true on success', async () => {
+  it("setStorefrontWebhookSecret returns the server's status, and 'active' from a server that doesn't say", async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ updated: true, status: 'pending' }), { status: 200 }))
+    );
+    await expect(setStorefrontWebhookSecret('wh_1', 'pdl_ntfset_x', 'tenant-key')).resolves.toBe('pending');
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(new Response(JSON.stringify({ updated: true }), { status: 200 }))
     );
-    await expect(setStorefrontWebhookSecret('wh_1', 'whsec_x', 'tenant-key')).resolves.toBe(true);
+    await expect(setStorefrontWebhookSecret('wh_1', 'whsec_x', 'tenant-key')).resolves.toBe('active');
   });
 
   it('disableStorefrontWebhook returns false on a 404', async () => {
@@ -325,5 +332,73 @@ describe('storefront webhook live client (lib/license-client.live.ts)', () => {
       );
       await expect(setStorefrontSubscriptionGrace('wh_1', 7, 'tenant-key')).rejects.toThrow(/0-30/);
     });
+  });
+});
+
+// PADDLE_FULFILLMENT_DESIGN.md §8 (License Server 1.11.0+).
+describe('Paddle webhook live client', () => {
+  beforeEach(() => {
+    vi.stubEnv('LICENSE_API_URL', 'https://license.example.com/v1');
+    vi.stubEnv('LICENSE_ADMIN_API_KEY', 'test-admin-key');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status });
+
+  it('createStorefrontWebhook sends the environment for Paddle, and none otherwise', async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => json(200, { id: 'wh_1', provider: 'paddle', status: 'pending' }));
+    vi.stubGlobal('fetch', fetchMock);
+    await createStorefrontWebhook('paddle', 'tenant-key', 'live');
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ provider: 'paddle', environment: 'live' });
+    await createStorefrontWebhook('stripe', 'tenant-key');
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ provider: 'stripe' });
+  });
+
+  it("a server too old for Paddle says which version it needs", async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => json(400, { message: 'body/provider must be equal to one of the allowed values' })));
+    await expect(createStorefrontWebhook('paddle', 'tenant-key', 'sandbox')).rejects.toThrow(/License Server 1\.11\.0/);
+  });
+
+  it("setStorefrontWebhookApiKey posts the key and returns the server's status", async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => json(200, { updated: true, status: 'active' }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(setStorefrontWebhookApiKey('wh_1', 'pdl_sdbx_apikey_x', 'tenant-key')).resolves.toBe('active');
+    expect(fetchMock.mock.calls[0][0]).toBe('https://license.example.com/v1/admin/storefront-webhooks/wh_1/api-key');
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ api_key: 'pdl_sdbx_apikey_x' });
+  });
+
+  it.each([
+    [400, 'Paddle refused this key: it needs the Customers: read permission in sandbox'],
+    [502, "Couldn't reach Paddle to check the key - try again"],
+    [503, 'Paddle is rate limiting this server - try again in a minute'],
+  ])("setStorefrontWebhookApiKey keeps the server's %s message", async (status, error) => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => json(status, { error })));
+    const call = setStorefrontWebhookApiKey('wh_1', 'pdl_sdbx_apikey_x', 'tenant-key');
+    await expect(call).rejects.toBeInstanceOf(LicenseApiError);
+    await expect(setStorefrontWebhookApiKey('wh_1', 'pdl_sdbx_apikey_x', 'tenant-key')).rejects.toThrow(error);
+  });
+
+  it('setStorefrontWebhookApiKey: null for a missing webhook, a version message for a server without the route', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => json(404, { error: 'Storefront webhook not found' })));
+    await expect(setStorefrontWebhookApiKey('wh_missing', 'k', 'tenant-key')).resolves.toBeNull();
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => json(404, { message: 'Route POST:/v1/admin/storefront-webhooks/wh_1/api-key not found' })));
+    await expect(setStorefrontWebhookApiKey('wh_1', 'k', 'tenant-key')).rejects.toThrow(/License Server 1\.11\.0/);
+  });
+
+  it('sendStorefrontPendingDeliveries returns the run, sends a non-empty body, and keeps a 409 message', async () => {
+    const run = { sent: 2, skipped: 0, not_found: 0, failed: 0, remaining: 0, stopped: null };
+    const fetchMock = vi.fn().mockImplementation(async () => json(200, run));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(sendStorefrontPendingDeliveries('wh_1', 'tenant-key')).resolves.toEqual(run);
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'POST', body: '{}' });
+
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => json(409, { error: 'Already sending pending deliveries for this account - wait for it to finish' })));
+    await expect(sendStorefrontPendingDeliveries('wh_1', 'tenant-key')).rejects.toThrow(/Already sending/);
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => json(404, { error: 'Storefront webhook not found' })));
+    await expect(sendStorefrontPendingDeliveries('wh_missing', 'tenant-key')).resolves.toBeNull();
   });
 });

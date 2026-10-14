@@ -83,7 +83,7 @@ describe('StorefrontWebhooksSection - providers', () => {
   });
 
   it('Lemon Squeezy setup: Generate fills a 32-character secret, which is what gets saved', async () => {
-    setSecretAction.mockResolvedValueOnce({ ok: true, data: true });
+    setSecretAction.mockResolvedValueOnce({ ok: true, data: 'active' });
     const input = await openLemonSqueezySetup();
     expect(screen.getByText('order_created')).toBeInTheDocument();
 

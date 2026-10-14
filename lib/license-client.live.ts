@@ -63,8 +63,11 @@ import type {
   SelfLicenseStatus,
   StorefrontDelivery,
   StorefrontMapping,
+  StorefrontSendPendingResult,
   StorefrontWebhook,
+  StorefrontWebhookEnvironment,
   StorefrontWebhookProvider,
+  StorefrontWebhookStatus,
   StorefrontRefundPolicy,
   TierAStatus,
   UpdateLicenseTermsInput,
@@ -777,13 +780,15 @@ export async function listStorefrontWebhooks(tenantApiKey?: string): Promise<Sto
 // minServerVersion rejects the provider with a schema 400 ("body/provider
 // must be equal to one of the allowed values"), replaced here with a
 // message that says what to do about it.
+// environment: Paddle only (License Server 1.11.0+), chosen once.
 export async function createStorefrontWebhook(
   provider: StorefrontWebhookProvider,
-  tenantApiKey?: string
+  tenantApiKey?: string,
+  environment?: StorefrontWebhookEnvironment
 ): Promise<StorefrontWebhook> {
   const res = await liveFetch(
     '/admin/storefront-webhooks',
-    { method: 'POST', body: JSON.stringify({ provider }) },
+    { method: 'POST', body: JSON.stringify(environment ? { provider, environment } : { provider }) },
     tenantApiKey
   );
   const { label, minServerVersion } = STOREFRONT_PROVIDERS[provider];
@@ -802,25 +807,82 @@ export async function createStorefrontWebhook(
 // Saving the signing secret is what flips a 'pending' row to 'active'
 // (admin-storefront-webhooks.js) - false on a 404 (webhook_id not found
 // or not owned by this tenant), matching setLicenseRevoked/deleteLicense's
-// own "boolean outcome, not an exception" convention for a caller-facing
-// not-found that isn't really exceptional. A 400 (a Lemon Squeezy secret
-// outside 16-40 characters) keeps the server's message for inline
-// display.
+// own "outcome, not an exception" convention for a caller-facing
+// not-found that isn't really exceptional (null here). A 400 (a secret
+// outside the provider's bounds) keeps the server's message for inline
+// display. Returns the webhook's status after saving: a Paddle webhook
+// stays 'pending' until its API key is saved too (License Server
+// 1.11.0+); an older server doesn't say, and always activates.
 export async function setStorefrontWebhookSecret(
   webhookId: string,
   secret: string,
   tenantApiKey?: string
-): Promise<boolean> {
+): Promise<StorefrontWebhookStatus | null> {
   const res = await liveFetch(
     `/admin/storefront-webhooks/${encodeURIComponent(webhookId)}/secret`,
     { method: 'POST', body: JSON.stringify({ secret }) },
     tenantApiKey
   );
-  if (res.status === 404) return false;
+  if (res.status === 404) return null;
   if (!res.ok) {
     await throwForFailedResponse(res, 'Failed to save storefront webhook secret');
   }
-  return true;
+  const body: { status?: StorefrontWebhookStatus } = await res.json().catch(() => ({}));
+  return body.status ?? 'active';
+}
+
+// A Paddle webhook's API key (License Server 1.11.0+). The server checks
+// it against Paddle before saving: a 400 (wrong format or environment, or
+// Paddle refused it), 502 (Paddle unreachable) or 503 (rate limited) all
+// carry a message to show as-is. null on a 404. Returns the webhook's
+// status after saving.
+export async function setStorefrontWebhookApiKey(
+  webhookId: string,
+  apiKey: string,
+  tenantApiKey?: string
+): Promise<StorefrontWebhookStatus | null> {
+  const res = await liveFetch(
+    `/admin/storefront-webhooks/${encodeURIComponent(webhookId)}/api-key`,
+    { method: 'POST', body: JSON.stringify({ api_key: apiKey }) },
+    tenantApiKey
+  );
+  if (res.status === 404) {
+    const body: { message?: string } = await res.json().catch(() => ({}));
+    if (body.message?.startsWith('Route ')) {
+      throw new LicenseApiError('Paddle needs License Server 1.11.0 or later.', 404);
+    }
+    return null;
+  }
+  if (res.status === 502 || res.status === 503) {
+    const body: { error?: string } = await res.json().catch(() => ({}));
+    throw new LicenseApiError(body.error || 'Couldn\'t check the key with Paddle - try again', res.status);
+  }
+  if (!res.ok) {
+    await throwForFailedResponse(res, 'Failed to save the API key');
+  }
+  const body: { status?: StorefrontWebhookStatus } = await res.json().catch(() => ({}));
+  return body.status ?? 'active';
+}
+
+// Paddle's "Send pending deliveries" (License Server 1.11.0+): emails the
+// licenses issued while a buyer's email couldn't be fetched. null on a
+// 404; a 400/409 (not a Paddle webhook, not set up, already running)
+// keeps the server's message. The server answers within about 10 seconds.
+export async function sendStorefrontPendingDeliveries(
+  webhookId: string,
+  tenantApiKey?: string
+): Promise<StorefrontSendPendingResult | null> {
+  const res = await liveFetch(
+    `/admin/storefront-webhooks/${encodeURIComponent(webhookId)}/send-pending`,
+    // '{}' for the same reason as disableStorefrontWebhook below.
+    { method: 'POST', body: '{}' },
+    tenantApiKey
+  );
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    await throwForFailedResponse(res, 'Failed to send pending deliveries');
+  }
+  return res.json();
 }
 
 // What a full refund does on this webhook (License Server 1.8.0+). false

@@ -14,6 +14,11 @@ export type StorefrontProviderInfo = {
   vendorChosenSecret: boolean;
   // Enforced by the server too (400) - checked here only to fail fast.
   secretLength?: { min: number; max: number };
+  secretPrefix?: string;
+  // Paddle: chosen when connecting (its payloads don't say), and the
+  // webhook needs an API key to fetch each buyer's email.
+  needsEnvironment?: boolean;
+  needsApiKey?: boolean;
   // The event that reports a refund (License Server 1.8.0+).
   refundEvent: string;
   // The events subscriptions need (License Server 1.9.0+), all of them
@@ -66,19 +71,67 @@ export const STOREFRONT_PROVIDERS: Record<StorefrontWebhookProvider, StorefrontP
       'subscription_payment_recovered',
     ],
   },
+  paddle: {
+    label: 'Paddle',
+    refKinds: [
+      { value: 'price', label: 'Price', inputLabel: 'Paddle price ID', placeholder: 'pri_...' },
+      { value: 'product', label: 'Product', inputLabel: 'Paddle product ID', placeholder: 'pro_...' },
+      // Trusted only on transactions created through Paddle's API: Paddle.js
+      // lets a buyer set custom data in their browser.
+      { value: 'metadata', label: 'casazium_ref (API checkouts)', inputLabel: 'casazium_ref value', placeholder: 'my-product-ref' },
+    ],
+    vendorChosenSecret: false,
+    secretLength: { min: 64, max: 128 },
+    secretPrefix: 'pdl_ntfset_',
+    needsEnvironment: true,
+    needsApiKey: true,
+    minServerVersion: '1.11.0',
+    refundEvent: 'adjustment.updated',
+    subscriptionEvents: [
+      'subscription.created',
+      'subscription.activated',
+      'subscription.updated',
+      'subscription.trialing',
+      'subscription.past_due',
+      'subscription.paused',
+      'subscription.resumed',
+      'subscription.canceled',
+    ],
+  },
 };
 
 // The order the "Connect ..." buttons appear in.
-export const CONNECTABLE_PROVIDERS: StorefrontWebhookProvider[] = ['stripe', 'lemonsqueezy'];
+export const CONNECTABLE_PROVIDERS: StorefrontWebhookProvider[] = ['stripe', 'lemonsqueezy', 'paddle'];
+
+// What a Paddle webhook's api_key_problem means, and what to do.
+export const API_KEY_PROBLEM_TEXT: Record<string, { title: string; body: string; color: 'red' | 'yellow' }> = {
+  key_rejected: { title: 'Paddle refused the API key', body: 'Licenses still issue, but their emails wait. Create a new key with Customers: read and save it below, then send the pending deliveries.', color: 'red' },
+  no_api_key: { title: 'No API key saved', body: 'Licenses still issue, but their emails wait. Save a key with Customers: read below, then send the pending deliveries.', color: 'red' },
+  key_unreadable: { title: "The saved API key can't be read", body: 'Save the key again below, then send the pending deliveries.', color: 'red' },
+  key_revoked: { title: 'The API key was revoked in Paddle', body: 'Licenses still issue, but their emails wait. Create a new key with Customers: read and save it below, then send the pending deliveries.', color: 'red' },
+  key_expired: { title: 'The API key has expired', body: 'Licenses still issue, but their emails wait. Create a new key with Customers: read and save it below, then send the pending deliveries.', color: 'red' },
+  key_expiring: { title: 'The API key expires soon', body: 'Create a new key with Customers: read and save it below before it does.', color: 'yellow' },
+  customer_not_found: { title: "Paddle couldn't find some buyers", body: "This usually means the webhook's environment doesn't match the Paddle account sending to it (sandbox vs live). Check which notification destination points here.", color: 'yellow' },
+};
 
 export function providerLabel(provider: string): string {
   return STOREFRONT_PROVIDERS[provider as StorefrontWebhookProvider]?.label ?? provider;
+}
+
+// A Paddle API key's environment from its prefix, or null if it isn't one
+// (Paddle's documented format; the server checks it again, and with Paddle).
+export function paddleKeyEnvironment(apiKey: string): 'sandbox' | 'live' | null {
+  const match = /^pdl_(live|sdbx)_apikey_[a-z\d]{26}_[a-zA-Z\d]{22}_[a-zA-Z\d]{3}$/.exec(apiKey);
+  if (!match) return null;
+  return match[1] === 'live' ? 'live' : 'sandbox';
 }
 
 const REF_KIND_LABELS: Record<StorefrontMappingRefKind, string> = {
   payment_link: 'Payment Link',
   variant: 'Variant',
   metadata: 'casazium_ref',
+  price: 'Price',
+  product: 'Product',
 };
 
 export function refKindLabel(refKind: string): string {
