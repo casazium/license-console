@@ -191,6 +191,24 @@ describe('startReporter (§4, §5)', () => {
     expect(process.listenerCount('uncaughtException')).toBe(exceptions);
   });
 
+  it('removes what it installed if setup fails partway, and stays off', () => {
+    const rejections = process.listenerCount('unhandledRejection');
+    const exceptions = process.listenerCount('uncaughtException');
+    const realOn = process.on.bind(process);
+    const on = vi.spyOn(process, 'on').mockImplementation(((event: string, fn: (...a: unknown[]) => void) => {
+      if (event === 'unhandledRejection') throw new Error('cannot listen');
+      return realOn(event, fn);
+    }) as typeof process.on);
+    expect(() => startReporter(env, { fetch: fakeFetch().fetch })).toThrow('cannot listen');
+    on.mockRestore();
+    expect(process.listenerCount('uncaughtException')).toBe(exceptions);
+    expect(process.listenerCount('unhandledRejection')).toBe(rejections);
+    const fetch = vi.spyOn(globalThis, 'fetch');
+    reportError(new Error('x'), 'label');
+    expect(fetch).not.toHaveBeenCalled();
+    fetch.mockRestore();
+  });
+
   it('reaches the one reporter from reportError and reportRequestError', async () => {
     const f = fakeFetch();
     const r = startReporter(env, { fetch: f.fetch })!;
@@ -677,26 +695,77 @@ describe('the gaps the PR A review found', () => {
     expect(Array.from(f.events()[0].tags.logmessage).length).toBeLessThanOrEqual(120);
   });
 
-  it('keeps at most 50 frames', async () => {
+  it('keeps the newest 50 frames, oldest first', async () => {
     const { r, f } = reporter();
     const err = new Error('deep');
+    // V8 lists the newest frame first: f0 threw.
     err.stack = ['Error: deep', ...Array.from({ length: 80 }, (_, i) => `    at f${i} (/app/lib/x.js:${i + 1}:1)`)].join('\n');
     r.processError(err);
     await r.flushAll();
-    expect(f.events()[0].exception!.values[0].stacktrace!.frames).toHaveLength(50);
+    const frames = f.events()[0].exception!.values[0].stacktrace!.frames;
+    expect(frames).toHaveLength(50);
+    expect(frames[0].function).toBe('f49');
+    expect(frames[49].function).toBe('f0');
   });
 
-  it('cleans a repeated value once (the cache)', async () => {
-    const { r } = reporter();
-    const big = `boom ${'x1y2z3 '.repeat(100000)}`;
-    let start = performance.now();
-    r.processError(new Error(big));
-    const first = performance.now() - start;
-    start = performance.now();
-    r.processError(new Error(big));
-    const second = performance.now() - start;
-    expect(second).toBeLessThan(first);
-    expect(r.cleaned.size).toBe(1);
+  it("masks logmessage, not just its length", async () => {
+    const { r, f } = reporter();
+    r.reportError(new Error('x'), 'failed for jane@example.com', '/x');
+    await r.flushAll();
+    expect(f.events()[0].tags.logmessage).toBe('failed for <email>');
+  });
+
+  it('sends reportError(null, label) as LogError too', async () => {
+    const { r, f } = reporter();
+    r.reportError(null, 'a site with no error', '/x');
+    await r.flushAll();
+    expect(f.events()[0].exception!.values[0]).toEqual({ type: 'LogError', value: 'a site with no error' });
+  });
+
+  it("never names a thrown object by its own constructor field", async () => {
+    const { r, f } = reporter();
+    r.processError(JSON.parse('{"constructor": {"name": "jane"}, "email": "jane@example.com"}'));
+    r.processError(Object.create(null));
+    class Minified_9 {}
+    r.processError(new Minified_9());
+    await r.flushAll();
+    expect(f.events().map((e) => e.exception!.values[0].value)).toEqual([
+      '<non-Error: Object>',
+      '<non-Error: object>',
+      '<non-Error: Minified_9>',
+    ]);
+  });
+
+  // The cache is observed by planting a value in it: a second event with the
+  // same type and message must take the planted value, and only then.
+  function plant(r: ReturnType<typeof reporter>['r']) {
+    for (const k of r.cleaned.keys()) r.cleaned.set(k, '<planted>');
+  }
+
+  it('cleans a repeated value once (the cache), keyed by type and message', async () => {
+    const { r, f } = reporter();
+    r.processError(new Error('boom 1'));
+    plant(r);
+    r.processError(new Error('boom 1')); // same type and message: the cache
+    r.processError(new TypeError('boom 1')); // another type: cleaned afresh
+    r.processError(new Error('boom 2')); // another message: cleaned afresh
+    await r.flushAll();
+    expect(f.events().map((e) => e.exception!.values[0].value)).toEqual(['boom 1', '<planted>', 'boom 1', 'boom 2']);
+  });
+
+  it('keys a long message on its first 8,000 code units, and stores no message', async () => {
+    const { r, f } = reporter();
+    const head = 'a '.repeat(3500); // 7,000 code units
+    // A route each, so dedupe (whose fingerprint keeps 200 characters) can't merge them.
+    r.requestError(new Error(`${head}x ${'b '.repeat(5000)}`), 'GET', { routePath: '/a' });
+    plant(r);
+    r.requestError(new Error(`${head}y ${'b '.repeat(5000)}`), 'GET', { routePath: '/b' }); // differs inside the first 8,000: not a hit
+    r.requestError(new Error(`${head}x ${'b '.repeat(5000)}tail`), 'GET', { routePath: '/c' }); // differs only past 8,000: a hit
+    await r.flushAll();
+    const values = f.events().map((e) => e.exception!.values[0].value);
+    expect(values[1]).not.toBe('<planted>');
+    expect(values[2]).toBe('<planted>');
+    for (const k of r.cleaned.keys()) expect(k.length).toBeLessThan(64);
   });
 });
 

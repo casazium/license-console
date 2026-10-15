@@ -455,16 +455,20 @@ function baseEvent(r: Reporter, ctx: Context, source: string): ReportEvent {
 
 // kindOf names a non-Error by its kind only: its contents may hold customer
 // data, and unlike an Error's message it isn't text the code wrote (§6).
+// The kind is the prototype's constructor, never the object's own
+// `constructor` field: a thrown parsed-JSON object could carry one whose
+// name is customer data. Only an identifier-shaped name is used.
 function kindOf(v: unknown): string {
   if (v === null) return 'null';
   let kind: string = typeof v;
   try {
-    if (v !== null && typeof v === 'object') {
-      const ctor = (v as { constructor?: { name?: unknown } }).constructor;
-      if (ctor && typeof ctor.name === 'string') kind = ctor.name;
+    if (typeof v === 'object') {
+      const proto = Object.getPrototypeOf(v) as { constructor?: { name?: unknown } } | null;
+      const name = proto && proto.constructor ? proto.constructor.name : undefined;
+      kind = typeof name === 'string' && /^[A-Za-z_$][A-Za-z0-9_$]{0,40}$/.test(name) ? name : 'object';
     }
   } catch {
-    // a hostile getter: keep the typeof
+    // a hostile getter or proxy: keep the typeof
   }
   return kind;
 }
@@ -527,9 +531,14 @@ function errorEvent(
 // cachedClean is cleanValue, remembered: a storm repeats the same few
 // errors, and masking a long value costs milliseconds on the request's
 // thread (as 1a's cache). cleanValue reads at most 4,000 code points, which
-// 8,000 code units always contain, so the key needn't hold more.
+// 8,000 code units always contain, so the key needn't hold more. The key is
+// a hash of that: a slice of a message can keep the whole message alive
+// (the PR A verification measured 225 MB for 100 two-megabyte messages).
 function cachedClean(r: Reporter, type: string, raw: string): string {
-  const key = `${type}${NUL}${raw.length <= 8000 ? raw : `${raw.slice(0, 8000)}${NUL}long`}`;
+  const key = crypto
+    .createHash('sha256')
+    .update(`${type}${NUL}${raw.length <= 8000 ? raw : `${raw.slice(0, 8000)}${NUL}long`}`)
+    .digest('base64');
   const hit = r.cleaned.get(key);
   if (hit !== undefined) return hit;
   let value = cleanValue(type, raw);
