@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { reportError } from '@/lib/crash-reporter';
 import { SESSION_COOKIE_NAME, verifySessionToken } from '@/lib/session';
 
 // /signup, /api/signup, /forgot-password, /api/forgot-password,
@@ -70,7 +71,19 @@ const PUBLIC_PATHS = [
   '/api/health/db',
 ];
 
+// Next reports no proxy error to onRequestError (CRASH_REPORTING_DESIGN.md
+// §6.2), so the proxy reports its own, then rethrows: the answer is the
+// same 500 as before.
 export async function proxy(request: NextRequest) {
+  try {
+    return await checkSession(request);
+  } catch (err) {
+    reportError(err, 'proxy failed', '/proxy');
+    throw err;
+  }
+}
+
+async function checkSession(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (PUBLIC_PATHS.some((path) => pathname.startsWith(path))) {

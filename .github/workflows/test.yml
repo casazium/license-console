@@ -38,6 +38,9 @@ concurrency:
 jobs:
   test:
     runs-on: [self-hosted, macOS, ARM64]
+    # The built-server crash reporting test waits about a minute; a hung
+    # server must not hold the runner.
+    timeout-minutes: 20
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -57,6 +60,15 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # Crash reporting (CRASH_REPORTING_DESIGN.md §8, §13): every caught
+      # server error is reported, with literal labels, and no error message
+      # carries data.
+      - name: Check reportError sites
+        run: node scripts/check-report-error.mjs
+
+      - name: Check error messages
+        run: node scripts/check-error-messages.mjs
+
       - name: Test
         run: npm test
 
@@ -67,3 +79,15 @@ jobs:
         # /releases ones) is reachable at build time, without needing a
         # real casazium/license backend or any secrets in this job.
         run: npm run build
+
+      # The built image must not name faultline or carry a DSN (§9).
+      - name: Check shipped files
+        run: node scripts/check-shipped-files.mjs
+
+      # The built-server test (§11): builds a scratch copy with fixture
+      # routes (never this tree, so they can't ship), runs its standalone
+      # server against a local recorder, and checks what's reported and
+      # what's only counted. About 80 s: 4xx counts are sent once a minute.
+      - name: Crash reporting, built server
+        run: node scripts/crash-reporting-e2e.mjs
+

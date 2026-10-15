@@ -4,6 +4,7 @@
  * dispatcher. State resets whenever the dev server process restarts.
  */
 
+import { LicenseApiError } from './errors';
 import { STOREFRONT_PROVIDERS } from './storefront-providers';
 import type {
   Activation,
@@ -871,14 +872,14 @@ export async function createStorefrontWebhook(
   const { storefrontWebhooks } = getStore();
   // The real route's rule: Paddle needs an environment, the others refuse one.
   if (provider === 'paddle' && !environment) {
-    throw new Error("A paddle webhook needs an environment: 'sandbox' or 'live'");
+    throw new LicenseApiError("A paddle webhook needs an environment: 'sandbox' or 'live'", 400);
   }
   // Mirrors the real route's own partial-unique-index rule (at most one
   // non-disabled webhook per {tenant, provider}) so the "Connect Stripe"
   // button's 409 path is demonstrable in standalone mode too.
   const existing = storefrontWebhooks.find((w) => w.provider === provider && w.status !== 'disabled');
   if (existing) {
-    throw new Error(`An active ${provider} storefront webhook already exists`);
+    throw new LicenseApiError(`An active ${provider} storefront webhook already exists`, 409);
   }
 
   const webhook: StorefrontWebhook = {
@@ -916,12 +917,12 @@ export async function setStorefrontWebhookSecret(
   // inline error is demonstrable in standalone mode.
   const info = STOREFRONT_PROVIDERS[webhook.provider];
   if (info.secretPrefix && !secret.startsWith(info.secretPrefix)) {
-    throw new Error(`A ${webhook.provider} signing secret starts with ${info.secretPrefix} - copy it from the notification destination`);
+    throw new LicenseApiError(`A ${webhook.provider} signing secret starts with ${info.secretPrefix} - copy it from the notification destination`, 400);
   }
   const bounds = info.secretLength;
   const length = [...secret].length;
   if (bounds && (length < bounds.min || length > bounds.max)) {
-    throw new Error(`A ${webhook.provider} signing secret must be ${bounds.min}-${bounds.max} characters`);
+    throw new LicenseApiError(`A ${webhook.provider} signing secret must be ${bounds.min}-${bounds.max} characters`, 400);
   }
   mockSecretSaved.add(webhook.id);
   webhook.status = mockStatusAfterSave(webhook);
@@ -937,12 +938,12 @@ export async function setStorefrontWebhookApiKey(
 ): Promise<StorefrontWebhookStatus | null> {
   const webhook = getStore().storefrontWebhooks.find((w) => w.id === webhookId);
   if (!webhook) return null;
-  if (webhook.provider !== 'paddle') throw new Error(`${webhook.provider} webhooks don't use an API key`);
+  if (webhook.provider !== 'paddle') throw new LicenseApiError(`${webhook.provider} webhooks don't use an API key`, 400);
   const match = /^pdl_(live|sdbx)_apikey_[a-z\d]{26}_[a-zA-Z\d]{22}_[a-zA-Z\d]{3}$/.exec(apiKey.trim());
-  if (!match) throw new Error('That is not a Paddle API key (pdl_sdbx_apikey_... or pdl_live_apikey_...).');
+  if (!match) throw new LicenseApiError('That is not a Paddle API key (pdl_sdbx_apikey_... or pdl_live_apikey_...).', 400);
   const keyEnvironment = match[1] === 'live' ? 'live' : 'sandbox';
   if (keyEnvironment !== webhook.environment) {
-    throw new Error(`That is a ${keyEnvironment} key, and this webhook is for Paddle's ${webhook.environment} environment`);
+    throw new LicenseApiError(`That is a ${keyEnvironment} key, and this webhook is for Paddle's ${webhook.environment} environment`, 400);
   }
   webhook.has_api_key = true;
   webhook.api_key_problem = null;
@@ -956,8 +957,8 @@ export async function sendStorefrontPendingDeliveries(
 ): Promise<StorefrontSendPendingResult | null> {
   const webhook = getStore().storefrontWebhooks.find((w) => w.id === webhookId);
   if (!webhook) return null;
-  if (webhook.provider !== 'paddle') throw new Error(`${webhook.provider} purchases carry their buyer's email - nothing to send this way`);
-  if (webhook.status !== 'active') throw new Error("Save this webhook's signing secret and API key first");
+  if (webhook.provider !== 'paddle') throw new LicenseApiError(`${webhook.provider} purchases carry their buyer's email - nothing to send this way`, 400);
+  if (webhook.status !== 'active') throw new LicenseApiError("Save this webhook's signing secret and API key first", 409);
   return { sent: 0, skipped: 0, not_found: 0, failed: 0, remaining: 0, stopped: null };
 }
 
@@ -981,7 +982,7 @@ export async function setStorefrontSubscriptionGrace(
   if (!webhook) return false;
   // The server's own bounds (400 outside them).
   if (!Number.isInteger(graceDays) || graceDays < 0 || graceDays > 30) {
-    throw new Error('subscription_grace_days must be a whole number of days, 0-30');
+    throw new LicenseApiError('subscription_grace_days must be a whole number of days, 0-30', 400);
   }
   webhook.subscription_grace_days = graceDays;
   return true;
@@ -1008,7 +1009,7 @@ export async function createStorefrontMapping(
   const { storefrontMappings, storefrontWebhooks } = getStore();
   const webhook = storefrontWebhooks.find((w) => w.id === webhookId);
   if (!webhook) {
-    throw new Error('Storefront webhook not found');
+    throw new LicenseApiError('Storefront webhook not found', 404);
   }
 
   const { ref_kind, external_ref, product_id, tier, limitsJson, max_activations, duration_days, notes } = input;
@@ -1016,12 +1017,13 @@ export async function createStorefrontMapping(
   // Same per-provider ref-kind and variant-id checks as the real route.
   const providerRefKinds = STOREFRONT_PROVIDERS[webhook.provider].refKinds.map((k) => k.value);
   if (!providerRefKinds.includes(ref_kind)) {
-    throw new Error(
-      `ref_kind '${ref_kind}' is not valid for a ${webhook.provider} webhook (use ${providerRefKinds.join(' or ')})`
+    throw new LicenseApiError(
+      `ref_kind '${ref_kind}' is not valid for a ${webhook.provider} webhook (use ${providerRefKinds.join(' or ')})`,
+      400
     );
   }
   if (ref_kind === 'variant' && !/^[0-9]+$/.test(external_ref)) {
-    throw new Error('A variant external_ref must be a Lemon Squeezy variant ID (digits only)');
+    throw new LicenseApiError('A variant external_ref must be a Lemon Squeezy variant ID (digits only)', 400);
   }
 
   // Same malformed-JSON guard as the live client, and the same real
@@ -1033,7 +1035,7 @@ export async function createStorefrontMapping(
     try {
       JSON.parse(limitsJson);
     } catch {
-      throw new Error('Limits must be valid JSON');
+      throw new LicenseApiError('Limits must be valid JSON', 400);
     }
   }
 
@@ -1041,7 +1043,7 @@ export async function createStorefrontMapping(
     (m) => m.webhook_id === webhookId && m.ref_kind === ref_kind && m.external_ref === external_ref
   );
   if (existing) {
-    throw new Error('A mapping for this reference already exists');
+    throw new LicenseApiError('A mapping for this reference already exists', 409);
   }
 
   const mapping: StorefrontMapping = {

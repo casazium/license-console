@@ -3,6 +3,7 @@ import { getSession, revokeAccountSessions, SESSION_COOKIE_NAME } from '@/lib/se
 import { isMultiTenant, isSameOrigin } from '@/lib/config';
 import { getAccountEmail } from '@/lib/auth';
 import { getNotificationProvider } from '@/lib/notifications';
+import { reportError } from '@/lib/crash-reporter';
 
 export async function POST(request: NextRequest) {
   // Security review finding (third-party audit, R3-review-lows): this
@@ -56,6 +57,7 @@ export async function POST(request: NextRequest) {
       .notify({ type: 'logout', email: logoutIdentity })
       .catch((err) => {
         console.error(`Failed to send logout notification for account ${session.id}:`, err);
+        reportError(err, 'logout notification failed', '/api/logout');
       });
   }
 

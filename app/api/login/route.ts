@@ -7,6 +7,7 @@ import { isMultiTenant, isSameOrigin } from '@/lib/config';
 import { getTenantApiKey, getAccountTenantId, markTenantRevoked, clearTenantRevoked } from '@/lib/tenant-context';
 import { getBillingStatus } from '@/lib/license-client';
 import { isTenantRejected } from '@/lib/errors';
+import { reportError } from '@/lib/crash-reporter';
 
 // Security review finding (fresh pre-deployment audit): matches
 // signup/route.ts's identical caps and reasoning - neither `username`
@@ -204,6 +205,7 @@ export async function POST(request: NextRequest) {
     .notify({ type: 'login', email: loginIdentity })
     .catch((err) => {
       console.error(`Failed to send login notification for account ${identity.id}:`, err);
+      reportError(err, 'login notification failed', '/api/login');
     });
 
   return response;

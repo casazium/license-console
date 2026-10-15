@@ -5,6 +5,7 @@ import { getEmailProvider } from '@/lib/email';
 import { generateOneTimeToken, hashOneTimeToken } from '@/lib/one-time-token';
 import { checkAndReserveAttempt, getClientKey } from '@/lib/login-rate-limit';
 import { normalizeEmail } from '@/lib/auth';
+import { reportError } from '@/lib/crash-reporter';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // Security review finding (fresh pre-deployment audit): matches
@@ -107,9 +108,11 @@ export async function POST(request: NextRequest) {
       .sendPasswordReset(email, resetUrl)
       .catch((err) => {
         console.error(`Failed to send password reset email for account ${account.id}:`, err);
+        reportError(err, 'password reset email failed', '/api/forgot-password');
       });
   } catch (err) {
     console.error(`Failed to prepare password reset for account ${account.id}:`, err);
+    reportError(err, 'password reset preparation failed', '/api/forgot-password');
   }
 
   return genericResponse();

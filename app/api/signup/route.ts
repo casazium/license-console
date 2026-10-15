@@ -10,6 +10,7 @@ import { normalizeEmail } from '@/lib/auth';
 import { generateOneTimeToken, hashOneTimeToken } from '@/lib/one-time-token';
 import { getEmailProvider } from '@/lib/email';
 import { getNotificationProvider } from '@/lib/notifications';
+import { reportError } from '@/lib/crash-reporter';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 8;
@@ -162,6 +163,7 @@ export async function POST(request: NextRequest) {
     console.error(
       'Signup attempted with MULTI_TENANT=true but LICENSE_API_URL/LICENSE_ADMIN_API_KEY is unset'
     );
+    reportError(undefined, 'signup unavailable: License Server settings unset', '/api/signup');
     return NextResponse.json({ error: 'Signup is not available right now' }, { status: 500 });
   }
 
@@ -176,11 +178,13 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({ name: tenantName.trim() }),
     });
     if (!provisionResponse.ok) {
+      // error-message-ok: an HTTP status only
       throw new Error(`Tenant provisioning responded with status ${provisionResponse.status}`);
     }
     tenant = await provisionResponse.json();
   } catch (err) {
     console.error('Tenant provisioning failed during signup:', err);
+    reportError(err, 'tenant provisioning failed during signup', '/api/signup');
     return NextResponse.json({ error: 'Unable to create account' }, { status: 500 });
   }
 
@@ -204,6 +208,7 @@ export async function POST(request: NextRequest) {
       `Account insert failed after provisioning tenant ${tenant.id} during signup - tenant is now orphaned:`,
       err
     );
+    reportError(err, 'account insert failed after provisioning: tenant orphaned', '/api/signup');
     return NextResponse.json({ error: 'Unable to create account' }, { status: 409 });
   }
 
@@ -224,6 +229,7 @@ export async function POST(request: NextRequest) {
     await getEmailProvider().sendSignupConfirmation(email, confirmUrl);
   } catch (err) {
     console.error(`Failed to send signup confirmation email for account ${accountId}:`, err);
+    reportError(err, 'signup confirmation email failed', '/api/signup');
   }
 
   // Operator notification (TASK_ACCOUNT_NOTIFICATIONS.md) - fire-and-
@@ -239,6 +245,7 @@ export async function POST(request: NextRequest) {
     .notify({ type: 'account.created', email })
     .catch((err) => {
       console.error(`Failed to send account.created notification for account ${accountId}:`, err);
+      reportError(err, 'account.created notification failed', '/api/signup');
     });
 
   const token = await createSessionToken({ id: accountId, role: 'admin', mode: 'saas' });

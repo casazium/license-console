@@ -1,6 +1,7 @@
 'use server';
 
 import { redirect } from 'next/navigation';
+import { reportError } from '@/lib/crash-reporter';
 import { cookies } from 'next/headers';
 import {
   deleteAccount as deleteAccountOnServer,
@@ -150,6 +151,7 @@ export async function deleteAccountAction(password: string): Promise<DeleteAccou
     .notify({ type: 'account.deleted', accountId: identity.id })
     .catch((err) => {
       console.error(`Failed to send account.deleted notification for account ${identity.id}:`, err);
+      reportError(err, 'account.deleted notification failed', '/settings');
     });
 
   const store = await cookies();
@@ -243,6 +245,7 @@ export async function rotateApiKeyAction(password: string): Promise<RotateApiKey
     );
   } catch (err) {
     console.error('Failed to persist rotated API key locally after a successful rotation:', err);
+    reportError(err, 'rotated API key not persisted locally', '/settings');
     return { apiKey: newApiKey, localSyncFailed: true };
   }
 
@@ -341,6 +344,30 @@ type ValidatedActionResult<T> =
   | { ok: false; reason: 'rate-limited' }
   | { ok: false; reason: 'validation'; message: string };
 
+// storefrontFailure is the storefront actions' answer to a failed call
+// (CRASH_REPORTING_DESIGN.md §6.3), or null for a non-Error, which is
+// rethrown. A LicenseApiError (checked by name) carries the License
+// Server's own message for the user, or a validation message the client
+// raised itself, and keeps it; one with status 500 or more is also
+// reported, unless it's Paddle's answer relayed (display). Any other error
+// is a fault: reported, and shown as a generic message instead of its raw
+// text.
+function storefrontFailure(err: unknown): { ok: false; reason: 'validation'; message: string } | null {
+  if (!(err instanceof Error)) return null;
+  const e = err as Error & { status?: unknown; display?: unknown };
+  if (e.name === 'LicenseApiError' && typeof e.status === 'number') {
+    if (e.status >= 500 && e.display !== true) {
+      // Logged as well: a self-hosted install never reports.
+      console.error('Storefront webhook action failed:', err);
+      reportError(err, 'storefront webhook action failed', '/settings');
+    }
+    return { ok: false, reason: 'validation', message: err.message };
+  }
+  console.error('Storefront webhook action failed:', err);
+  reportError(err, 'storefront webhook action failed', '/settings');
+  return { ok: false, reason: 'validation', message: "Couldn't reach the License Server - try again" };
+}
+
 export async function createStorefrontWebhookAction(
   provider: StorefrontWebhookProvider,
   environment?: StorefrontWebhookEnvironment
@@ -352,7 +379,8 @@ export async function createStorefrontWebhookAction(
   } catch (err) {
     if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
     markIfTenantRejected(err, identity.tenantId);
-    if (err instanceof Error) return { ok: false, reason: 'validation', message: err.message };
+    const failure = storefrontFailure(err);
+    if (failure) return failure;
     throw err;
   }
 }
@@ -369,7 +397,8 @@ export async function setStorefrontWebhookSecretAction(
   } catch (err) {
     if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
     markIfTenantRejected(err, identity.tenantId);
-    if (err instanceof Error) return { ok: false, reason: 'validation', message: err.message };
+    const failure = storefrontFailure(err);
+    if (failure) return failure;
     throw err;
   }
 }
@@ -389,7 +418,8 @@ export async function setStorefrontWebhookApiKeyAction(
   } catch (err) {
     if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
     markIfTenantRejected(err, identity.tenantId);
-    if (err instanceof Error) return { ok: false, reason: 'validation', message: err.message };
+    const failure = storefrontFailure(err);
+    if (failure) return failure;
     throw err;
   }
 }
@@ -407,7 +437,8 @@ export async function sendStorefrontPendingDeliveriesAction(
   } catch (err) {
     if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
     markIfTenantRejected(err, identity.tenantId);
-    if (err instanceof Error) return { ok: false, reason: 'validation', message: err.message };
+    const failure = storefrontFailure(err);
+    if (failure) return failure;
     throw err;
   }
 }
@@ -425,7 +456,8 @@ export async function setStorefrontRefundPolicyAction(
   } catch (err) {
     if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
     markIfTenantRejected(err, identity.tenantId);
-    if (err instanceof Error) return { ok: false, reason: 'validation', message: err.message };
+    const failure = storefrontFailure(err);
+    if (failure) return failure;
     throw err;
   }
 }
@@ -447,7 +479,8 @@ export async function setStorefrontSubscriptionGraceAction(
   } catch (err) {
     if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
     markIfTenantRejected(err, identity.tenantId);
-    if (err instanceof Error) return { ok: false, reason: 'validation', message: err.message };
+    const failure = storefrontFailure(err);
+    if (failure) return failure;
     throw err;
   }
 }
@@ -487,7 +520,8 @@ export async function createStorefrontMappingAction(
   } catch (err) {
     if (isRateLimited(err)) return { ok: false, reason: 'rate-limited' };
     markIfTenantRejected(err, identity.tenantId);
-    if (err instanceof Error) return { ok: false, reason: 'validation', message: err.message };
+    const failure = storefrontFailure(err);
+    if (failure) return failure;
     throw err;
   }
 }

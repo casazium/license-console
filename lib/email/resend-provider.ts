@@ -69,8 +69,13 @@ export function createResendEmailProvider(): EmailProvider {
     });
 
     if (!res.ok) {
+      // The body (it can quote the recipient's address) goes only to the
+      // local log, never into the error: errors are reported
+      // (CRASH_REPORTING_DESIGN.md §8).
       const body = await res.text().catch(() => '');
-      throw new Error(`Resend API responded with ${res.status}: ${body}`);
+      console.warn(`Resend API error body (HTTP ${res.status}):`, body);
+      // error-message-ok: an HTTP status only
+      throw new Error(`Resend API responded with ${res.status}`);
     }
   }
 

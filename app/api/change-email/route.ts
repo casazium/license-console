@@ -6,6 +6,7 @@ import { requireSession } from '@/lib/session';
 import { generateOneTimeToken, hashOneTimeToken } from '@/lib/one-time-token';
 import { getEmailProvider } from '@/lib/email';
 import { checkAndReserveAttempt } from '@/lib/login-rate-limit';
+import { reportError } from '@/lib/crash-reporter';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // Same cap and reasoning as signup/route.ts's identical constant -
@@ -118,6 +119,7 @@ export async function POST(request: NextRequest) {
     await getEmailProvider().sendEmailChangeConfirmation(newEmail, confirmUrl);
   } catch (err) {
     console.error(`Failed to send email-change confirmation for account ${session.id}:`, err);
+    reportError(err, 'email-change confirmation failed', '/api/change-email');
     return NextResponse.json({ error: 'Failed to send confirmation email' }, { status: 500 });
   }
 

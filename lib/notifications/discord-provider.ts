@@ -97,8 +97,12 @@ export function createDiscordNotificationProvider(): NotificationProvider {
       });
 
       if (!res.ok) {
+        // The body goes only to the local log, never into the error:
+        // errors are reported (CRASH_REPORTING_DESIGN.md §8).
         const body = await res.text().catch(() => '');
-        throw new Error(`Discord webhook responded with ${res.status}: ${body}`);
+        console.warn(`Discord webhook error body (HTTP ${res.status}):`, body);
+        // error-message-ok: an HTTP status only
+        throw new Error(`Discord webhook responded with ${res.status}`);
       }
     },
   };

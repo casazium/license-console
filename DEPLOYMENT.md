@@ -175,6 +175,36 @@ An optional, off-by-default Discord webhook notification for four events: `accou
 - This is an activity feed, not a security-alerting feature — it only fires on *successful* logins, so a failed brute-force attempt produces no Discord activity at all.
 - If the local account-deletion transaction were to fail after the remote `casazium/license` tenant deletion already succeeded, no `account.deleted` notification fires — a pre-existing gap in that flow's own error handling, not something this feature introduces.
 
+## 8. Crash reporting (hosted only, `CRASH_REPORTING_DESIGN.md`)
+
+Casazium's own hosted Console reports server errors to **faultline**, Casazium's error service (`faultline.casazium.com`, project `license-console`), which groups them into issues and alerts on Discord and by email. It's off unless a resource has a DSN. Self-hosted installs can't report: `CRASH_REPORT_HOSTED` is set only in `docker-compose-coolify.yml`, the self-hosted compose file never lists it, and this section is the only place it's documented.
+
+**What's sent:** an error thrown in a page, a route handler or a server action; an error a route catches and logs (signup, email, notifications, the health check, and others: design §6.1); a proxy failure; and an unhandled rejection or uncaught exception. Each report has the error's type, its message after masking (keys, tokens, emails, IP addresses, UUIDs such as account and tenant ids, Stripe ids and quoted text are removed before it leaves the process), the stack frames, the route template, the method, and the release and environment.
+
+**Never sent:** the request's path, query string, headers or cookies; request or response bodies; the text written to the log (it names account and tenant ids); session or account data; IP addresses. There's no request id.
+
+**Counted, not reported:** a rejected tenant (`403 Unauthorized`), a revoked session, and Next.js's own errors for malformed anonymous requests (a cross-origin action POST, an undecodable form body, a malformed router-state header). These show only as a count on faultline's projects page, under the route.
+
+| Variable | Value |
+|---|---|
+| `CRASH_REPORT_DSN` | The `license-console` project's DSN, `https://<key>@<host>/2` (`faultline dsn` prints it). Set it as a secret. |
+| `CRASH_REPORT_ENVIRONMENT` | `saas` on `license-cloud`, `saas-test` on `license-test-cloud`, `standalone` on a standalone hosted Console. Nothing else is accepted. |
+| `SOURCE_COMMIT` | Coolify's own; nothing to set. It arrives only with the resource's **Advanced → Build → Source commit availability** set to the build-time option: "Runtime only" leaves it empty for this Compose resource, and the release then reads `<version>+unknown`. |
+
+`CRASH_REPORT_HOSTED=true` is already in `docker-compose-coolify.yml`; don't add it in Coolify.
+
+**Verify** after the redeploy: the log has `crash reporting on (environment=…, release=…)`. `crash reporting off: …` names what's wrong (a malformed DSN or an unknown environment never stops the Console). No line at all means `CRASH_REPORT_HOSTED` didn't arrive.
+
+**To see a report arrive:** sign in on the resource, then POST a junk multipart body to any page with a real server-action id (from the page's own form requests in the browser's network tab): `curl -s -X POST -H 'Cookie: <your session cookie>' -H 'Next-Action: <id>' -H 'Content-Type: multipart/form-data; boundary=zz' --data 'x' https://<host>/settings`. It answers 500 and reports `Error: Unexpected end of form`, with no data touched. Resolve the test issue in faultline afterwards.
+
+**A redeploy can lose** the last second's reports, up to 10 seconds of repeat counts and up to 60 seconds of the 4xx counts: Next.js exits as soon as the server has closed, so nothing is flushed on the way out.
+
+**If faultline refuses the reports** (a Cloudflare 403, a proxy 404), the log has one `crash reporting refused (HTTP …)` line, at most once an hour, and sending pauses for 10 minutes, then retries.
+
+**To turn it off,** **delete** `CRASH_REPORT_DSN` in Coolify and redeploy. An emptied value can stay in the container; a restart keeps the old environment.
+
+**Before setting a DSN on `license-cloud`,** casazium.com/privacy must describe the Console's reports. Its visible text already covers hosted services; its source comment (`casazium/casazium` `website/src/pages/Privacy.tsx`) is reworded first to say the Console reports and sends no request id.
+
 ## Deploying the SaaS-tier instance (SaaS-C1)
 
 Everything above still applies, plus:

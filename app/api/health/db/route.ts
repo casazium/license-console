@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { reportError } from '@/lib/crash-reporter';
 
 /**
  * SaaS-B1a verification route, originally built to prove the
@@ -25,6 +26,7 @@ export async function GET() {
     return NextResponse.json({ ok: true, journalMode, foreignKeys });
   } catch (err) {
     console.error('Health check: database query failed', err);
+    reportError(err, 'health check: database query failed', '/api/health/db');
     return NextResponse.json({ ok: false, error: 'Database check failed' }, { status: 503 });
   }
 }

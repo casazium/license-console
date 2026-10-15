@@ -75,6 +75,7 @@ export function getBackendMode(): BackendMode {
   if (hasUrl && hasKey) return 'live';
 
   if (hasUrl || hasKey) {
+    // error-message-ok: the names of settings
     throw new Error(
       'LICENSE_API_URL and LICENSE_ADMIN_API_KEY must both be set (connected to a real ' +
         'license server) or both left unset (standalone, look-and-feel-only mode) - ' +

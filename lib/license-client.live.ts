@@ -161,8 +161,10 @@ async function liveFetch(path: string, init: RequestInit = {}, tenantApiKey?: st
 async function throwForFailedResponse(res: Response, fallbackMessage: string): Promise<never> {
   if (res.status === 403 || res.status === 400 || res.status === 409) {
     const body: { error?: string } = await res.json().catch(() => ({}));
+    // error-message-ok: the License Server's own text for the user (body.error), or the HTTP status text
     throw new LicenseApiError(body.error || res.statusText, res.status);
   }
+  // error-message-ok: a fixed text, an HTTP status and its status text
   throw new LicenseApiError(`${fallbackMessage}: ${res.status} ${res.statusText}`, res.status);
 }
 
@@ -793,6 +795,7 @@ export async function createStorefrontWebhook(
   );
   const { label, minServerVersion } = STOREFRONT_PROVIDERS[provider];
   if (res.status === 400 && minServerVersion) {
+    // error-message-ok: a provider label and a version, both constants
     throw new LicenseApiError(
       `Connecting ${label} needs License Server ${minServerVersion} or later - ask whoever runs your license server to upgrade it.`,
       400
@@ -855,7 +858,13 @@ export async function setStorefrontWebhookApiKey(
   }
   if (res.status === 502 || res.status === 503) {
     const body: { error?: string } = await res.json().catch(() => ({}));
-    throw new LicenseApiError(body.error || 'Couldn\'t check the key with Paddle - try again', res.status);
+    // error-message-ok: the License Server's own text for the user (Paddle unreachable, rate limited)
+    const err = new LicenseApiError(body.error || 'Couldn\'t check the key with Paddle - try again', res.status);
+    // Paddle's answer, relayed: shown and not reported. Without a body.error
+    // the 502/503 came from a proxy in front of the License Server, which is
+    // reported (CRASH_REPORTING_DESIGN.md §6.3).
+    if (body.error) err.display = true;
+    throw err;
   }
   if (!res.ok) {
     await throwForFailedResponse(res, 'Failed to save the API key');
@@ -1000,7 +1009,9 @@ export async function createStorefrontMapping(
     try {
       limits = JSON.parse(limitsJson);
     } catch {
-      throw new Error('Limits must be valid JSON');
+      // A 400 in all but name: the tenant's typo, not a fault
+      // (CRASH_REPORTING_DESIGN.md §6.3).
+      throw new LicenseApiError('Limits must be valid JSON', 400);
     }
   }
 

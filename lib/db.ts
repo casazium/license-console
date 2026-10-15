@@ -165,6 +165,7 @@ function openDatabase(): Database.Database {
       database.prepare('SELECT COUNT(*) AS n FROM accounts').get() as { n: number }
     ).n;
     if (accountCount > 0) {
+      // error-message-ok: a row count; boot-time, before reporting starts
       throw new Error(
         `Refusing to start: MULTI_TENANT is not set to 'true' but the accounts table has ${accountCount} row(s). ` +
           "Starting anyway would let any still-valid session silently fall back to the platform-wide admin key. " +
