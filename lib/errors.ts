@@ -16,8 +16,13 @@
 // re-throwing, or the status information is lost either way.
 export class LicenseApiError extends Error {
   status: number;
+  // Set on a 5xx whose message is the License Server's own text for the
+  // user (Paddle unreachable or rate limiting, setStorefrontWebhookApiKey):
+  // shown, and not reported as a fault (CRASH_REPORTING_DESIGN.md §6.3).
+  display?: boolean;
 
   constructor(message: string, status: number) {
+    // error-message-ok: the caller's message, itself checked at each `new LicenseApiError`
     super(message);
     this.name = 'LicenseApiError';
     this.status = status;

@@ -2,6 +2,7 @@ import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import { isMultiTenant } from './config';
 import { getDb } from './db';
+import { reportError } from './crash-reporter';
 
 // Which credential system authenticated this identity - 'saas' for a
 // real accounts-table row (MULTI_TENANT=true at issuance), 'selfhosted'
@@ -51,6 +52,7 @@ function getSecretKey() {
     throw new Error('Missing required environment variable: SESSION_SECRET');
   }
   if (secret.length < MIN_SESSION_SECRET_LENGTH) {
+    // error-message-ok: a constant length
     throw new Error(
       `SESSION_SECRET must be at least ${MIN_SESSION_SECRET_LENGTH} characters - ` +
         'generate one with `openssl rand -base64 32`.'
@@ -85,9 +87,31 @@ export function revokeAccountSessions(accountId: string): void {
   getDb().prepare('UPDATE accounts SET sessions_revoked_at = CURRENT_TIMESTAMP WHERE id = ?').run(accountId);
 }
 
+// Three steps, so a bad cookie stays silent while a real fault is
+// reported (CRASH_REPORTING_DESIGN.md §6.3): this runs on every protected
+// request and twice on every page, public ones included, so reporting a
+// junk cookie would let anyone keep an issue open - and a database failure
+// would fold into it unseen.
 export async function verifySessionToken(token: string): Promise<Identity | null> {
+  // A missing or short SESSION_SECRET is a misconfiguration: reported.
+  let key: Uint8Array;
   try {
-    const { payload } = await jwtVerify(token, getSecretKey());
+    key = getSecretKey();
+  } catch (err) {
+    reportError(err, 'session lookup failed');
+    return null;
+  }
+
+  // An expired, forged or malformed token is just not a session: silent.
+  let payload: Awaited<ReturnType<typeof jwtVerify>>['payload'];
+  try {
+    ({ payload } = await jwtVerify(token, key));
+  } catch {
+    return null;
+  }
+
+  // The account lookup: a failure here (the database) is a fault.
+  try {
     if (
       typeof payload.id !== 'string' ||
       payload.role !== 'admin' ||
@@ -182,7 +206,8 @@ export async function verifySessionToken(token: string): Promise<Identity | null
     }
 
     return identity;
-  } catch {
+  } catch (err) {
+    reportError(err, 'session lookup failed');
     return null;
   }
 }

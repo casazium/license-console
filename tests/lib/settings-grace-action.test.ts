@@ -2,6 +2,7 @@
 // the console's last check before License Server 1.9.0's PATCH - a whole
 // number of days, 0-30, refused before any request is made.
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { LicenseApiError } from '@/lib/errors';
 
 const setGraceOnServer = vi.fn();
 
@@ -35,7 +36,8 @@ describe('setStorefrontSubscriptionGraceAction', () => {
   });
 
   it("passes a server refusal's message back", async () => {
-    setGraceOnServer.mockRejectedValueOnce(new Error('This webhook is disabled - connect a new one'));
+    // The License Server's 409, as the live client throws it (throwForFailedResponse).
+    setGraceOnServer.mockRejectedValueOnce(new LicenseApiError('This webhook is disabled - connect a new one', 409));
     await expect(setStorefrontSubscriptionGraceAction('wh_1', 7)).resolves.toEqual({
       ok: false,
       reason: 'validation',

@@ -5,6 +5,7 @@ import { requireSession } from '@/lib/session';
 import { generateOneTimeToken, hashOneTimeToken } from '@/lib/one-time-token';
 import { getEmailProvider } from '@/lib/email';
 import { checkAndReserveAttempt, getClientKey } from '@/lib/login-rate-limit';
+import { reportError } from '@/lib/crash-reporter';
 
 const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -71,6 +72,7 @@ export async function POST(request: NextRequest) {
     await getEmailProvider().sendSignupConfirmation(account.email, confirmUrl);
   } catch (err) {
     console.error(`Failed to resend signup confirmation email for account ${session.id}:`, err);
+    reportError(err, 'signup confirmation resend failed', '/api/verify-email/resend');
     return NextResponse.json({ error: 'Failed to resend confirmation email' }, { status: 500 });
   }
 

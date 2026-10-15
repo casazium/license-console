@@ -3,6 +3,7 @@ import { getDb } from '@/lib/db';
 import { publicBaseUrl } from '@/lib/config';
 import { hashOneTimeToken } from '@/lib/one-time-token';
 import { getEmailProvider } from '@/lib/email';
+import { reportError } from '@/lib/crash-reporter';
 
 /**
  * Confirmation-link target for two distinct flows, both sharing this
@@ -91,6 +92,7 @@ export async function GET(request: NextRequest) {
       );
     } catch (err) {
       console.error(`Failed to redeem email-change confirmation for account ${row.account_id}:`, err);
+      reportError(err, 'email-change redeem failed', '/api/verify-email');
       return NextResponse.redirect(settingsErrorUrl);
     }
 
@@ -104,6 +106,7 @@ export async function GET(request: NextRequest) {
       await getEmailProvider().sendEmailChangeNotice(oldEmail, row.new_email);
     } catch (err) {
       console.error(`Failed to send email-change notice to old address for account ${row.account_id}:`, err);
+      reportError(err, 'email-change notice to old address failed', '/api/verify-email');
     }
 
     return NextResponse.redirect(settingsChangedUrl);

@@ -47,6 +47,7 @@ export async function register() {
     const { getDb } = await import("./lib/db");
     getDb();
   } catch (err) {
+    // report-error-ok: a startup failure exits before reporting has started
     console.error("Fatal error during startup:", err);
     process.exit(1);
   }
@@ -58,6 +59,7 @@ export async function register() {
     const { startReporter } = await import("./lib/crash-reporter");
     startReporter();
   } catch (err) {
+    // report-error-ok: the reporter itself failed to start
     console.error("crash reporting couldn't start; carrying on without it:", err);
   }
 }

@@ -18,6 +18,7 @@ export function getEmailProvider(): EmailProvider {
   const provider = rawProvider || 'stub';
 
   if (!VALID_EMAIL_PROVIDERS.includes(provider)) {
+    // error-message-ok: EMAIL_PROVIDER's value, a setting; boot-time
     throw new Error(
       `Invalid EMAIL_PROVIDER value: ${provider}. Must be one of: ${VALID_EMAIL_PROVIDERS.join(', ')}.`
     );
@@ -54,5 +55,6 @@ export function getEmailProvider(): EmailProvider {
     return createResendEmailProvider();
   }
 
+  // error-message-ok: EMAIL_PROVIDER's value, a setting
   throw new Error(`EMAIL_PROVIDER=${provider} has no implementation yet.`);
 }

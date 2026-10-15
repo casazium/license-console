@@ -39,3 +39,6 @@ node_modules
 *.db-journal
 *.db-wal
 *.db-shm
+
+# scripts/crash-reporting-e2e.mjs scratch copies
+.crash-e2e

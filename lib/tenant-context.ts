@@ -19,7 +19,10 @@ export function getTenantApiKey(accountId: string): string {
     // Should be unreachable - requireSession() already rejects a token
     // whose account no longer exists (lib/session.ts) - but fail loud
     // rather than let a decrypt() call below throw a less legible error.
-    throw new Error(`No account found for id ${accountId}`);
+    // The id stays in the local log, not the message: errors are reported
+    // (CRASH_REPORTING_DESIGN.md §8).
+    console.warn(`No account found for id ${accountId}`);
+    throw new Error('No account found for this session');
   }
 
   return decrypt(account.tenant_api_key_encrypted);

@@ -3,6 +3,9 @@
 
 # next.js
 /.next/
+
+# scripts/crash-reporting-e2e.mjs's scratch copy
+/.crash-e2e/
 /out/
 
 # production

@@ -131,6 +131,20 @@ services:
       - BRANDING_COPYRIGHT_HOLDER=${BRANDING_COPYRIGHT_HOLDER}
       - BRANDING_FAVICON_URL=${BRANDING_FAVICON_URL}
       - BACKUP_DIR=/app/backups
+      # Crash reporting to faultline (CRASH_REPORTING_DESIGN.md §4, §10).
+      # CRASH_REPORT_HOSTED is a literal here, never a Coolify variable:
+      # every resource built from this file is Casazium's own hosted
+      # Console, and the self-hosted compose file never lists it, so a
+      # self-hosted install can't report. Each resource reports only once
+      # its CRASH_REPORT_DSN (faultline's license-console project, project
+      # 2) and CRASH_REPORT_ENVIRONMENT (saas on license-cloud, saas-test
+      # on license-test-cloud) are set. SOURCE_COMMIT is Coolify's own: it
+      # arrives only with the resource's Advanced -> Build "Source commit
+      # availability" set to the build-time option.
+      - CRASH_REPORT_HOSTED=true
+      - CRASH_REPORT_DSN=${CRASH_REPORT_DSN}
+      - CRASH_REPORT_ENVIRONMENT=${CRASH_REPORT_ENVIRONMENT}
+      - SOURCE_COMMIT=${SOURCE_COMMIT}
     volumes:
       - console-data:/app/data
       # Backup destination - a separate volume from console-data above on
