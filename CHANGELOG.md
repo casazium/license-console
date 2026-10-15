@@ -10,6 +10,51 @@ surface this console depends on (`casazium/license`) notes whether it
 needs a corresponding change there, and vice versa — see
 `SELF_HOSTED_DISTRIBUTION_DESIGN.md` §4 for why this discipline exists.
 
+## [1.7.0] - 2026-10-15
+
+### Added
+
+- **Settings → Storefront webhooks: Paddle** (needs License Server
+  1.11.0; against an older server, Connect Paddle says so). Connect
+  Paddle asks Sandbox or Live first - Paddle's events don't say which, so
+  the choice is the webhook's, and permanent. Setup shows Paddle's steps
+  and takes the notification destination's signing secret and an API key
+  with Customers: read (the server checks it with Paddle before saving);
+  the webhook goes active once it has both. An active Paddle webhook
+  shows its environment, any API key problem with what to do, a field to
+  replace the key, and **Send pending deliveries**, which emails the
+  licenses issued while a buyer's email couldn't be looked up. Mappings
+  take a Paddle price, a product, or (for API-created checkouts only) a
+  `casazium_ref` (#71). Admin API surface: needs `POST
+  /admin/storefront-webhooks/:id/api-key` and `.../send-pending`, the
+  `environment` field, and the secret route's `status` (License Server
+  1.11.0).
+- **Crash reporting for Casazium's hosted Console** (#72-#75,
+  `CRASH_REPORTING_DESIGN.md`): server-side errors, crashes and
+  storefront-action failures are reported, masked, to faultline. Only
+  where `CRASH_REPORT_HOSTED=true` is set, which the hosted Compose file
+  does; self-hosted installs send nothing. No server change needed.
+
+### Changed
+
+- **Settings → Storefront webhooks:** the open webhook is kept in the
+  page URL (`?webhook=<id>`), so a refresh - the way to see new
+  deliveries - or a bookmark reopens it, and Deliveries has a Refresh
+  button that reloads the list in place (#76).
+- **Settings → Storefront webhooks** and other storefront actions: when
+  the License Server can't be reached or fails, the message is
+  "Couldn't reach the License Server - try again" instead of a generic
+  one; the server's own messages (validation, Paddle's refusals) are
+  still shown as they are (#75).
+- A webhook from a storefront provider this console doesn't know shows a
+  notice on its row instead of breaking the Settings page (#71).
+
+### Compatibility
+
+- `MIN_COMPATIBLE_SERVER_VERSION` stays 1.5.3: Paddle is offered
+  everywhere, and an older server answers Connect Paddle with a message
+  naming 1.11.0.
+
 ## [1.6.4] - 2026-10-14
 
 ### Security
