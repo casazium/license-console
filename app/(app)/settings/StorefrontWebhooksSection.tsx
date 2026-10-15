@@ -1,6 +1,7 @@
 'use client';
 
 import { useId, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   Alert,
   Accordion,
@@ -93,7 +94,25 @@ export function StorefrontWebhooksSection({
   apiBaseUrl: string;
 }) {
   const [webhooks, setWebhooks] = useState(initialWebhooks);
-  const [openId, setOpenId] = useState<string | null>(null);
+  // The open webhook lives in the URL (?webhook=<id>), so a refresh - the
+  // way to see new deliveries - or a bookmark reopens it. Read once, on
+  // the server as on the client, so the first render matches; an id that
+  // isn't one of this account's webhooks is ignored.
+  const searchParams = useSearchParams();
+  const [openId, setOpenIdState] = useState<string | null>(() => {
+    const fromUrl = searchParams?.get('webhook') ?? null;
+    return fromUrl && initialWebhooks.some((w) => w.id === fromUrl) ? fromUrl : null;
+  });
+
+  function setOpenId(id: string | null) {
+    setOpenIdState(id);
+    // Replace, not push: opening and closing rows shouldn't fill the back
+    // button's history. Next.js keeps useSearchParams in step with it.
+    const url = new URL(window.location.href);
+    if (id) url.searchParams.set('webhook', id);
+    else url.searchParams.delete('webhook');
+    window.history.replaceState(window.history.state, '', url);
+  }
   const [connecting, setConnecting] = useState<StorefrontWebhookProvider | null>(null);
   const [connectError, setConnectError] = useState<string | null>(null);
   const [disableTarget, setDisableTarget] = useState<StorefrontWebhook | null>(null);

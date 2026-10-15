@@ -228,15 +228,43 @@ export function StorefrontWebhookDeliveries({
     }
   }
 
+  // Reloads the list in place - new purchases show without refreshing the
+  // whole page (and closing every webhook).
+  const [refreshing, setRefreshing] = useState(false);
+  async function refresh() {
+    setRefreshing(true);
+    try {
+      const result = await listStorefrontDeliveriesAction(webhookId, { limit: PAGE_SIZE, offset: 0 });
+      if (!result.ok) {
+        notifyRateLimited();
+        return;
+      }
+      setDeliveries(result.data.deliveries);
+      setHasMore(result.data.hasMore);
+      setOffset(result.data.deliveries.length);
+    } catch {
+      notifications.show({ color: 'red', title: "Couldn't refresh deliveries", message: 'Something went wrong. Please try again.' });
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   const stuckCount = deliveries?.filter(isStuck).length ?? 0;
   const missingEventsCount = deliveries?.filter((d) => d.subscription_events_missing).length ?? 0;
   const subscriptionEvents = STOREFRONT_PROVIDERS[provider].subscriptionEvents;
 
   return (
     <Stack gap="xs">
-      <Text size="sm" fw={600}>
-        Deliveries
-      </Text>
+      <Group justify="space-between" align="center">
+        <Text size="sm" fw={600}>
+          Deliveries
+        </Text>
+        {deliveries !== null && (
+          <Button variant="subtle" size="compact-xs" onClick={refresh} loading={refreshing}>
+            Refresh
+          </Button>
+        )}
+      </Group>
 
       {stuckCount > 0 && (
         <Alert color="orange" variant="light" maw={SETTINGS_TEXT_WIDTH} title="Needs attention">
