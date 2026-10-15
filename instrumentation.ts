@@ -18,16 +18,17 @@
  * around, rather than relying on an uncaught rejection during Next's own
  * startup sequence to have the effect it's supposed to.
  *
- * NEXT_RUNTIME guard: instrumentation registers for every runtime this
- * app uses (Node.js for routes/actions, Edge for proxy.ts's middleware)
- * - better-sqlite3 is a native addon that doesn't exist in the Edge
- * runtime, so this must only run once, in the Node.js runtime.
+ * NEXT_RUNTIME guard: Turbopack still compiles this file for the Edge
+ * runtime too, although nothing here runs there - in Next 16, proxy.ts
+ * runs on Node.js (CRASH_REPORTING_DESIGN.md §6.2) - so anything Node-only
+ * (better-sqlite3 is a native addon, process.on) stays behind this check
+ * and a dynamic import.
  *
  * It also reads `LICENSE_ADMIN_API_KEY_FILE` (lib/secret-files.ts) first,
  * for the same reason: an unreadable key file should stop the server at
  * boot, not surface as a 403 on whichever request first talks to License
- * Server. proxy.ts (Edge) never reads the admin key, so Node.js-only is
- * enough here too.
+ * Server. proxy.ts never reads the admin key, so reading it here alone
+ * is enough too.
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") {
@@ -48,5 +49,37 @@ export async function register() {
   } catch (err) {
     console.error("Fatal error during startup:", err);
     process.exit(1);
+  }
+
+  // Crash reporting (CRASH_REPORTING_DESIGN.md §5): outside the block
+  // above, whose catch exits, so a reporter bug can never stop the Console.
+  // Off, and silent, unless CRASH_REPORT_HOSTED=true.
+  try {
+    const { startReporter } = await import("./lib/crash-reporter");
+    startReporter();
+  } catch (err) {
+    console.error("crash reporting couldn't start; carrying on without it:", err);
+  }
+}
+
+/**
+ * Next calls this for an error thrown in a render, a route handler or a
+ * server action (not the proxy: §6.2). Only the method is read from the
+ * request: its path carries the query string and its headers the cookies
+ * (§6). The reporter itself only enqueues, so nothing here waits.
+ */
+export async function onRequestError(
+  error: unknown,
+  request: Readonly<{ method: string }>,
+  context: Readonly<{ routePath?: string; routeType?: string; routerKind?: string }>,
+) {
+  if (process.env.NEXT_RUNTIME !== "nodejs") {
+    return;
+  }
+  try {
+    const { reportRequestError } = await import("./lib/crash-reporter");
+    reportRequestError(error, request.method, context);
+  } catch {
+    // reporting must never break the request
   }
 }

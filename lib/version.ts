@@ -3,6 +3,12 @@
 // no .git to read from at request time). Fallbacks here are defensive only
 // - next.config.mjs's env block runs for both `next dev` and `next build`,
 // so these should always be present in practice.
+//
+// GIT_SHA is always 'unknown' in the Docker image (.git is in
+// .dockerignore), so gitSha prefers SOURCE_COMMIT, read at request time:
+// Coolify sets it in the container when the resource's "Source commit
+// availability" is the build-time option (CRASH_REPORTING_DESIGN.md §4).
+// It isn't in next.config.mjs's env block, so it isn't inlined at build.
 export type AppVersion = {
   version: string;
   gitSha: string;
@@ -11,8 +17,13 @@ export type AppVersion = {
 export function getAppVersion(): AppVersion {
   return {
     version: process.env.APP_VERSION || '0.0.0',
-    gitSha: process.env.GIT_SHA || 'unknown',
+    gitSha: sourceCommit() || process.env.GIT_SHA || 'unknown',
   };
+}
+
+function sourceCommit(): string | null {
+  const c = process.env.SOURCE_COMMIT;
+  return c && /^[0-9a-f]{7,40}$/.test(c) ? c.slice(0, 7) : null;
 }
 
 // Minimum License Server version this Console release has actually been
