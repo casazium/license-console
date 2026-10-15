@@ -9701,3 +9701,55 @@ deleted. Please try again in a few minutes." New
 which reads 1.6.3 and carries the new message.
 `MIN_COMPATIBLE_SERVER_VERSION` stays 1.5.3. Next: the bundle on
 1.10.0 / 1.6.3 and the casazium bundle zip.
+
+## 166. Released 1.6.4: Lemon Squeezy mappings by variant only (2026-10-14, PRs #69-#70, tag `v1.6.4`)
+
+Recorded after the fact (2026-10-15); the release itself was done in the
+session that fixed casazium/license 1.10.1 (license §296).
+
+**Why.** A buyer can add custom data to any Lemon Squeezy checkout link,
+so a `casazium_ref` mapping could name a dearer license than the variant
+paid for. License Server 1.10.1 (casazium/license #53) refuses those
+mappings and never matches them.
+
+**Change (#69).** The Lemon Squeezy mapping form offers variant only; an
+existing Lemon Squeezy `casazium_ref` mapping is flagged "Not safe" with
+the fix. Stripe is unchanged.
+
+**Release (#70).** `v1.6.4` (lightweight, `d6eb550`) published the image.
+`MIN_COMPATIBLE_SERVER_VERSION` stays 1.5.3.
+
+## 167. Released 1.7.0: Paddle, crash reporting, the open webhook kept (2026-10-15, PRs #71-#77, tag `v1.7.0`)
+
+**What.**
+- **Paddle storefront webhooks (#71)**, for License Server 1.11.0
+  (casazium/license §298): Connect Paddle asks Sandbox or Live; setup
+  takes the destination's signing secret and a Customers: read API key
+  (the server checks it with Paddle) and goes active with both; an active
+  Paddle webhook shows its environment, any key problem with what to do,
+  a field to replace the key, and Send pending deliveries. Price, product
+  and API-only `casazium_ref` mappings. A webhook from an unknown provider
+  shows a notice instead of breaking Settings. Checked in a browser
+  against a local License Server, then used for the Paddle live tests on
+  the test deployment (license §297).
+- **Crash reporting for the hosted Console (#72-#75)**,
+  `CRASH_REPORTING_DESIGN.md`: only where `CRASH_REPORT_HOSTED=true`,
+  which `docker-compose-coolify.yml` sets; self-hosted installs send
+  nothing. Storefront actions now say "Couldn't reach the License Server -
+  try again" for an unreachable or failing server.
+- **The open storefront webhook is kept in the URL (#76)**
+  (`?webhook=<id>`, `replaceState`), so a refresh reopens it, and
+  Deliveries has a Refresh button.
+
+**Release (#77).** `main` carried 1.7.0 at `c012979`, whose tests passed
+before tagging; `v1.7.0` (annotated) ran Publish Image, which pushed
+`license-console:1.7.0` and `latest` (manifest list
+`sha256:ad22dfe48d81...`, linux/amd64 and linux/arm64, from the run's
+log: the package is private to an unscoped token).
+`MIN_COMPATIBLE_SERVER_VERSION` stays 1.5.3: an older server answers
+Connect Paddle with a message naming 1.11.0. 435 tests.
+
+**Next:** the bundle on License Server 1.11.0 and Console 1.7.0, the
+casazium bundle zip and docs (release notes, a "Sell with Paddle" guide),
+and redeploying the hosted console resources.
+
