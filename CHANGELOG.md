@@ -10,6 +10,24 @@ surface this console depends on (`casazium/license`) notes whether it
 needs a corresponding change there, and vice versa — see
 `SELF_HOSTED_DISTRIBUTION_DESIGN.md` §4 for why this discipline exists.
 
+## [Unreleased]
+
+### Fixed
+
+- **Crash reporting costs less in an error storm, and holds less memory**
+  (#78, from the end-to-end review). A repeated error that the 10-second
+  dedupe drops no longer parses its stack, so a route where every request
+  fails no longer serves about 15% fewer requests; a held repeat keeps only
+  its frame lines, not the whole message (100 held 2 MB messages: 202.8 MB
+  down to 4.7 MB). Hosted only; self-hosted installs don't report.
+- `DEPLOYMENT.md`: post the crash-reporting trigger to the page its action
+  id came from; how the Console's reports read in faultline; why a
+  Litestream resource exits 1 on every redeploy (expected).
+
+### Compatibility
+
+No admin API change; no `casazium/license` change needed.
+
 ## [1.7.0] - 2026-10-15
 
 ### Added
