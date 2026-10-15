@@ -622,6 +622,48 @@ describe('onRequestError (instrumentation.ts)', () => {
   });
 });
 
+describe('dedupe before frames (the end-to-end review, L1)', () => {
+  it('reads frames only for events that are sent, the repeat carrier included', async () => {
+    const { r, f } = reporter();
+    for (let i = 0; i < 100; i++) r.processError(new Error('database is locked'));
+    // One event sent now; 99 repeats suppressed, none of them parsed.
+    expect(r.framesRead).toBe(1);
+    await r.flushAll();
+    // flushAll sends the carrier for the 99 repeats: its frames are read then.
+    expect(r.framesRead).toBe(2);
+    const events = f.events();
+    expect(events.map((e) => e.extra?.sample_weight ?? 1)).toEqual([1, 99]);
+    for (const ev of events) expect(ev.exception!.values[0].stacktrace!.frames.length).toBeGreaterThan(0);
+  });
+
+  it("puts the templated value in the fingerprint, and keeps it across a cache hit", async () => {
+    const { r, f } = reporter();
+    r.requestError(new Error('row 123456 failed for jane@example.com'), 'GET', { routePath: '/a' });
+    r.requestError(new Error('row 123456 failed for jane@example.com'), 'GET', { routePath: '/b' });
+    await r.flushAll();
+    expect(f.events().map((e) => e.fingerprint)).toEqual([
+      ['/a', 'Error', 'row <n> failed for <email>'],
+      ['/b', 'Error', 'row <n> failed for <email>'],
+    ]);
+  });
+
+  it('sends an Overflow event without frames', async () => {
+    const r = createReporter(enabledSettings(), { fetch: fakeFetch().fetch, maxFingerprints: 1 });
+    r.reportError(new Error('first'), 'site a', '/x');
+    r.reportError(new Error('second'), 'site b', '/x');
+    const overflow = r.queue.find((e) => e.exception!.values[0].type === 'Overflow')!;
+    expect(overflow.exception!.values[0].stacktrace).toBeUndefined();
+  });
+
+  it('reads no frames for an event the full queue drops', () => {
+    const r = createReporter(enabledSettings(), { fetch: fakeFetch().fetch, maxQueue: 1 });
+    r.processError(new Error('first'));
+    r.processError(new TypeError('second'));
+    expect(r.queue).toHaveLength(1);
+    expect(r.framesRead).toBe(1);
+  });
+});
+
 describe('the gaps the PR A review found', () => {
   it('never throws from requestError, reportError or processError', () => {
     const { r } = reporter();
@@ -739,7 +781,7 @@ describe('the gaps the PR A review found', () => {
   // The cache is observed by planting a value in it: a second event with the
   // same type and message must take the planted value, and only then.
   function plant(r: ReturnType<typeof reporter>['r']) {
-    for (const k of r.cleaned.keys()) r.cleaned.set(k, '<planted>');
+    for (const k of r.cleaned.keys()) r.cleaned.set(k, { value: '<planted>', valueFp: '<planted>' });
   }
 
   it('cleans a repeated value once (the cache), keyed by type and message', async () => {

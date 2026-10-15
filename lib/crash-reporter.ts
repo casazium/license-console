@@ -9,7 +9,9 @@
 // In short:
 // - instrumentation.ts's register() calls startReporter() once. It keeps one
 //   reporter, methods and state together, on globalThis (§5): Turbopack gives
-//   each bundle its own copy of this module, so nothing lives in module scope.
+//   each bundle its own copy of this module, so no reporter state lives in
+//   module scope. (pendingFrames, below, is module-level but safe: only the
+//   copy that created the reporter ever builds or enqueues its events.)
 // - onRequestError (instrumentation.ts) hands request errors to
 //   requestError(); reportError() is for the sites that catch and log (§6.1).
 //   Both only enqueue.
@@ -201,7 +203,8 @@ export type Reporter = {
   lastStderr: number;
   lastWarn: number;
   lastLog4xxFlush: number;
-  cleaned: Map<string, string>;
+  cleaned: Map<string, { value: string; valueFp: string }>;
+  framesRead: number; // how many events' frames were read (tests: dedupe skips them)
   timer: ReturnType<typeof setInterval> | null;
   listeners: { uncaughtException: (e: unknown) => void; unhandledRejection: (r: unknown) => void } | null;
   requestError: (err: unknown, method: unknown, ctx: RequestErrorContext | undefined) => void;
@@ -236,6 +239,7 @@ export function createReporter(
     lastWarn: -Infinity,
     lastLog4xxFlush: 0,
     cleaned: new Map(),
+    framesRead: 0,
     timer: null,
     listeners: null,
   } as unknown as Reporter;
@@ -515,18 +519,34 @@ function errorEvent(
     raw = `<non-Error: ${kindOf(err)}>`;
   }
   if (label) ev.tags.logmessage = stable((s) => clean(s, MAX_LOGMESSAGE), label);
-  const value = cachedClean(r, type, raw);
+  const { value, valueFp } = cachedClean(r, type, raw);
   const exception: { type: string; value: string; stacktrace?: { frames: Frame[] } } = { type, value };
-  const frames = stack ? parseFrames(stack, message, r.options.cwd) : [];
-  if (frames.length) exception.stacktrace = { frames };
   ev.exception = { values: [exception] };
   const cause = fp(ev.tags.error_code || type);
   ev.fingerprint =
     source === 'log' && label
       ? [fp(ev.tags.route), 'log', fp(label), cause] // §6: a site's issues apart by cause
-      : [fp(ev.tags.route), cause, fp(value)];
+      : [fp(ev.tags.route), cause, valueFp];
+  // The frames are the costly part (each file name is masked), so they're
+  // read only if this event is enqueued, not for a repeat dedupe drops (the
+  // end-to-end review measured 15% fewer requests served in a storm).
+  if (stack) {
+    const cwd = r.options.cwd;
+    // Only the frame lines are kept, each a fresh bounded copy: holding the
+    // raw stack (or V8's slices of it) would keep the whole message alive,
+    // 2 MB for a 2 MB message (the follow-up review).
+    const lines = frameLines(stack, message);
+    pendingFrames.set(ev, () => {
+      r.framesRead++;
+      const frames = parseFrames(lines, cwd);
+      if (frames.length) exception.stacktrace = { frames };
+    });
+  }
   return ev;
 }
+
+// Events whose frames are still to be read (errorEvent, enqueue).
+const pendingFrames = new WeakMap<ReportEvent, () => void>();
 
 // cachedClean is cleanValue, remembered: a storm repeats the same few
 // errors, and masking a long value costs milliseconds on the request's
@@ -534,7 +554,9 @@ function errorEvent(
 // 8,000 code units always contain, so the key needn't hold more. The key is
 // a hash of that: a slice of a message can keep the whole message alive
 // (the PR A verification measured 225 MB for 100 two-megabyte messages).
-function cachedClean(r: Reporter, type: string, raw: string): string {
+// The value's fingerprint part is kept with it, so a repeat is templated
+// once too.
+function cachedClean(r: Reporter, type: string, raw: string): { value: string; valueFp: string } {
   const key = crypto
     .createHash('sha256')
     .update(`${type}${NUL}${raw.length <= 8000 ? raw : `${raw.slice(0, 8000)}${NUL}long`}`)
@@ -543,9 +565,10 @@ function cachedClean(r: Reporter, type: string, raw: string): string {
   if (hit !== undefined) return hit;
   let value = cleanValue(type, raw);
   if (value === '') value = '<empty>';
+  const entry = { value, valueFp: fp(value) };
   if (r.cleaned.size >= 200) r.cleaned.clear();
-  r.cleaned.set(key, value);
-  return value;
+  r.cleaned.set(key, entry);
+  return entry;
 }
 
 // fp is a fingerprint part already in faultline's final form.
@@ -576,14 +599,33 @@ function setWeight(ev: ReportEvent, n: number) {
 
 const FRAME = /^\s*at (?:(.*?) \()?(.*?):(\d+):(\d+)\)?\s*$/;
 
-// parseFrames reads V8's stack (newest first) into Sentry frames, oldest
-// first. File names lose the working directory and .next/server/, so no
-// machine path is sent (§6).
-function parseFrames(stack: string, message: string, cwd: string): Frame[] {
+const MAX_FRAME_LINE = 1000;
+
+// frameLines is the stack's frame lines, after the "Name: message" header
+// (which may span lines), as fresh copies cut to MAX_FRAME_LINE: nothing
+// that refers back to the stack or the message. Lines that aren't frames
+// (V8 can print some) are kept up to twice MAX_FRAMES.
+function frameLines(stack: string, message: string): string[] {
+  const skip = message.split('\n').length;
+  const out: string[] = [];
+  let start = 0;
+  for (let line = 0; start <= stack.length && out.length < 2 * MAX_FRAMES; line++) {
+    let end = stack.indexOf('\n', start);
+    if (end === -1) end = stack.length;
+    if (line >= skip) {
+      out.push(Buffer.from(stack.slice(start, Math.min(end, start + MAX_FRAME_LINE)), 'utf8').toString('utf8'));
+    }
+    start = end + 1;
+  }
+  return out;
+}
+
+// parseFrames reads V8's frame lines (newest first) into Sentry frames,
+// oldest first. File names lose the working directory and .next/server/, so
+// no machine path is sent (§6).
+function parseFrames(lines: string[], cwd: string): Frame[] {
   const frames: Frame[] = [];
-  // The stack starts with "Name: message", which may span lines.
-  const skip = 1 + message.split('\n').length - 1;
-  for (const line of stack.split('\n').slice(skip)) {
+  for (const line of lines) {
     const m = FRAME.exec(line);
     if (!m) continue;
     let filename = m[2].startsWith('file://') ? m[2].slice(7) : m[2];
@@ -634,8 +676,18 @@ function drop(r: Reporter, events: (ReportEvent | null)[]) {
 
 function enqueue(r: Reporter, ev: ReportEvent) {
   if (r.queue.length >= r.options.maxQueue) {
+    pendingFrames.delete(ev);
     drop(r, [ev]);
     return;
+  }
+  const readFrames = pendingFrames.get(ev);
+  if (readFrames) {
+    pendingFrames.delete(ev);
+    try {
+      readFrames();
+    } catch {
+      // frames are diagnostics: the event goes without them
+    }
   }
   r.queue.push(ev);
 }

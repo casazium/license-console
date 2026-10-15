@@ -567,7 +567,12 @@ No Sentry SDK; `fetch` builds the envelope. The rules are **1a's
 **Dedupe,** one mechanism for every source, as 1a: keyed on the §6
 fingerprint (masked and templated, so values in a message don't defeat
 it), in a 10 s window, the repeat count carried as `sample_weight`. The
-cap is 200 fingerprints, after which 1a's `Overflow` event is sent.
+cap is 200 fingerprints, after which 1a's `Overflow` event is sent. The
+bound is 200 plus one `Overflow` window per route, since an Overflow
+event's own fingerprint is `[route, OVERFLOW]`. Routes are Next's
+templates or literals, so it stays small (the end-to-end review). Frames
+are read only for an event that's enqueued, so a suppressed repeat costs a
+cache lookup and no stack parsing.
 Next's `digest` isn't used: route-handler errors don't have one, and it
 hashes the raw message.
 
