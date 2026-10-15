@@ -100,6 +100,12 @@ Console, so they're counted per route rather than opened as issues:
   `Origin` or `Next-Action` header: both answered 500 and reached
   `onRequestError` as `routeType: "render"`.
 
+- **Next's router-state error**, exactly `The router state header was
+  sent but could not be parsed.`: an RSC request (`RSC: 1`) with a
+  malformed `Next-Router-State-Tree` header, which any anonymous GET to a
+  public page can send. The PR A review saw `/login` and `/signup` answer
+  500 and report it; PR A counts it.
+
 These Next messages are pinned in the built-server test (§11), so a Next
 upgrade that changes them fails CI instead of opening issues.
 
@@ -689,9 +695,11 @@ The things only a real build shows:
 - no event for `notFound()`, `redirect()` or a caught error;
 - a count, but no issue, for a cross-origin action POST, and for an
   anonymous multipart POST to `/login` with a junk body and with a
-  well-formed one. These pin the exact Next texts: `Invalid Server
-  Actions request.`, `Failed to parse body as FormData.`, `Failed to find
-  Server Action.`;
+  well-formed one, and for an anonymous GET to `/login` with `RSC: 1` and
+  a malformed `Next-Router-State-Tree` header. These pin the exact Next
+  texts: `Invalid Server Actions request.`, `Failed to parse body as
+  FormData.`, `Failed to find Server Action.`, `The router state header
+  was sent but could not be parsed.`;
 - the live trigger (§11 below: a session, a real action id, a junk
   multipart body) still reports `Unexpected end of form` with
   `routeType: action`, and isn't caught by the counted list;
