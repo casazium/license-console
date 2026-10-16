@@ -37,7 +37,7 @@ describe('fetchAllLicenses (lib/export-licenses.ts)', () => {
     const result = await fetchAllLicenses('tenant-key');
 
     expect(mockListLicenses).toHaveBeenCalledTimes(1);
-    expect(mockListLicenses).toHaveBeenCalledWith({ limit: 1000, offset: 0 }, 'tenant-key');
+    expect(mockListLicenses).toHaveBeenCalledWith({ limit: 1000, offset: 0, include_activations: true }, 'tenant-key');
     expect(result.licenses).toHaveLength(5);
     expect(result.total).toBe(5);
   });
@@ -55,9 +55,9 @@ describe('fetchAllLicenses (lib/export-licenses.ts)', () => {
     const result = await fetchAllLicenses('tenant-key');
 
     expect(mockListLicenses).toHaveBeenCalledTimes(3);
-    expect(mockListLicenses).toHaveBeenNthCalledWith(1, { limit: 1000, offset: 0 }, 'tenant-key');
-    expect(mockListLicenses).toHaveBeenNthCalledWith(2, { limit: 1000, offset: 1000 }, 'tenant-key');
-    expect(mockListLicenses).toHaveBeenNthCalledWith(3, { limit: 1000, offset: 2000 }, 'tenant-key');
+    expect(mockListLicenses).toHaveBeenNthCalledWith(1, { limit: 1000, offset: 0, include_activations: true }, 'tenant-key');
+    expect(mockListLicenses).toHaveBeenNthCalledWith(2, { limit: 1000, offset: 1000, include_activations: true }, 'tenant-key');
+    expect(mockListLicenses).toHaveBeenNthCalledWith(3, { limit: 1000, offset: 2000, include_activations: true }, 'tenant-key');
     expect(result.licenses).toHaveLength(2500);
     expect(result.total).toBe(2500);
     // No duplicated/skipped rows across the page boundary.

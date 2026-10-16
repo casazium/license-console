@@ -434,7 +434,7 @@ export async function listLicenses(
   // mock.xxx`) - unused here, mock mode has no real tenant concept.
   _tenantApiKey?: string
 ): Promise<ListLicensesResult> {
-  const { status, product_id, issued_to, key, sort, order = 'desc', limit = 10, offset = 0 } = params;
+  const { status, product_id, issued_to, key, sort, order = 'desc', limit = 10, offset = 0, include_activations } = params;
   const { licenses, activations } = getStore();
 
   const withUsage = licenses.map((license) => ({
@@ -459,8 +459,11 @@ export async function listLicenses(
   const sorted = [...filtered].sort((a, b) => compareLicenses(a, b, sortColumn, order));
 
   const page = sorted.slice(offset, offset + limit);
+  const withActivations = include_activations
+    ? page.map((license) => ({ ...license, activations: activations[license.key] ?? [] }))
+    : page;
 
-  return { licenses: page, total: sorted.length };
+  return { licenses: withActivations, total: sorted.length };
 }
 
 export async function getLicense(key: string, _tenantApiKey?: string): Promise<License | null> {

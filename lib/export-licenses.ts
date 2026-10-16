@@ -38,6 +38,14 @@ export const MAX_EXPORT_LICENSES = 25000;
  * avoids list-licenses.js's own documented LIMIT/OFFSET caveat (rows can
  * duplicate or skip across pages if the underlying data changes between
  * calls) getting worse under concurrent requests for the same tenant.
+ *
+ * Asks for each page's activations inline (include_activations) so the
+ * whole export is one admin request per page, not one more per license -
+ * every one of those counts against the License Server's admin rate
+ * limit (ADMIN_RATE_LIMIT_MAX, 300 per 15 minutes per tenant by
+ * default), which used to make any account past ~297 licenses
+ * unexportable. A server older than casazium/license 1.12.0 ignores the
+ * flag and leaves `activations` unset; the caller falls back for those.
  */
 export async function fetchAllLicenses(
   tenantApiKey: string
@@ -46,7 +54,10 @@ export async function fetchAllLicenses(
   let total = Infinity;
 
   while (licenses.length < total && licenses.length < MAX_EXPORT_LICENSES) {
-    const page = await listLicenses({ limit: LIST_LICENSES_PAGE_SIZE, offset: licenses.length }, tenantApiKey);
+    const page = await listLicenses(
+      { limit: LIST_LICENSES_PAGE_SIZE, offset: licenses.length, include_activations: true },
+      tenantApiKey
+    );
     total = page.total;
     if (page.licenses.length === 0) break; // Defensive: avoids an infinite loop if total is ever wrong.
     licenses.push(...page.licenses);
