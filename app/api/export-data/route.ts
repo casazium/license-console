@@ -139,11 +139,13 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // One GET /list-activations/:key call per license - N+1, not a single
-  // bulk call (no such endpoint exists). Accepted the same way
-  // admin-report-extract.js's own aggregate query accepts its own cost:
-  // a one-time, tenant-initiated click, not a background job serving
-  // every tenant on a schedule. Concurrency-bounded (ACTIVATIONS_CONCURRENCY)
+  // Activations normally arrive with each page (fetchAllLicenses asks
+  // for include_activations), so the whole export is a handful of admin
+  // requests. A License Server older than 1.12.0 ignores that flag and
+  // leaves `activations` unset - only then does this fall back to one
+  // GET /list-activations/:key per license, which still hits the admin
+  // rate limit (300 per 15 minutes by default) past ~297 licenses, as
+  // every export did before. Concurrency-bounded (ACTIVATIONS_CONCURRENCY)
   // and cooldown-gated (checkExportCooldown above), not left as a single
   // unbounded Promise.all - see this file's own header comment on why.
   let licensesWithActivations;
@@ -168,7 +170,7 @@ export async function GET(request: NextRequest) {
       usage: license.usage,
       max_activations: license.max_activations,
       revoked_at: license.revoked_at,
-      activations: await listActivations(license.key, tenantApiKey),
+      activations: license.activations ?? (await listActivations(license.key, tenantApiKey)),
     }));
   } catch (err) {
     if (isRateLimited(err)) {

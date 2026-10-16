@@ -178,6 +178,7 @@ async function fetchRawLicenses(
     order?: 'asc' | 'desc';
     limit: number;
     offset: number;
+    include_activations?: boolean;
   },
   tenantApiKey?: string
 ): Promise<{ licenses: RawLicenseListRow[]; total: number }> {
@@ -190,6 +191,7 @@ async function fetchRawLicenses(
   if (params.order) query.set('order', params.order);
   query.set('limit', String(params.limit));
   query.set('offset', String(params.offset));
+  if (params.include_activations) query.set('include_activations', 'true');
 
   const res = await liveFetch(`/list-licenses?${query.toString()}`, {}, tenantApiKey);
   if (!res.ok) {
@@ -255,9 +257,9 @@ export async function listLicenses(
   params: ListLicensesParams = {},
   tenantApiKey?: string
 ): Promise<ListLicensesResult> {
-  const { status, product_id, issued_to, key, sort, order, limit = 10, offset = 0 } = params;
+  const { status, product_id, issued_to, key, sort, order, limit = 10, offset = 0, include_activations } = params;
   const { licenses, total } = await fetchRawLicenses(
-    { status, product_id, issued_to, key, sort, order, limit, offset },
+    { status, product_id, issued_to, key, sort, order, limit, offset, include_activations },
     tenantApiKey
   );
 

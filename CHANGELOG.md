@@ -23,10 +23,19 @@ needs a corresponding change there, and vice versa — see
 - `DEPLOYMENT.md`: post the crash-reporting trigger to the page its action
   id came from; how the Console's reports read in faultline; why a
   Litestream resource exits 1 on every redeploy (expected).
+- **Settings → Download my data works past ~297 licenses** (needs License
+  Server 1.12.0). The export made one `list-activations` request per
+  license, all against the admin rate limit (300 per 15 minutes), so any
+  larger account got "Too many requests to the license server" every
+  time. It now gets activations with each page of up to 1,000 licenses:
+  26 requests at most for the 25,000-license ceiling. Against an older
+  server it falls back to the per-license requests, as before.
 
 ### Compatibility
 
-No admin API change; no `casazium/license` change needed.
+Uses `GET /list-licenses?include_activations=true` (`casazium/license`
+1.12.0) for the data export; against an older server, which ignores the
+flag, the export behaves as in 1.7.0. No other admin API change.
 
 ## [1.7.0] - 2026-10-15
 

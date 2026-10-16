@@ -227,9 +227,13 @@ export type UpdateLicenseTermsResult = {
 // already fetches the activation list separately - adding
 // activations_count to License itself would make that call site's return
 // type claim a field the real response never has.
-export type RawLicenseListRow = License & { activations_count: number };
+export type RawLicenseListRow = License & { activations_count: number; activations?: Activation[] };
 
-export type LicenseListItem = License & { activations_used: number };
+// activations: only set when listLicenses was asked for
+// include_activations and the server supports it (casazium/license
+// 1.12.0+) - undefined otherwise, which is how fetchAllLicenses' caller
+// tells an older server apart (see app/api/export-data/route.ts).
+export type LicenseListItem = License & { activations_used: number; activations?: Activation[] };
 
 // Wire values match casazium/license's GET /list-licenses `sort` enum
 // exactly - 'activations_count' rather than this console's own
@@ -260,6 +264,11 @@ export type ListLicensesParams = {
   order?: 'asc' | 'desc';
   limit?: number;
   offset?: number;
+  // Each row's full activations list, in the same call (GET
+  // /list-licenses?include_activations=true, casazium/license 1.12.0+) -
+  // for the data export, which otherwise needs one rate-limited
+  // GET /list-activations/:key per license.
+  include_activations?: boolean;
 };
 
 export type ListLicensesResult = {
