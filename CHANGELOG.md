@@ -12,6 +12,8 @@ needs a corresponding change there, and vice versa — see
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-10-16
+
 ### Fixed
 
 - **Crash reporting costs less in an error storm, and holds less memory**
