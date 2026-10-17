@@ -185,6 +185,18 @@ describe('an active Paddle webhook', () => {
     await waitFor(() => expect(listDeliveriesAction).toHaveBeenCalledTimes(2));
   });
 
+  it('says the webhook changed when a run stops for that (License Server 1.11.1+)', async () => {
+    sendPendingAction.mockResolvedValueOnce({
+      ok: true,
+      data: { sent: 1, skipped: 0, not_found: 0, failed: 0, remaining: 4, stopped: 'webhook_changed' },
+    });
+    await openPaddle(paddleWebhook({ status: 'active', has_api_key: true }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Send pending deliveries' }));
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Sent 1. 4 still waiting. The webhook was disconnected or given a new API key while sending - check it, then run it again.'
+    );
+  });
+
   it("shows a server refusal (a run already going) as a notification", async () => {
     sendPendingAction.mockResolvedValueOnce({
       ok: false,
