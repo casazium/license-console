@@ -717,6 +717,10 @@ function stoppedText(stopped: string | null): string | null {
   if (stopped === 'batch_limit' || stopped === 'time_budget') return 'There are more to send - run it again.';
   if (stopped === 'daily_cap') return "Today's email limit is reached - try again tomorrow.";
   if (stopped === 'send_failed') return 'The email service failed - try again later.';
+  // License Server 1.11.1+: disconnected, or a new API key saved, mid-run.
+  if (stopped === 'webhook_changed') {
+    return 'The webhook was disconnected or given a new API key while sending - check it, then run it again.';
+  }
   if (API_KEY_PROBLEM_TEXT[stopped]) return `${API_KEY_PROBLEM_TEXT[stopped].title}.`;
   return "Paddle didn't answer - try again in a minute.";
 }

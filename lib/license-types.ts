@@ -428,7 +428,8 @@ export type StorefrontWebhook = {
 // Paddle's "Send pending deliveries" (License Server 1.11.0+): what one
 // run did. stopped is null when it got through everything, or why it
 // stopped: batch_limit / time_budget (run it again), daily_cap,
-// send_failed, a fetch failure reason, or an api_key_problem value.
+// send_failed, webhook_changed (1.11.1+), a fetch failure reason, or an
+// api_key_problem value.
 export type StorefrontSendPendingResult = {
   sent: number;
   skipped: number;

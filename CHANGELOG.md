@@ -12,6 +12,14 @@ needs a corresponding change there, and vice versa — see
 
 ## [Unreleased]
 
+### Fixed
+
+- **Send pending deliveries says when the webhook changed mid-run.** License
+  Server 1.11.1 stops a run with `webhook_changed` when the Paddle webhook is
+  disconnected or given a new API key while it's sending; the console showed
+  that as "Paddle didn't answer - try again in a minute." It now says the
+  webhook changed and to check it before running again.
+
 ## [1.8.0] - 2026-10-16
 
 ### Fixed
